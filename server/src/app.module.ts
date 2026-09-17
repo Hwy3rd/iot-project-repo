@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { dataSourceOptions } from './database/data-source';
 import { RedisModule } from './modules/redis/redis.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -16,15 +17,8 @@ import { AuthModule } from './modules/auth/auth.module';
       process.env.MONGO_URI ?? 'mongodb://localhost:27017/iot',
     ),
     TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: process.env.MYSQL_HOST ?? 'localhost',
-      port: Number(process.env.MYSQL_PORT ?? 3306),
-      username: process.env.MYSQL_USER ?? 'user',
-      password: process.env.MYSQL_PASSWORD ?? 'password',
-      database: process.env.MYSQL_DATABASE ?? 'mydatabase',
-      timezone: 'Z',
+      ...dataSourceOptions,
       autoLoadEntities: true,
-      synchronize: true,
     }),
     BullModule.forRoot({
       connection: {
