@@ -21,11 +21,9 @@ export class User {
     this.id ??= uuidv7();
   }
 
-  @Index({ unique: true })
   @Column({ type: 'varchar', unique: true })
   username!: string;
 
-  @Index({ unique: true })
   @Column({ type: 'varchar', unique: true, nullable: true })
   email!: string | null;
 
@@ -38,9 +36,11 @@ export class User {
   @Column({ type: 'varchar', name: 'full_name', nullable: true })
   fullName!: string | null;
 
+  @Index()
   @Column({ type: 'enum', enum: UserRole })
   role!: UserRole;
 
+  @Index()
   @Column({
     type: 'enum',
     enum: UserStatus,
