@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
-import { REDIS_CLIENT } from '../redis/redis.constant';
+import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 

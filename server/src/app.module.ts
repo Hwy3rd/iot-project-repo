@@ -6,9 +6,19 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { dataSourceOptions } from './database/data-source';
-import { RedisModule } from './modules/redis/redis.module';
+import { RedisModule } from './libs/redis/redis.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { WarehousesModule } from './modules/warehouses/warehouses.module';
+import { ColdRoomsModule } from './modules/cold-rooms/cold-rooms.module';
+import { ProductTypesModule } from './modules/product-types/product-types.module';
+import { BatchesModule } from './modules/batches/batches.module';
+import { ShiftsModule } from './modules/shifts/shifts.module';
+import { WorkShiftsModule } from './modules/work-shifts/work-shifts.module';
+import { DevicesModule } from './modules/devices/devices.module';
+import { DeviceChannelsModule } from './modules/device-channels/device-channels.module';
+import { CommandsModule } from './modules/commands/commands.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -29,6 +39,16 @@ import { AuthModule } from './modules/auth/auth.module';
     RedisModule,
     UsersModule,
     AuthModule,
+    WarehousesModule,
+    ColdRoomsModule,
+    ProductTypesModule,
+    BatchesModule,
+    ShiftsModule,
+    WorkShiftsModule,
+    DevicesModule,
+    DeviceChannelsModule,
+    CommandsModule,
+    AuditLogsModule,
   ],
   controllers: [],
   providers: [

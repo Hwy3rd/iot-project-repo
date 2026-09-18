@@ -36,6 +36,9 @@ export class User {
   @Column({ type: 'varchar', name: 'full_name', nullable: true })
   fullName!: string | null;
 
+  @Column({ type: 'json', name: 'image_urls', nullable: true })
+  imageUrls!: string[] | null;
+
   @Index()
   @Column({ type: 'enum', enum: UserRole })
   role!: UserRole;

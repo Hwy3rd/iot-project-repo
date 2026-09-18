@@ -10,7 +10,7 @@ import * as bcrypt from 'bcryptjs';
 import { createHash } from 'crypto';
 import Redis from 'ioredis';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
-import { REDIS_CLIENT } from '../redis/redis.constant';
+import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
 

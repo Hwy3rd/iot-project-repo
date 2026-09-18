@@ -3,9 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { QueryFailedError, Repository } from 'typeorm';
+import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
@@ -17,6 +18,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   private sanitize(user: User) {
@@ -56,6 +59,7 @@ export class UsersService {
       phone: createUserDto.phone ?? null,
       fullName: createUserDto.fullName ?? null,
       role: createUserDto.role,
+      imageUrls: createUserDto.imageUrls ?? null,
       passwordHash,
     });
 
@@ -95,10 +99,15 @@ export class UsersService {
     return this.sanitize(saved);
   }
 
+  // Soft delete doesn't fire ON DELETE CASCADE (that only triggers on a real
+  // SQL DELETE), so stale warehouse_staff rows have to be cleaned up here.
   async remove(id: string) {
-    const result = await this.usersRepository.softDelete(id);
-    if (!result.affected) {
-      throw new NotFoundException(`User ${id} not found`);
-    }
+    await this.dataSource.transaction(async (manager) => {
+      const result = await manager.softDelete(User, id);
+      if (!result.affected) {
+        throw new NotFoundException(`User ${id} not found`);
+      }
+      await manager.delete(WarehouseStaff, { userId: id });
+    });
   }
 }
