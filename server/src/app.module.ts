@@ -7,6 +7,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { dataSourceOptions } from './database/data-source';
 import { RedisModule } from './libs/redis/redis.module';
+import { MinioModule } from './libs/minio/minio.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
@@ -19,6 +20,7 @@ import { DevicesModule } from './modules/devices/devices.module';
 import { DeviceChannelsModule } from './modules/device-channels/device-channels.module';
 import { CommandsModule } from './modules/commands/commands.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
+import { UploadFilesModule } from './modules/upload-files/upload-files.module';
 
 @Module({
   imports: [
@@ -37,6 +39,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
       },
     }),
     RedisModule,
+    MinioModule,
     UsersModule,
     AuthModule,
     WarehousesModule,
@@ -49,6 +52,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
     DeviceChannelsModule,
     CommandsModule,
     AuditLogsModule,
+    UploadFilesModule,
   ],
   controllers: [],
   providers: [

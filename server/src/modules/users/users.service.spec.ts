@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
+import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
@@ -45,6 +46,10 @@ describe('UsersService', () => {
         {
           provide: getDataSourceToken(),
           useValue: dataSource,
+        },
+        {
+          provide: UploadFilesService,
+          useValue: { uploadImages: jest.fn(), deleteImage: jest.fn() },
         },
       ],
     }).compile();

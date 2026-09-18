@@ -6,6 +6,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -20,6 +21,7 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly uploadFilesService: UploadFilesService,
   ) {}
 
   private sanitize(user: User) {
@@ -95,6 +97,28 @@ export class UsersService {
     }
 
     Object.assign(user, updateUserDto);
+    const saved = await this.saveUser(user);
+    return this.sanitize(saved);
+  }
+
+  async addImages(id: string, files: Express.Multer.File[]) {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+    const uploaded = await this.uploadFilesService.uploadImages(files, 'users');
+    user.imageUrls = [...(user.imageUrls ?? []), ...uploaded];
+    const saved = await this.saveUser(user);
+    return this.sanitize(saved);
+  }
+
+  async removeImage(id: string, url: string) {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+    user.imageUrls = (user.imageUrls ?? []).filter((img) => img !== url);
+    await this.uploadFilesService.deleteImage(url);
     const saved = await this.saveUser(user);
     return this.sanitize(saved);
   }

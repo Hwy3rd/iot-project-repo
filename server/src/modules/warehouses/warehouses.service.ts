@@ -6,6 +6,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { UploadFilesService } from '../upload-files/upload-files.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { Warehouse } from './entities/warehouse.entity';
@@ -18,6 +19,7 @@ export class WarehousesService {
     private readonly warehousesRepository: Repository<Warehouse>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly uploadFilesService: UploadFilesService,
   ) {}
 
   private async saveWarehouse(warehouse: Warehouse): Promise<Warehouse> {
@@ -66,6 +68,35 @@ export class WarehousesService {
       throw new NotFoundException(`Warehouse ${id} not found`);
     }
     Object.assign(warehouse, updateWarehouseDto);
+    return this.saveWarehouse(warehouse);
+  }
+
+  async addImages(id: string, files: Express.Multer.File[]) {
+    const warehouse = await this.warehousesRepository.findOne({
+      where: { id },
+    });
+    if (!warehouse) {
+      throw new NotFoundException(`Warehouse ${id} not found`);
+    }
+    const uploaded = await this.uploadFilesService.uploadImages(
+      files,
+      'warehouses',
+    );
+    warehouse.imageUrls = [...(warehouse.imageUrls ?? []), ...uploaded];
+    return this.saveWarehouse(warehouse);
+  }
+
+  async removeImage(id: string, url: string) {
+    const warehouse = await this.warehousesRepository.findOne({
+      where: { id },
+    });
+    if (!warehouse) {
+      throw new NotFoundException(`Warehouse ${id} not found`);
+    }
+    warehouse.imageUrls = (warehouse.imageUrls ?? []).filter(
+      (img) => img !== url,
+    );
+    await this.uploadFilesService.deleteImage(url);
     return this.saveWarehouse(warehouse);
   }
 

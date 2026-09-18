@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
+import { UploadFilesService } from '../upload-files/upload-files.service';
 import { CreateProductTypeDto } from './dto/create-product-type.dto';
 import { UpdateProductTypeDto } from './dto/update-product-type.dto';
 import { ProductType } from './entities/product-type.entity';
@@ -15,6 +16,7 @@ export class ProductTypesService {
   constructor(
     @InjectRepository(ProductType)
     private readonly productTypesRepository: Repository<ProductType>,
+    private readonly uploadFilesService: UploadFilesService,
   ) {}
 
   private assertValidStorageRange(
@@ -98,5 +100,34 @@ export class ProductTypesService {
     if (!result.affected) {
       throw new NotFoundException(`Product type ${id} not found`);
     }
+  }
+
+  async addImages(id: string, files: Express.Multer.File[]) {
+    const productType = await this.productTypesRepository.findOne({
+      where: { id },
+    });
+    if (!productType) {
+      throw new NotFoundException(`Product type ${id} not found`);
+    }
+    const uploaded = await this.uploadFilesService.uploadImages(
+      files,
+      'product-types',
+    );
+    productType.imageUrls = [...(productType.imageUrls ?? []), ...uploaded];
+    return this.saveProductType(productType);
+  }
+
+  async removeImage(id: string, url: string) {
+    const productType = await this.productTypesRepository.findOne({
+      where: { id },
+    });
+    if (!productType) {
+      throw new NotFoundException(`Product type ${id} not found`);
+    }
+    productType.imageUrls = (productType.imageUrls ?? []).filter(
+      (img) => img !== url,
+    );
+    await this.uploadFilesService.deleteImage(url);
+    return this.saveProductType(productType);
   }
 }

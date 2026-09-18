@@ -6,8 +6,13 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { Serialize } from '../../common/decorators/serialize.decorator';
+import { DeleteImageDto } from '../upload-files/dto/delete-image.dto';
+import { imageUploadOptions } from '../upload-files/multer-image.options';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -44,5 +49,21 @@ export class UsersController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.usersService.remove(id);
+  }
+
+  @Serialize(UserResponseDto)
+  @Post(':id/images')
+  @UseInterceptors(FilesInterceptor('files', 5, imageUploadOptions))
+  addImages(
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.usersService.addImages(id, files);
+  }
+
+  @Serialize(UserResponseDto)
+  @Delete(':id/images')
+  removeImage(@Param('id') id: string, @Body() dto: DeleteImageDto) {
+    return this.usersService.removeImage(id, dto.url);
   }
 }
