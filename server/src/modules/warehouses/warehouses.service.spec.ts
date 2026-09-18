@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
 import { Warehouse } from './entities/warehouse.entity';
 import { WarehousesService } from './warehouses.service';
@@ -43,6 +44,10 @@ describe('WarehousesService', () => {
         {
           provide: getDataSourceToken(),
           useValue: dataSource,
+        },
+        {
+          provide: UploadFilesService,
+          useValue: { uploadImages: jest.fn(), deleteImage: jest.fn() },
         },
       ],
     }).compile();

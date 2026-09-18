@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { ProductUnit } from '../../libs/constants/product-unit.constant';
+import { UploadFilesService } from '../upload-files/upload-files.service';
 import { ProductType } from './entities/product-type.entity';
 import { ProductTypesService } from './product-types.service';
 
@@ -27,6 +28,10 @@ describe('ProductTypesService', () => {
         {
           provide: getRepositoryToken(ProductType),
           useValue: createMockRepository(),
+        },
+        {
+          provide: UploadFilesService,
+          useValue: { uploadImages: jest.fn(), deleteImage: jest.fn() },
         },
       ],
     }).compile();
