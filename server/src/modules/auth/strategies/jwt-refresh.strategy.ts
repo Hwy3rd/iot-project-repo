@@ -5,7 +5,7 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 import Redis from 'ioredis';
 import { Strategy } from 'passport-jwt';
-import { REDIS_CLIENT } from '../../redis/redis.constant';
+import { REDIS_CLIENT } from '../../../libs/redis/redis.constant';
 
 function extractRefreshTokenFromCookie(req: Request): string | null {
   const cookies = req?.cookies as Record<string, string> | undefined;

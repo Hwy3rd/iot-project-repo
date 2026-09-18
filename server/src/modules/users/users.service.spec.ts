@@ -1,8 +1,9 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
+import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
 
@@ -17,17 +18,33 @@ const createMockRepository = (): MockRepository => ({
   softDelete: jest.fn(),
 });
 
+const createMockDataSource = () => {
+  const manager = { softDelete: jest.fn(), delete: jest.fn() };
+  return {
+    manager,
+    transaction: jest.fn((cb: (entityManager: typeof manager) => unknown) =>
+      cb(manager),
+    ),
+  };
+};
+
 describe('UsersService', () => {
   let service: UsersService;
   let repository: MockRepository;
+  let dataSource: ReturnType<typeof createMockDataSource>;
 
   beforeEach(async () => {
+    dataSource = createMockDataSource();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         {
           provide: getRepositoryToken(User),
           useValue: createMockRepository(),
+        },
+        {
+          provide: getDataSourceToken(),
+          useValue: dataSource,
         },
       ],
     }).compile();
@@ -152,18 +169,22 @@ describe('UsersService', () => {
 
   describe('remove', () => {
     it('throws NotFoundException when nothing was deleted', async () => {
-      repository.softDelete!.mockResolvedValue({ affected: 0 });
+      dataSource.manager.softDelete.mockResolvedValue({ affected: 0 });
 
       await expect(service.remove('missing-id')).rejects.toThrow(
         NotFoundException,
       );
+      expect(dataSource.manager.delete).not.toHaveBeenCalled();
     });
 
-    it('soft-deletes the user', async () => {
-      repository.softDelete!.mockResolvedValue({ affected: 1 });
+    it('soft-deletes the user and cleans up their warehouse_staff rows', async () => {
+      dataSource.manager.softDelete.mockResolvedValue({ affected: 1 });
 
       await expect(service.remove('1')).resolves.toBeUndefined();
-      expect(repository.softDelete).toHaveBeenCalledWith('1');
+      expect(dataSource.manager.softDelete).toHaveBeenCalledWith(User, '1');
+      expect(dataSource.manager.delete).toHaveBeenCalledWith(WarehouseStaff, {
+        userId: '1',
+      });
     });
   });
 });

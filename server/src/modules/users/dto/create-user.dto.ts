@@ -1,8 +1,10 @@
 import {
+  IsArray,
   IsEmail,
   IsEnum,
   IsOptional,
   IsString,
+  IsUrl,
   MinLength,
 } from 'class-validator';
 import { UserRole } from '../../../libs/constants/user.constant';
@@ -30,4 +32,9 @@ export class CreateUserDto {
 
   @IsEnum(UserRole)
   role!: UserRole;
+
+  @IsOptional()
+  @IsArray()
+  @IsUrl({}, { each: true })
+  imageUrls?: string[];
 }

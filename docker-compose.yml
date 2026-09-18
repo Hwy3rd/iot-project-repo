@@ -1,29 +1,12 @@
-version: "3.8"
-
 services:
   app:
-    build: .
+    build: ./server
     ports:
-      - "8080:8080"
+      - "8080:3000"
+    env_file:
+      - ./server/.env
     environment:
-      - ENV_VAR=production
-      - MONGO_URI=mongodb://root:password@mongo:27017/iot?authSource=admin
-      - MYSQL_HOST=mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USER=user
-      - MYSQL_PASSWORD=password
-      - MYSQL_DATABASE=mydatabase
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET:-change-me-dev-secret}
-      - JWT_EXPIRES_IN=15m
-      - COOKIE_NAME=access_token
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-me-dev-refresh-secret}
-      - JWT_REFRESH_EXPIRES_IN=7d
-      - REFRESH_COOKIE_NAME=refresh_token
       - NODE_ENV=production
-    volumes:
-      - .:/app
     depends_on:
       - db
       - redis
@@ -32,27 +15,12 @@ services:
     restart: unless-stopped
 
   worker:
-    build: .
+    build: ./server
     command: node dist/main.js
+    env_file:
+      - ./server/.env
     environment:
-      - ENV_VAR=production
-      - MONGO_URI=mongodb://root:password@mongo:27017/iot?authSource=admin
-      - MYSQL_HOST=mysql
-      - MYSQL_PORT=3306
-      - MYSQL_USER=user
-      - MYSQL_PASSWORD=password
-      - MYSQL_DATABASE=mydatabase
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - JWT_SECRET=${JWT_SECRET:-change-me-dev-secret}
-      - JWT_EXPIRES_IN=15m
-      - COOKIE_NAME=access_token
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-change-me-dev-refresh-secret}
-      - JWT_REFRESH_EXPIRES_IN=7d
-      - REFRESH_COOKIE_NAME=refresh_token
       - NODE_ENV=production
-    volumes:
-      - .:/app
     depends_on:
       - redis
       - mysql
@@ -95,7 +63,17 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-ppassword",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -118,6 +96,7 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+
 volumes:
   db_data:
   redisdata:
