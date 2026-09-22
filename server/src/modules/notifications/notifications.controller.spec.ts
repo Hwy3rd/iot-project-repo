@@ -64,16 +64,16 @@ describe('NotificationsController', () => {
     );
   });
 
-  it('delegates findAll to the service with the query', async () => {
-    const query = { userId: 'u1', unreadOnly: 'true' };
+  it('delegates findAll to the service, scoped to the caller', async () => {
+    const query = { unreadOnly: 'true' };
 
-    await controller.findAll(query);
+    await controller.findAll('u1', query);
 
-    expect(notificationsService.findAll).toHaveBeenCalledWith(query);
+    expect(notificationsService.findAll).toHaveBeenCalledWith('u1', query);
   });
 
-  it('delegates markRead to the service', async () => {
-    await controller.markRead('n1', { userId: 'u1' });
+  it('delegates markRead to the service, scoped to the caller', async () => {
+    await controller.markRead('n1', 'u1');
 
     expect(notificationsService.markRead).toHaveBeenCalledWith('n1', 'u1');
   });

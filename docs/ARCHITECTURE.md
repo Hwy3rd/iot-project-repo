@@ -26,10 +26,10 @@
 
 Hai tiến trình Node độc lập, cùng build từ `server/`, chạy từ 2 entrypoint khác nhau:
 
-| Tiến trình | Entrypoint | Vai trò |
-|---|---|---|
-| `app` | `dist/main.js` (`src/main.ts`) | Phục vụ REST API + WebSocket gateway trên cùng 1 cổng HTTP |
-| `worker` | `dist/workers/main.js` (`src/workers/main.ts`) | Không mở cổng HTTP — chỉ tiêu thụ job BullMQ (`NestFactory.createApplicationContext`) |
+| Tiến trình | Entrypoint                                     | Vai trò                                                                               |
+| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `app`      | `dist/main.js` (`src/main.ts`)                 | Phục vụ REST API + WebSocket gateway trên cùng 1 cổng HTTP                            |
+| `worker`   | `dist/workers/main.js` (`src/workers/main.ts`) | Không mở cổng HTTP — chỉ tiêu thụ job BullMQ (`NestFactory.createApplicationContext`) |
 
 `app` và `worker` dùng chung `dataSourceOptions` (MySQL) và cùng kết nối Mongo/Redis, nhưng **không chung 1 Nest module** — `WorkerModule` (`src/workers/worker.module.ts`) khai báo lại trực tiếp entity/service cần dùng thay vì import các feature module của `app` (`AlertsModule`, `NotificationsModule`...), để tránh kéo theo controller HTTP không cần thiết vào tiến trình worker.
 
@@ -61,30 +61,34 @@ Chi tiết ký hiệu quyền theo từng endpoint (A/M/T/S, **P**, **C**, **TT*
 - **Redis** — 2 vai trò tách biệt, không dùng chung kết nối (xem `server/CLAUDE.md`): client `ioredis` toàn cục (`REDIS_CLIENT`, dùng cho refresh-token session, single-session/user) và kết nối riêng của `BullModule.forRoot()` cho BullMQ.
 - **MinIO** — lưu ảnh upload (user, warehouse, product-type...), publish `MINIO_PUBLIC_URL` riêng cho browser vì `MINIO_ENDPOINT` chỉ resolve được trong mạng Docker.
 
-Postgres (`db` trong `docker-compose.yml`) tồn tại nhưng **không được wire vào `AppModule`** — provisioned sẵn nhưng chưa dùng.
-
 ---
 
 ## 4. Luồng telemetry → alert → notification
 
 ```
-device ──(MQTT, CHƯA WIRE)──▶ TelemetryService.ingest()
-                                    │
-                                    ├─▶ lưu telemetry_raw (Mongo)
-                                    ├─▶ so ngưỡng temp_min/temp_max của cold room
-                                    └─▶ nếu vượt ngưỡng: AlertsService.raise()
-                                              │
-                                              ├─▶ ghi bản ghi Alert (MySQL)
-                                              └─▶ enqueue job 'notify' → queue alert-notifications
-                                                        │
-                                              (worker) AlertNotificationProcessor
-                                                        │
-                                              ├─▶ NotificationsService.notifyNewAlert() — ghi Notification (MySQL)
-                                              └─▶ WebPushService — gửi Web Push tới từng PushSubscription (VAPID)
+ESP32 ──MQTT──▶ mosquitto ──▶ MqttIngestService ──▶ TelemetryService.ingest()
+ (publish        (broker,       (subscribe             │
+  devices/        docker-       "devices/+/            ├─▶ lưu telemetry_raw (Mongo)
+  {uniqueId}/     compose       telemetry",             ├─▶ so ngưỡng temp_min/temp_max của cold room
+  telemetry)      service)      tra uniqueId            └─▶ nếu vượt ngưỡng: AlertsService.raise()
+                                → device.id)                       │
+                                                          ├─▶ ghi bản ghi Alert (MySQL)
+                                                          └─▶ enqueue job 'notify' → queue alert-notifications
+                                                                    │
+                                                          (worker) AlertNotificationProcessor
+                                                                    │
+                                                          ├─▶ NotificationsService.notifyNewAlert() — ghi Notification (MySQL)
+                                                          └─▶ WebPushService — gửi Web Push tới từng PushSubscription (VAPID)
 ```
 
+`MqttIngestService` (`server/src/modules/mqtt-ingest/`) chạy trong tiến trình `app` (không phải `worker`) vì cần dùng thẳng `TelemetryModule`/`AlertsModule` đã wire sẵn ở đó. Kết nối MQTT dùng client `mqtt` toàn cục (`libs/mqtt/mqtt.module.ts`, `MQTT_URL`), subscribe filter `devices/+/telemetry` (QoS 1). Mỗi message được validate (`class-validator`) khớp đúng `TelemetrySample`, tra `Device` theo `unique_id` (không phải `id` nội bộ) — payload sai định dạng, thiết bị không tồn tại, hoặc bị `TelemetryService.ingest()` từ chối (chưa claim vào cold room, đã decommission...) chỉ log cảnh báo rồi bỏ qua, không làm rớt kết nối chung.
+
+Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `docker-compose.yml` và `docker-compose.production.yml`. Cấu hình hiện tại cho phép kết nối anonymous (`allow_anonymous true`), không có TLS — đủ dùng khi broker chỉ nằm trong mạng docker-compose nội bộ; khoá lại bằng `password_file`/TLS là bước cứng hoá cần làm riêng trước khi mở broker ra mạng không tin cậy (xem comment trong `server/.env.production.example`).
+
 **Gap đã biết, quan trọng khi phát triển tiếp:**
-- `TelemetryService.ingest()` **chưa được gọi từ đâu cả** — comment trong code ghi rõ "meant to be called by the MQTT subscriber once that exists". Hiện chưa có MQTT broker/subscriber nào trong repo; đây là phần còn thiếu để thiết bị thật gửi dữ liệu vào hệ thống.
+
+- **Điều khiển thiết bị (chiều ngược lại) chưa nối MQTT** — `CommandsService.create()` mới chỉ ghi `Command` vào MySQL, chưa publish gì lên broker để ESP32 nhận lệnh bật/tắt actuator; `POST /commands/:id/sent`/`:id/ack` vẫn tạm giới hạn Admin vì chưa có cơ chế service-account cho broker bridge gọi 2 route này thay ESP32 (xem `docs/RBAC.md`).
+- **Không cập nhật `devices.last_heartbeat_at`/`status` khi nhận được telemetry** — `MqttIngestService` chỉ gọi `TelemetryService.ingest()` (lưu mẫu đo + đánh giá cảnh báo nhiệt độ) đúng như hợp đồng có sẵn của hàm này; việc coi "vừa nhận được message" là tín hiệu thiết bị đang `active`/còn sống chưa được cài đặt ở đâu — cột `last_heartbeat_at` tồn tại trên entity nhưng chưa có chỗ nào ghi vào nó.
 - `RealtimeGateway` (WebSocket) đã có sẵn hạ tầng phòng theo warehouse (`join:warehouse`/`leave:warehouse`, `emitToWarehouse()`) nhưng **chưa có service nào gọi `emitToWarehouse()`** — alert mới hiện chỉ tạo Web Push job, không broadcast realtime qua WebSocket cho client đang mở app.
 
 ---
@@ -93,12 +97,12 @@ device ──(MQTT, CHƯA WIRE)──▶ TelemetryService.ingest()
 
 4 queue (`src/libs/constants/queue.constant.ts`), tất cả được consume trong tiến trình `worker`, producer (nơi enqueue) nằm trong `app`:
 
-| Queue | Producer | Processor | Lịch chạy | Trạng thái |
-|---|---|---|---|---|
-| `alert-notifications` | `AlertsService.raise()` (khi ghi alert mới) | `AlertNotificationProcessor` | Theo sự kiện (không lịch cố định) | Đã hoạt động — ghi Notification + gửi Web Push |
-| `telemetry-rollup` | Tự lên lịch (`upsertJobScheduler`, cron `5 * * * *` UTC) | `TelemetryRollupProcessor` → `TelemetryRollupService` | Mỗi giờ, phút thứ 5 (chờ sample trễ) | Đã hoạt động — gom `telemetry_raw` → `telemetry_hourly` |
-| `batch-maintenance` | Tự lên lịch (`every: 1h`) | `BatchExpiryProcessor` | Mỗi giờ | **TODO** — job chạy nhưng thân xử lý chỉ log, chưa sweep batch hết hạn (`IN_STOCK` → `EXPIRED`) |
-| `work-shift-maintenance` | Tự lên lịch (`every: 15m`) | `WorkShiftAbsenceProcessor` | Mỗi 15 phút | **TODO** — job chạy nhưng thân xử lý chỉ log, chưa sweep ca trực quá giờ → `ABSENT` |
+| Queue                    | Producer                                                 | Processor                                             | Lịch chạy                            | Trạng thái                                                                                      |
+| ------------------------ | -------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `alert-notifications`    | `AlertsService.raise()` (khi ghi alert mới)              | `AlertNotificationProcessor`                          | Theo sự kiện (không lịch cố định)    | Đã hoạt động — ghi Notification + gửi Web Push                                                  |
+| `telemetry-rollup`       | Tự lên lịch (`upsertJobScheduler`, cron `5 * * * *` UTC) | `TelemetryRollupProcessor` → `TelemetryRollupService` | Mỗi giờ, phút thứ 5 (chờ sample trễ) | Đã hoạt động — gom `telemetry_raw` → `telemetry_hourly`                                         |
+| `batch-maintenance`      | Tự lên lịch (`every: 1h`)                                | `BatchExpiryProcessor`                                | Mỗi giờ                              | **TODO** — job chạy nhưng thân xử lý chỉ log, chưa sweep batch hết hạn (`IN_STOCK` → `EXPIRED`) |
+| `work-shift-maintenance` | Tự lên lịch (`every: 15m`)                               | `WorkShiftAbsenceProcessor`                           | Mỗi 15 phút                          | **TODO** — job chạy nhưng thân xử lý chỉ log, chưa sweep ca trực quá giờ → `ABSENT`             |
 
 `upsertJobScheduler` với id cố định nghĩa là job lặp được **upsert, không nhân bản**, mỗi lần `worker` restart — an toàn khi deploy lại.
 
@@ -107,6 +111,7 @@ device ──(MQTT, CHƯA WIRE)──▶ TelemetryService.ingest()
 ## 6. Triển khai (Docker)
 
 Dockerfile multi-stage (`server/Dockerfile`):
+
 - **`builder`** — cài đủ `dependencies` + `devDependencies`, copy toàn bộ `src/`, build ra `dist/`.
 - **`runner`** (image chạy `app`/`worker` thật) — chỉ `pnpm install --prod`, chỉ copy `dist/`. Cố tình **không có** `ts-node`/`typescript`/`src/` để image production gọn.
 
@@ -117,6 +122,7 @@ Dockerfile multi-stage (`server/Dockerfile`):
 **Đánh đổi cần biết:** cách này chỉ an toàn khi chạy đúng 1 container `app` (không có `deploy.replicas`/orchestrator scale) — vì mỗi lần `app` khởi động lại đều tự chạy `migration:run`. Nếu sau này scale `app` lên nhiều replica, cần tách migration ra container one-off riêng (build từ stage `builder`, chạy 1 lần, `app` phụ thuộc vào container đó bằng `condition: service_completed_successfully`) để tránh nhiều replica cùng chạy DDL đồng thời lên 1 DB.
 
 2 file compose có mục đích khác nhau:
+
 - `docker-compose.yml` — dev: chỉ 4 datastore (`redis`, `mysql`, `mongo`, `minio`), backend chạy trực tiếp trên host bằng `pnpm start:dev`.
 - `docker-compose.production.yml` — full stack: `app` (tự migrate rồi mới serve) → `worker` + datastore, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh) ở thư mục gốc repo.
 
@@ -126,9 +132,8 @@ Dockerfile multi-stage (`server/Dockerfile`):
 
 Để không lặp lại công sức tìm hiểu, các phần sau **có hạ tầng nhưng chưa hoàn thiện logic**, ghi nhận trực tiếp bằng comment trong code:
 
-- **MQTT ingest** — chưa có subscriber gọi `TelemetryService.ingest()`; thiết bị thật chưa có đường vào hệ thống.
+- **MQTT — chỉ mới chiều thiết bị → server** — `MqttIngestService` đã subscribe `devices/+/telemetry` và gọi `TelemetryService.ingest()` (mục 4), nhưng chiều ngược lại (publish `Command` xuống thiết bị, nhận ack) chưa làm; broker cũng chưa khoá bằng auth/TLS.
 - **Realtime broadcast** — `RealtimeGateway.emitToWarehouse()` chưa được service nào gọi; alert mới không tự đẩy qua WebSocket.
 - **Batch expiry sweep** (`BatchExpiryProcessor`) — job chạy đúng lịch nhưng chưa đánh dấu batch hết hạn.
 - **Work-shift absence sweep** (`WorkShiftAbsenceProcessor`) — tương tự, chưa đánh dấu ca trực vắng mặt.
-- **Postgres** (`db` trong `docker-compose.yml`) — có container nhưng không dùng.
 - **Frontend** (`frontend/`) — thư mục rỗng, chưa scaffold.

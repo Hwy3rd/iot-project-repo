@@ -53,9 +53,14 @@ shift || true
 
 case "$cmd" in
   start)
-    require_stack_exists
-    log "starting containers: ${SERVICES[*]}"
-    compose start "${SERVICES[@]}"
+    existing="$(compose ps -a --services 2>/dev/null || true)"
+    if [[ -z "$existing" ]]; then
+      log "no containers found (likely after 'docker compose down') — recreating from existing volumes"
+      compose up -d "${SERVICES[@]}"
+    else
+      log "starting containers: ${SERVICES[*]}"
+      compose start "${SERVICES[@]}"
+    fi
     ok "stack is up"
     compose ps
     ;;

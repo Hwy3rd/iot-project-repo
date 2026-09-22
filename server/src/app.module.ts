@@ -10,6 +10,7 @@ import { RbacModule } from './common/rbac/rbac.module';
 import { dataSourceOptions } from './database/data-source';
 import { RedisModule } from './libs/redis/redis.module';
 import { MinioModule } from './libs/minio/minio.module';
+import { MqttModule } from './libs/mqtt/mqtt.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
@@ -28,6 +29,7 @@ import { AlertsModule } from './modules/alerts/alerts.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { DeviceStatusHistoryModule } from './modules/device-status-history/device-status-history.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { MqttIngestModule } from './modules/mqtt-ingest/mqtt-ingest.module';
 
 @Module({
   imports: [
@@ -47,6 +49,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     }),
     RedisModule,
     MinioModule,
+    MqttModule,
     RbacModule,
     UsersModule,
     AuthModule,
@@ -66,6 +69,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     NotificationsModule,
     DeviceStatusHistoryModule,
     RealtimeModule,
+    MqttIngestModule,
   ],
   controllers: [],
   providers: [
