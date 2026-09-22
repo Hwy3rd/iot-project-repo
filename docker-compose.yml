@@ -1,6 +1,7 @@
 services:
   app:
     build: ./server
+    container_name: node_server
     ports:
       - "8080:3000"
     env_file:
@@ -16,7 +17,8 @@ services:
 
   worker:
     build: ./server
-    command: node dist/main.js
+    container_name: service_worker
+    command: node dist/workers/main.js
     env_file:
       - ./server/.env
     environment:
@@ -30,7 +32,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: redis_local
+    container_name: redis_db
     ports:
       - "6379:6379"
     volumes:
@@ -44,7 +46,7 @@ services:
 
   mysql:
     image: mysql:8.0
-    container_name: mysql_local
+    container_name: mysql_db
     ports:
       - "3306:3306"
     environment:
@@ -73,7 +75,7 @@ services:
 
   mongo:
     image: mongo:7
-    container_name: mongo_local
+    container_name: mongo_db
     ports:
       - "27017:27017"
     environment:
@@ -91,7 +93,7 @@ services:
 
   minio:
     image: quay.io/minio/minio:latest
-    container_name: minio_local
+    container_name: minio_bucket
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"

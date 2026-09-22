@@ -7,3 +7,11 @@ export enum DeviceStatus {
   MAINTENANCE = 'maintenance',
   DECOMMISSIONED = 'decommissioned',
 }
+
+// Distinguishes a transition a person made (claim, decommission, put into
+// maintenance) from one the system made on its own (heartbeat timeout,
+// sensor fault detected) — see DeviceStatusHistory.
+export enum DeviceStatusChangeTrigger {
+  MANUAL = 'manual',
+  AUTOMATED = 'automated',
+}
