@@ -8,6 +8,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Public } from '../../common/decorators/public.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
 import { MarkReadDto } from './dto/mark-read.dto';
@@ -26,6 +27,7 @@ export class NotificationsController {
 
   // For the frontend's `pushManager.subscribe({ applicationServerKey })`.
   // Not @Serialize'd: a plain value, not an entity.
+  @Public()
   @Get('vapid-public-key')
   getVapidPublicKey() {
     return { publicKey: this.config.get<string>('VAPID_PUBLIC_KEY') ?? null };

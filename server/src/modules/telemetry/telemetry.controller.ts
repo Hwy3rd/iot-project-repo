@@ -1,5 +1,9 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
+import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
+import { UserRole } from '../../libs/constants/user.constant';
+import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.constant';
 import {
   QueryRawTelemetryDto,
   QueryTelemetryDto,
@@ -14,6 +18,13 @@ import { TelemetryService } from './telemetry.service';
 export class TelemetryController {
   constructor(private readonly telemetryService: TelemetryService) {}
 
+  // Staff gets "cơ bản" telemetry (hourly only, requires an active shift);
+  // raw/instant readings below are reserved for Admin/Manager/Technician.
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TECHNICIAN, UserRole.STAFF)
+  @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
+    paramName: 'deviceId',
+    requireShift: true,
+  })
   @Serialize(TelemetryHourlyResponseDto)
   @Get('hourly')
   findHourly(
@@ -23,6 +34,10 @@ export class TelemetryController {
     return this.telemetryService.findHourly(deviceId, query);
   }
 
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TECHNICIAN)
+  @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
+    paramName: 'deviceId',
+  })
   @Serialize(TelemetryRawResponseDto)
   @Get('raw')
   findRaw(

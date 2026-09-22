@@ -10,7 +10,9 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
+import { UserRole } from '../../libs/constants/user.constant';
 import { DeleteImageDto } from '../upload-files/dto/delete-image.dto';
 import { imageUploadOptions } from '../upload-files/multer-image.options';
 import { CreateProductTypeDto } from './dto/create-product-type.dto';
@@ -22,6 +24,7 @@ import { ProductTypesService } from './product-types.service';
 export class ProductTypesController {
   constructor(private readonly productTypesService: ProductTypesService) {}
 
+  @Roles(UserRole.ADMIN)
   @Serialize(ProductTypeResponseDto)
   @Post()
   create(@Body() createProductTypeDto: CreateProductTypeDto) {
@@ -40,6 +43,7 @@ export class ProductTypesController {
     return this.productTypesService.findOne(id);
   }
 
+  @Roles(UserRole.ADMIN)
   @Serialize(ProductTypeResponseDto)
   @Patch(':id')
   update(
@@ -49,11 +53,13 @@ export class ProductTypesController {
     return this.productTypesService.update(id, updateProductTypeDto);
   }
 
+  @Roles(UserRole.ADMIN)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.productTypesService.remove(id);
   }
 
+  @Roles(UserRole.ADMIN)
   @Serialize(ProductTypeResponseDto)
   @Post(':id/images')
   @UseInterceptors(FilesInterceptor('files', 5, imageUploadOptions))
@@ -64,6 +70,7 @@ export class ProductTypesController {
     return this.productTypesService.addImages(id, files);
   }
 
+  @Roles(UserRole.ADMIN)
   @Serialize(ProductTypeResponseDto)
   @Delete(':id/images')
   removeImage(@Param('id') id: string, @Body() dto: DeleteImageDto) {

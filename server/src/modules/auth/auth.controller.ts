@@ -11,8 +11,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { CookieOptions, Response } from 'express';
 import { GetUserId } from '../../common/decorators/get-user-id.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { JwtRefreshGuard } from '../../common/guards/jwt-refresh.guard';
 import { UserResponseDto } from '../users/dto/user-response.dto';
 import { UsersService } from '../users/users.service';
@@ -70,6 +70,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Public()
   @Serialize(UserResponseDto)
   async login(
     @Body() dto: LoginDto,
@@ -82,6 +83,7 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @Public()
   @UseGuards(JwtRefreshGuard)
   async refresh(
     @GetUserId() userId: string,
@@ -94,6 +96,7 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @Public()
   @UseGuards(JwtRefreshGuard)
   async logout(
     @GetUserId() userId: string,
@@ -105,7 +108,6 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
   @Serialize(UserResponseDto)
   me(@GetUserId() userId: string) {
     return this.usersService.findOne(userId);

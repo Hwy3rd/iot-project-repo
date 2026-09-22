@@ -94,11 +94,4 @@ export class CommandsService {
     command.ackAt = new Date();
     return this.commandsRepository.save(command);
   }
-
-  async remove(id: string) {
-    const result = await this.commandsRepository.delete(id);
-    if (!result.affected) {
-      throw new NotFoundException(`Command ${id} not found`);
-    }
-  }
 }
