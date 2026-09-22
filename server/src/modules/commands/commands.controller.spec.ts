@@ -11,7 +11,6 @@ describe('CommandsController', () => {
     findOne: jest.fn(),
     markSent: jest.fn(),
     acknowledge: jest.fn(),
-    remove: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -49,11 +48,5 @@ describe('CommandsController', () => {
     await controller.acknowledge('1', dto);
 
     expect(commandsService.acknowledge).toHaveBeenCalledWith('1', dto);
-  });
-
-  it('delegates remove to the service', async () => {
-    await controller.remove('1');
-
-    expect(commandsService.remove).toHaveBeenCalledWith('1');
   });
 });

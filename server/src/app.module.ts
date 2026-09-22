@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import { GlobalExceptionFilter } from './common/fitlers/global-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { RbacModule } from './common/rbac/rbac.module';
 import { dataSourceOptions } from './database/data-source';
 import { RedisModule } from './libs/redis/redis.module';
 import { MinioModule } from './libs/minio/minio.module';
@@ -45,6 +47,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     }),
     RedisModule,
     MinioModule,
+    RbacModule,
     UsersModule,
     AuthModule,
     WarehousesModule,
@@ -69,6 +72,10 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: TransformInterceptor,
+    },
+    {
+      provide: APP_FILTER,
+      useClass: GlobalExceptionFilter,
     },
   ],
 })

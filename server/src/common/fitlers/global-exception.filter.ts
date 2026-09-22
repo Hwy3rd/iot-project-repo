@@ -6,13 +6,28 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { BaseWsExceptionFilter } from '@nestjs/websockets';
 import { Request, Response } from 'express';
 
+// Registered as APP_FILTER (see app.module.ts), so this runs for every
+// transport Nest supports here, not just HTTP — including RealtimeGateway's
+// WebSocket handlers (e.g. the WsException in handleJoinWarehouse). A plain
+// `@Catch()` filter that assumes host.switchToHttp() would crash on those:
+// getRequest()/getResponse() return the socket/data args instead, which
+// don't have .method/.url/.status(). WS exceptions are delegated to Nest's
+// own BaseWsExceptionFilter instead, which already does the right thing
+// (emits an `exception` event back to the client).
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
+  private readonly wsExceptionFilter = new BaseWsExceptionFilter();
 
   catch(exception: unknown, host: ArgumentsHost) {
+    if (host.getType() !== 'http') {
+      this.wsExceptionFilter.catch(exception, host);
+      return;
+    }
+
     const ctx = host.switchToHttp();
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();

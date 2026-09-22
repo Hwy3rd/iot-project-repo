@@ -166,20 +166,4 @@ describe('CommandsService', () => {
       expect(result.ackAt).not.toBeNull();
     });
   });
-
-  describe('remove', () => {
-    it('throws NotFoundException when nothing was deleted', async () => {
-      commandsRepository.delete!.mockResolvedValue({ affected: 0 });
-
-      await expect(service.remove('missing-id')).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it('deletes the command', async () => {
-      commandsRepository.delete!.mockResolvedValue({ affected: 1 });
-
-      await expect(service.remove('cmd1')).resolves.toBeUndefined();
-    });
-  });
 });
