@@ -8,10 +8,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { GetUserId } from '../../common/decorators/get-user-id.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
-import { MarkReadDto } from './dto/mark-read.dto';
 import { NotificationResponseDto } from './dto/notification-response.dto';
 import { PushSubscriptionResponseDto } from './dto/push-subscription-response.dto';
 import { QueryNotificationDto } from './dto/query-notification.dto';
@@ -46,13 +46,13 @@ export class NotificationsController {
 
   @Serialize(NotificationResponseDto)
   @Get()
-  findAll(@Query() query: QueryNotificationDto) {
-    return this.notificationsService.findAll(query);
+  findAll(@GetUserId() userId: string, @Query() query: QueryNotificationDto) {
+    return this.notificationsService.findAll(userId, query);
   }
 
   @Serialize(NotificationResponseDto)
   @Post(':id/read')
-  markRead(@Param('id') id: string, @Body() markReadDto: MarkReadDto) {
-    return this.notificationsService.markRead(id, markReadDto.userId);
+  markRead(@Param('id') id: string, @GetUserId() userId: string) {
+    return this.notificationsService.markRead(id, userId);
   }
 }

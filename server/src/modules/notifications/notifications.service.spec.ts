@@ -250,7 +250,7 @@ describe('NotificationsService', () => {
     it('scopes to the given userId', async () => {
       notificationsRepository.find!.mockResolvedValue([]);
 
-      await service.findAll({ userId: 'u1' });
+      await service.findAll('u1', {});
 
       expect(notificationsRepository.find).toHaveBeenCalledWith({
         where: { userId: 'u1' },
@@ -261,7 +261,7 @@ describe('NotificationsService', () => {
     it('adds an unread filter only when unreadOnly=true', async () => {
       notificationsRepository.find!.mockResolvedValue([]);
 
-      await service.findAll({ userId: 'u1', unreadOnly: 'true' });
+      await service.findAll('u1', { unreadOnly: 'true' });
 
       expect(notificationsRepository.find).toHaveBeenCalledWith({
         where: { userId: 'u1', readAt: IsNull() },

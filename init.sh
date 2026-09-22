@@ -39,8 +39,8 @@ log "checking prerequisites"
 require_cmd docker
 docker compose version >/dev/null 2>&1 || die "'docker compose' (v2) is required."
 
-if [[ ! -f "$SERVER_DIR/.env" ]]; then
-  die "server/.env not found. Create it first (see server/.env.example if present, or ask a teammate for local dev values)."
+if [[ ! -f "$SERVER_DIR/.env.production" ]]; then
+  die "server/.env.production not found. Create it from server/.env.production.example first."
 fi
 ok "prerequisites present"
 

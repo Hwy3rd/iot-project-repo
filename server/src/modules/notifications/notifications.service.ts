@@ -127,8 +127,11 @@ export class NotificationsService {
     return this.notificationsRepository.save(notifications);
   }
 
-  findAll(query: QueryNotificationDto): Promise<Notification[]> {
-    const where: FindOptionsWhere<Notification> = { userId: query.userId };
+  findAll(
+    userId: string,
+    query: QueryNotificationDto,
+  ): Promise<Notification[]> {
+    const where: FindOptionsWhere<Notification> = { userId };
     if (query.unreadOnly === 'true') {
       where.readAt = IsNull();
     }

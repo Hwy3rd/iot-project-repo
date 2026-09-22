@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
@@ -13,15 +13,35 @@ describe('AppModule (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    // Mirrors main.ts's bootstrap() — the TestingModule doesn't go through
+    // it, so the global ValidationPipe has to be set here too.
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
-  it('/users (GET)', () => {
+  // Every route requires auth by default (RbacModule's global JwtAuthGuard)
+  // and every error response goes through GlobalExceptionFilter's
+  // {success:false,...} envelope — this replaces the old boilerplate
+  // expectation of 200 + a plain array, which RBAC and the response
+  // envelope both broke.
+  it('/users (GET) is rejected without an access token', () => {
     return request(app.getHttpServer())
       .get('/users')
-      .expect(200)
+      .expect(401)
       .expect((res) => {
-        expect(Array.isArray(res.body)).toBe(true);
+        expect(res.body).toMatchObject({ success: false, statusCode: 401 });
+      });
+  });
+
+  it('/auth/login (POST) rejects invalid credentials with the standard error envelope', () => {
+    return request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ username: 'does-not-exist', password: 'wrong' })
+      .expect(401)
+      .expect((res) => {
+        expect(res.body).toMatchObject({ success: false, statusCode: 401 });
       });
   });
 

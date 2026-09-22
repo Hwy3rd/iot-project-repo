@@ -36,7 +36,7 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
 
 **Yêu cầu:** Docker + Docker Compose v2.
 
-1. Tạo `server/.env` từ mẫu [server/.env.production.example](server/.env.production.example) (điền các giá trị `<CHANGE_ME_...>`), hoặc lấy `.env` dev từ đồng đội.
+1. Tạo `server/.env.production` từ mẫu [server/.env.production.example](server/.env.production.example) (điền các giá trị `<CHANGE_ME_...>`) — đây là file `docker-compose.production.yml` đọc để chạy container `app`/`worker` thật, tách riêng khỏi `server/.env` (dùng khi chạy backend trực tiếp trên host, xem mục dev bên dưới).
 2. Khởi tạo hệ thống (build image, chạy migration, seed tài khoản admin đầu tiên):
    ```bash
    ./init.sh
@@ -50,19 +50,21 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
    ./run.sh logs app    # xem log
    ```
 
-Nếu chỉ cần chạy backend trực tiếp trên host (không qua container `app`) để dev với hot-reload:
+Nếu chỉ cần chạy backend trực tiếp trên host (không qua container `app`) để dev với hot-reload — `server/.env` (khác với `server/.env.production` ở trên, chỉ dùng cho container) đã sẵn hostname `localhost` cho đúng trường hợp này:
 ```bash
-docker compose up -d redis mysql mongo minio   # chỉ datastore
+docker compose up -d redis mysql mongo minio mosquitto   # chỉ datastore + broker
 cd server && pnpm install
-MYSQL_HOST=localhost pnpm migration:run
+pnpm migration:run
 pnpm start:dev
 ```
 
 ## Tài liệu
 
+- [docs/REQUIREMENT.md](docs/REQUIREMENT.md) — Bài toán, đối tượng sử dụng, yêu cầu chức năng/phi chức năng.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Tổng quan kiến trúc backend: tiến trình, luồng dữ liệu, các phần đã/chưa hoàn thiện.
 - [docs/API_DESIGN.md](docs/API_DESIGN.md) — API REST + WebSocket, quy ước response/lỗi, mã hoá quyền theo endpoint.
 - [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) — Schema MySQL, quan hệ giữa các entity.
 - [docs/RBAC.md](docs/RBAC.md) — 4 vai trò (Admin/Manager/Technician/Staff), phạm vi theo warehouse, ma trận quyền theo module.
 - [server/CLAUDE.md](server/CLAUDE.md) — Quy ước kiến trúc, cấu trúc module, auth flow, ghi chú kỹ thuật khi phát triển backend.
 
-`docs/ARCHITECTURE.md`, `docs/MESSAGE_QUEUE.md`, `docs/NOTIFICATION.md`, `docs/REQUIREMENT.md` hiện chưa có nội dung — sẽ bổ sung sau.
+`docs/MESSAGE_QUEUE.md`, `docs/NOTIFICATION.md` hiện chưa có nội dung — sẽ bổ sung sau.
