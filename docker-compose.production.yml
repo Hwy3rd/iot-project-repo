@@ -8,11 +8,28 @@ services:
       - ./server/.env
     environment:
       - NODE_ENV=production
+    command: sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && node dist/main.js"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(3000,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
     depends_on:
-      - redis
-      - mysql
-      - mongo
-      - minio
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
 
   worker:
@@ -24,10 +41,16 @@ services:
     environment:
       - NODE_ENV=production
     depends_on:
-      - redis
-      - mysql
-      - mongo
-      - minio
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -53,24 +76,27 @@ services:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_USER: user
       MYSQL_PASSWORD: password
-      MYSQL_DATABASE: mydatabase
+      MYSQL_DATABASE: iot_database
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
       test:
         [
           "CMD",
-          "mysqladmin",
-          "ping",
+          "mysql",
           "-h",
-          "localhost",
+          "127.0.0.1",
           "-u",
-          "root",
+          "user",
           "-ppassword",
+          "iot_database",
+          "-e",
+          "SELECT 1",
         ]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
+      start_period: 30s
     restart: unless-stopped
 
   mongo:

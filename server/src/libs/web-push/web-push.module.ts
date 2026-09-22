@@ -2,6 +2,7 @@ import { Logger, Module, Provider } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import webpush from 'web-push';
 import { WEB_PUSH_CLIENT } from './web-push.constant';
+import { WebPushService } from './web-push.service';
 
 const logger = new Logger('WebPushModule');
 
@@ -34,7 +35,7 @@ const webPushProvider: Provider = {
 // to be reachable from every module.
 @Module({
   imports: [ConfigModule],
-  providers: [webPushProvider],
-  exports: [WEB_PUSH_CLIENT],
+  providers: [webPushProvider, WebPushService],
+  exports: [WEB_PUSH_CLIENT, WebPushService],
 })
 export class WebPushModule {}
