@@ -53,24 +53,27 @@ services:
       MYSQL_ROOT_PASSWORD: password
       MYSQL_USER: user
       MYSQL_PASSWORD: password
-      MYSQL_DATABASE: mydatabase
+      MYSQL_DATABASE: iot_database
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
       test:
         [
           "CMD",
-          "mysqladmin",
-          "ping",
+          "mysql",
           "-h",
-          "localhost",
+          "127.0.0.1",
           "-u",
-          "root",
+          "user",
           "-ppassword",
+          "iot_database",
+          "-e",
+          "SELECT 1",
         ]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
+      start_period: 30s
     restart: unless-stopped
 
   mongo:
