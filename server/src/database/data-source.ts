@@ -12,6 +12,10 @@ import { Device } from '../modules/devices/entities/device.entity';
 import { DeviceChannel } from '../modules/device-channels/entities/device-channel.entity';
 import { Command } from '../modules/commands/entities/command.entity';
 import { AuditLog } from '../modules/audit-logs/entities/audit-log.entity';
+import { Alert } from '../modules/alerts/entities/alert.entity';
+import { Notification } from '../modules/notifications/entities/notification.entity';
+import { PushSubscription } from '../modules/notifications/entities/push-subscription.entity';
+import { DeviceStatusHistory } from '../modules/device-status-history/entities/device-status-history.entity';
 
 // Shared between the Nest app (spread into TypeOrmModule.forRoot in
 // app.module.ts) and the TypeORM CLI (migration:generate/run/revert scripts
@@ -42,6 +46,10 @@ export const dataSourceOptions: DataSourceOptions = {
     DeviceChannel,
     Command,
     AuditLog,
+    Alert,
+    Notification,
+    PushSubscription,
+    DeviceStatusHistory,
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
 };

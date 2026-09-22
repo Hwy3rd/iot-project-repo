@@ -1,0 +1,1 @@
+export const WEB_PUSH_CLIENT = 'WEB_PUSH_CLIENT';

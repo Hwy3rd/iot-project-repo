@@ -21,6 +21,11 @@ import { DeviceChannelsModule } from './modules/device-channels/device-channels.
 import { CommandsModule } from './modules/commands/commands.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { UploadFilesModule } from './modules/upload-files/upload-files.module';
+import { TelemetryModule } from './modules/telemetry/telemetry.module';
+import { AlertsModule } from './modules/alerts/alerts.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { DeviceStatusHistoryModule } from './modules/device-status-history/device-status-history.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -53,6 +58,11 @@ import { UploadFilesModule } from './modules/upload-files/upload-files.module';
     CommandsModule,
     AuditLogsModule,
     UploadFilesModule,
+    TelemetryModule,
+    AlertsModule,
+    NotificationsModule,
+    DeviceStatusHistoryModule,
+    RealtimeModule,
   ],
   controllers: [],
   providers: [
