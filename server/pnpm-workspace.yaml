@@ -1,5 +1,7 @@
 allowBuilds:
+  '@google/genai': true
   '@parcel/watcher': true
   bcrypt: set this to true or false
   msgpackr-extract: true
+  protobufjs: true
   unrs-resolver: true

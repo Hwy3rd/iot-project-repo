@@ -16,6 +16,8 @@ import { Alert } from '../modules/alerts/entities/alert.entity';
 import { Notification } from '../modules/notifications/entities/notification.entity';
 import { PushSubscription } from '../modules/notifications/entities/push-subscription.entity';
 import { DeviceStatusHistory } from '../modules/device-status-history/entities/device-status-history.entity';
+import { Conversation } from '../modules/chatbot/entities/conversation.entity';
+import { Message } from '../modules/chatbot/entities/message.entity';
 
 // Shared between the Nest app (spread into TypeOrmModule.forRoot in
 // app.module.ts) and the TypeORM CLI (migration:generate/run/revert scripts
@@ -50,6 +52,8 @@ export const dataSourceOptions: DataSourceOptions = {
     Notification,
     PushSubscription,
     DeviceStatusHistory,
+    Conversation,
+    Message,
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
 };
