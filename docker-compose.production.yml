@@ -1,6 +1,9 @@
 services:
   app:
-    build: ./server
+    build:
+      context: ./server
+      additional_contexts:
+        docs: ./docs
     container_name: node_server
     ports:
       - "8080:3000"
@@ -35,7 +38,10 @@ services:
     restart: unless-stopped
 
   worker:
-    build: ./server
+    build:
+      context: ./server
+      additional_contexts:
+        docs: ./docs
     container_name: service_worker
     command: node dist/workers/main.js
     env_file:

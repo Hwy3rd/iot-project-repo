@@ -29,6 +29,10 @@ COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod --frozen-lockfile
 
+COPY --from=docs --chown=node:node \
+  BUSINESS_RULES.md SYSTEM_OPERATIONS_GUIDE.md TROUBLESHOOTING.md \
+  ./docs/
+
 USER node
 
 EXPOSE 3000

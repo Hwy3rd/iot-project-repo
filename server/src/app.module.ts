@@ -30,6 +30,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { DeviceStatusHistoryModule } from './modules/device-status-history/device-status-history.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { MqttIngestModule } from './modules/mqtt-ingest/mqtt-ingest.module';
+import { ChatbotModule } from './modules/chatbot/chatbot.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { MqttIngestModule } from './modules/mqtt-ingest/mqtt-ingest.module';
     DeviceStatusHistoryModule,
     RealtimeModule,
     MqttIngestModule,
+    ChatbotModule,
   ],
   controllers: [],
   providers: [
