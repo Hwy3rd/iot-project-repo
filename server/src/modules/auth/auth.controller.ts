@@ -5,11 +5,12 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { CookieOptions, Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 import { GetUserId } from '../../common/decorators/get-user-id.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
@@ -74,9 +75,13 @@ export class AuthController {
   @Serialize(UserResponseDto)
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, ...tokens } = await this.authService.login(dto);
+    const { user, ...tokens } = await this.authService.login(dto, {
+      ip: req.ip ?? null,
+      userAgent: req.get('user-agent') ?? null,
+    });
     this.setAuthCookies(res, tokens);
     return user;
   }

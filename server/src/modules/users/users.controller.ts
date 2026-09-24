@@ -10,7 +10,11 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { User } from './entities/user.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { GetUserId } from '../../common/decorators/get-user-id.decorator';
+import { GetUserRole } from '../../common/decorators/get-user-role.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { SelfScopeGuard } from '../../common/guards/self-scope.guard';
@@ -28,6 +32,7 @@ export class UsersController {
 
   @Roles(UserRole.ADMIN)
   @Serialize(UserResponseDto)
+  @Audit({ action: 'user.create', targetType: 'user', entity: User })
   @Post()
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
@@ -49,12 +54,48 @@ export class UsersController {
 
   @UseGuards(SelfScopeGuard)
   @Serialize(UserResponseDto)
+  @Audit({
+    action: 'user.update',
+    targetType: 'user',
+    entity: User,
+    resolveAction: (before, after) =>
+      before && after && before.role !== after.role
+        ? 'user.role_change'
+        : undefined,
+  })
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+  update(
+    @Param('id') id: string,
+    @Body() updateUserDto: UpdateUserDto,
+    @GetUserId() actorId: string,
+    @GetUserRole() actorRole: UserRole,
+  ) {
+    return this.usersService.update(id, updateUserDto, {
+      id: actorId,
+      role: actorRole,
+    });
+  }
+
+  // Offboarding: keeps the account and all its history, just blocks login
+  // (see docs/REQUIREMENT.md §3.1).
+  @Roles(UserRole.ADMIN)
+  @Audit({ action: 'user.lock', targetType: 'user', entity: User })
+  @Serialize(UserResponseDto)
+  @Post(':id/lock')
+  lock(@Param('id') id: string, @GetUserId() actorId: string) {
+    return this.usersService.lock(id, actorId);
   }
 
   @Roles(UserRole.ADMIN)
+  @Audit({ action: 'user.unlock', targetType: 'user', entity: User })
+  @Serialize(UserResponseDto)
+  @Post(':id/unlock')
+  unlock(@Param('id') id: string) {
+    return this.usersService.unlock(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Audit({ action: 'user.delete', targetType: 'user', entity: User })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.usersService.remove(id);

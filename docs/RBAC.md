@@ -29,7 +29,7 @@ Mỗi tài khoản chỉ có **một** role toàn cục. Phạm vi theo từng w
 - Quản lý master data toàn hệ thống: tài khoản người dùng, warehouses, product-types, mẫu ca (shift templates) — tạo, sửa, xoá, gán role.
 - Gán/thu hồi user (Manager/Technician/Staff) vào warehouse cụ thể.
 - Toàn quyền trên mọi warehouse, không giới hạn phạm vi: cold-rooms, batches, devices (toàn bộ vòng đời kể cả decommission), alerts, commands, work-shifts.
-- Vai trò duy nhất xem được audit log toàn hệ thống.
+- Vai trò duy nhất xem được audit log toàn hệ thống (kể cả log không gắn warehouse nào: tài khoản, master data).
 
 **Tương tác với vai trò khác:** là người duy nhất tạo tài khoản Manager/Technician/Staff mới và gán họ vào warehouse; xử lý các thao tác vượt thẩm quyền của Manager/Technician (ví dụ decommission thiết bị, khoá tài khoản nhân viên nghỉ việc); có thể can thiệp vào bất kỳ warehouse nào khi cần.
 
@@ -42,10 +42,11 @@ Mỗi tài khoản chỉ có **một** role toàn cục. Phạm vi theo từng w
 - Xem log chi tiết cho kho: lịch sử trạng thái thiết bị, telemetry chi tiết (theo giờ và tức thời), lịch sử alerts và commands trong phạm vi warehouse quản lý.
 - Xem (không tạo/sửa) danh sách devices, warehouses, product-types.
 - Xem và resolve alerts trong phạm vi; theo dõi lệnh điều khiển thiết bị do Technician/Staff gửi mà không trực tiếp gửi lệnh.
+- Xem (không ghi) audit log của các warehouse mình giữ vai trò Manager (`warehouse_staff.role = manager` tại chính warehouse đó) — chỉ các bản ghi có `warehouse_id` thuộc các warehouse này; log không gắn warehouse vẫn chỉ Admin xem được.
 
 **Tương tác với vai trò khác:** giao ca trực cho Staff/Technician; giám sát log chi tiết do Technician ghi nhận trên thiết bị; báo cáo lên Admin khi cần thao tác vượt phạm vi (thêm warehouse mới, decommission thiết bị, tạo tài khoản).
 
-**Giới hạn:** không tạo/khoá tài khoản người dùng, không tạo warehouse/product-type mới, không có quyền kỹ thuật trên thiết bị (claim, provision, maintenance, điều khiển chủ động — thuộc về Technician), không xem audit log, không thao tác ngoài warehouse được gán.
+**Giới hạn:** không tạo/khoá tài khoản người dùng, không tạo warehouse/product-type mới, không có quyền kỹ thuật trên thiết bị (claim, provision, maintenance, điều khiển chủ động — thuộc về Technician), không xem audit log toàn hệ thống hay của warehouse mình không quản lý, không thao tác ngoài warehouse được gán.
 
 ### 2.3 Kỹ thuật viên — Technician
 
@@ -119,5 +120,5 @@ Ký hiệu: `✓` = toàn quyền · `Phạm vi` = trong warehouse được gán
 | **Cảnh báo — acknowledge** | Toàn quyền | Phạm vi | Phạm vi | Phạm vi + Ca trực |
 | **Cảnh báo — resolve** | Toàn quyền | Phạm vi | Phạm vi | – |
 | **Điều khiển thiết bị (commands)** | Toàn quyền, mọi lệnh | Chỉ xem lịch sử (Phạm vi) | Phạm vi (điều khiển chủ động, toàn bộ tập lệnh) | Cơ bản (Phạm vi + Ca trực, tập lệnh an toàn giới hạn) |
-| **Audit log** | Toàn quyền (duy nhất) | – | – | – |
+| **Audit log** (chỉ xem — log do hệ thống tự ghi, không ai ghi/sửa/xoá qua API) | Chỉ xem (toàn hệ thống) | Chỉ xem (Phạm vi — warehouse mình là Manager) | – | – |
 | **Thông báo (notifications)** | Tự thân | Tự thân | Tự thân | Tự thân |

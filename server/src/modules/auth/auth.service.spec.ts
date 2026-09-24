@@ -5,6 +5,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcryptjs';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import type { CreateAuditLogDto } from '../audit-logs/dto/create-audit-log.dto';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 
@@ -24,6 +26,9 @@ describe('AuthService', () => {
   };
   let jwtService: { signAsync: jest.Mock; decode: jest.Mock };
   let redis: { get: jest.Mock; set: jest.Mock; del: jest.Mock };
+  let auditLogsService: {
+    create: jest.Mock<Promise<unknown>, [CreateAuditLogDto]>;
+  };
 
   const rawUser = {
     id: 'user-1',
@@ -62,6 +67,11 @@ describe('AuthService', () => {
         return { exp: nowSeconds + 604800 };
       }),
     };
+    auditLogsService = {
+      create: jest
+        .fn<Promise<unknown>, [CreateAuditLogDto]>()
+        .mockResolvedValue({}),
+    };
     redis = { get: jest.fn(), set: jest.fn(), del: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -71,6 +81,7 @@ describe('AuthService', () => {
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: { get: (k: string) => CONFIG[k] } },
         { provide: REDIS_CLIENT, useValue: redis },
+        { provide: AuditLogsService, useValue: auditLogsService },
       ],
     }).compile();
 
@@ -100,6 +111,36 @@ describe('AuthService', () => {
       expect(result.user).toEqual(sanitizedUser);
     });
 
+    it('audits a successful login with the request context', async () => {
+      usersService.findByUsername.mockResolvedValue(rawUser);
+      usersService.findOne.mockResolvedValue(sanitizedUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await service.login(
+        { username: 'john', password: 'correct-password' },
+        { ip: '10.0.0.1', userAgent: 'jest-ua' },
+      );
+
+      expect(auditLogsService.create).toHaveBeenCalledWith({
+        userId: rawUser.id,
+        action: 'auth.login',
+        targetType: 'user',
+        targetId: rawUser.id,
+        metadata: { request: { ip: '10.0.0.1', userAgent: 'jest-ua' } },
+      });
+    });
+
+    it('still logs in when the audit write fails', async () => {
+      usersService.findByUsername.mockResolvedValue(rawUser);
+      usersService.findOne.mockResolvedValue(sanitizedUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      auditLogsService.create.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.login({ username: 'john', password: 'correct-password' }),
+      ).resolves.toMatchObject({ accessToken: 'access-token' });
+    });
+
     it('rejects an unknown username generically, still running a dummy compare', async () => {
       usersService.findByUsername.mockResolvedValue(null);
       (bcrypt.compare as jest.Mock).mockResolvedValue(false);
@@ -110,6 +151,11 @@ describe('AuthService', () => {
 
       expect(bcrypt.compare).toHaveBeenCalledTimes(1);
       expect(redis.set).not.toHaveBeenCalled();
+      const entry = auditLogsService.create.mock.calls[0][0];
+      expect(entry.userId).toBeUndefined();
+      expect(entry.action).toBe('auth.login_failed');
+      expect(entry.metadata?.reason).toBe('unknown_username');
+      expect(entry.metadata?.username).toBe('ghost');
     });
 
     it('rejects a wrong password with the same message as an unknown username', async () => {
@@ -121,6 +167,10 @@ describe('AuthService', () => {
       ).rejects.toThrow(
         new UnauthorizedException('Invalid username or password'),
       );
+      const entry = auditLogsService.create.mock.calls[0][0];
+      expect(entry.userId).toBe(rawUser.id);
+      expect(entry.action).toBe('auth.login_failed');
+      expect(entry.metadata?.reason).toBe('wrong_password');
     });
 
     it('rejects a locked account only after the password is confirmed correct', async () => {
@@ -135,6 +185,9 @@ describe('AuthService', () => {
       ).rejects.toThrow(ForbiddenException);
 
       expect(redis.set).not.toHaveBeenCalled();
+      const entry = auditLogsService.create.mock.calls[0][0];
+      expect(entry.action).toBe('auth.login_failed');
+      expect(entry.metadata?.reason).toBe('locked');
     });
   });
 

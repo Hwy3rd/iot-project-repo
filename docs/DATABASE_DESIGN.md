@@ -468,17 +468,34 @@ Xoá thẳng (không soft-delete) ngay khi push service báo endpoint không cò
 
 ### `audit_logs`
 
-Nhật ký append-only mọi hành động quan trọng trong hệ thống — chỉ Admin xem được.
+Nhật ký append-only mọi hành động quan trọng trong hệ thống — Admin xem toàn bộ; Manager chỉ xem bản ghi có `warehouse_id` thuộc kho mình quản lý (bản ghi `warehouse_id = NULL` chỉ Admin xem).
 
 | Cột | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | `varchar(36)` PK | |
-| `user_id` | FK → `users.id` | |
+| `user_id` | FK → `users.id`, nullable | `NULL` khi không có người thực hiện xác định: hành động hệ thống, hoặc `auth.login_failed` với username không tồn tại (username thử được lưu trong `metadata`) |
 | `warehouse_id` | FK → `warehouses.id`, nullable | `NULL` khi hành động không gắn với 1 warehouse cụ thể (vd user tự sửa hồ sơ) |
 | `action` | `varchar` | quy ước `"<resource>.<verb>"` (vd `door.open`, `batch.create`) — dùng chuỗi tự do thay vì enum vì bảng này bao trùm mọi module, enum sẽ phải sửa liên tục |
 | `target_type`, `target_id` | `varchar` nullable | loại và id đối tượng bị tác động, dùng để join ngược về bảng nguồn |
 | `metadata` | `json` nullable | thường ở dạng `{ before, after }` cho các thao tác sửa |
 | `created_at` | `timestamp` | |
+
+**Hành động được ghi** — opt-in bằng `@Audit({...})` trên từng route (global `AuditInterceptor`, chỉ ghi sau khi handler thành công); không ghi GET/telemetry, không ghi những gì đã có bảng lịch sử bất biến riêng (`device_status_history`, `commands`, trạng thái ack/resolve của `alerts`).
+
+| Nhóm | `action` |
+|---|---|
+| Xác thực (ghi trong `AuthService`) | `auth.login`, `auth.login_failed` (`metadata.reason`: `unknown_username` \| `wrong_password` \| `locked`; với `unknown_username` thì `user_id = NULL` và `metadata.username` là username đã thử) |
+| Tài khoản | `user.create`, `user.update`, `user.role_change` (khi `role` đổi), `user.lock`, `user.unlock`, `user.delete` |
+| Phân công kho | `warehouse_staff.assign` (gán mới hoặc đổi role tại kho), `warehouse_staff.unassign` |
+| Danh mục | `warehouse.*`, `product_type.*`, `shift.*` (`create`/`update`/`delete`) |
+| Phòng lạnh | `cold_room.create`, `cold_room.update`, `cold_room.delete` |
+| Lô hàng | `batch.create`, `batch.update`, `batch.remove` (xuất kho) |
+| Ca trực | `work_shift.create`, `work_shift.update`, `work_shift.delete`, `work_shift.check_in`, `work_shift.check_out` |
+| Thiết bị | `device.create`, `device.update`, `device.delete`, `device.claim_code_generate`, `device.claim`, `device_channel.*` |
+
+Index: `(created_at)`, `(user_id, created_at)`, `(warehouse_id, created_at)`, `(target_type, target_id)` — khớp các bộ lọc của `GET /audit-logs`.
+
+`metadata`: `create` → `{ after }`, `delete` cứng → `{ before }`, `update` → `{ before, after }` chỉ gồm các field thay đổi; luôn kèm `request: { ip, userAgent }`. Các field `password`, `passwordHash`, `claimCode`, `claimCodeHash`, `refreshToken` luôn bị loại bỏ. `warehouse_id` được suy ra từ đối tượng (cold room/batch/device/channel → cold room → warehouse); user/product type/mẫu ca để `NULL` (chỉ Admin xem).
 
 ---
 

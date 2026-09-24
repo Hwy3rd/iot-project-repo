@@ -5,7 +5,10 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { Request } from 'express';
 import Redis from 'ioredis';
 import { Strategy } from 'passport-jwt';
-import { REDIS_CLIENT } from '../../../libs/redis/redis.constant';
+import {
+  REDIS_CLIENT,
+  refreshSessionKey,
+} from '../../../libs/redis/redis.constant';
 
 function extractRefreshTokenFromCookie(req: Request): string | null {
   const cookies = req?.cookies as Record<string, string> | undefined;
@@ -35,7 +38,7 @@ export class JwtRefreshStrategy extends PassportStrategy(
       throw new UnauthorizedException('Missing refresh token');
     }
 
-    const stored = await this.redis.get(`refresh:${payload.sub}`);
+    const stored = await this.redis.get(refreshSessionKey(payload.sub));
     if (!stored) {
       throw new UnauthorizedException('Session expired');
     }

@@ -9,6 +9,8 @@ import {
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { Warehouse } from './entities/warehouse.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
@@ -28,6 +30,11 @@ export class WarehousesController {
 
   @Roles(UserRole.ADMIN)
   @Serialize(WarehouseResponseDto)
+  @Audit({
+    action: 'warehouse.create',
+    targetType: 'warehouse',
+    entity: Warehouse,
+  })
   @Post()
   create(@Body() createWarehouseDto: CreateWarehouseDto) {
     return this.warehousesService.create(createWarehouseDto);
@@ -50,6 +57,11 @@ export class WarehousesController {
 
   @Roles(UserRole.ADMIN)
   @Serialize(WarehouseResponseDto)
+  @Audit({
+    action: 'warehouse.update',
+    targetType: 'warehouse',
+    entity: Warehouse,
+  })
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -59,6 +71,11 @@ export class WarehousesController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'warehouse.delete',
+    targetType: 'warehouse',
+    entity: Warehouse,
+  })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.warehousesService.remove(id);

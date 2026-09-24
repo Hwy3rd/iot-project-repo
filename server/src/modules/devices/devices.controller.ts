@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { Device } from './entities/device.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -35,6 +37,7 @@ export class DevicesController {
   // data, Admin only (a Technician has no warehouse to be scoped to yet).
   @Roles(UserRole.ADMIN)
   @Serialize(DeviceResponseDto)
+  @Audit({ action: 'device.create', targetType: 'device', entity: Device })
   @Post()
   create(@Body() createDeviceDto: CreateDeviceDto) {
     return this.devicesService.create(createDeviceDto);
@@ -60,6 +63,7 @@ export class DevicesController {
   @Roles(...DEVICE_TECHNICAL_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM)
   @Serialize(DeviceResponseDto)
+  @Audit({ action: 'device.update', targetType: 'device', entity: Device })
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateDeviceDto: UpdateDeviceDto) {
     return this.devicesService.update(id, updateDeviceDto);
@@ -72,6 +76,11 @@ export class DevicesController {
   @Roles(...DEVICE_TECHNICAL_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM)
   @Serialize(ClaimCodeResponseDto)
+  @Audit({
+    action: 'device.claim_code_generate',
+    targetType: 'device',
+    entity: Device,
+  })
   @Post(':id/claim-code')
   generateClaimCode(@Param('id') id: string) {
     return this.devicesService.generateClaimCode(id);
@@ -85,6 +94,7 @@ export class DevicesController {
     paramName: 'coldRoomId',
   })
   @Serialize(DeviceResponseDto)
+  @Audit({ action: 'device.claim', targetType: 'device', entity: Device })
   @Post(':id/claim')
   claim(@Param('id') id: string, @Body() claimDeviceDto: ClaimDeviceDto) {
     return this.devicesService.claim(id, claimDeviceDto);
@@ -101,6 +111,7 @@ export class DevicesController {
   // Hard delete stays Admin-only, separate from (and rarer than) the
   // one-way decommission lifecycle step above.
   @Roles(UserRole.ADMIN)
+  @Audit({ action: 'device.delete', targetType: 'device', entity: Device })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.devicesService.remove(id);

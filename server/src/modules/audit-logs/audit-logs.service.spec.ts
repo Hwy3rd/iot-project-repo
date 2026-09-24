@@ -1,9 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User } from '../users/entities/user.entity';
-import { Warehouse } from '../warehouses/entities/warehouse.entity';
+import { In, Repository } from 'typeorm';
+import { UserRole } from '../../libs/constants/user.constant';
+import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { AuditLogsService } from './audit-logs.service';
 import { AuditLog } from './entities/audit-log.entity';
 
@@ -21,8 +21,10 @@ const createMockRepository = <T extends object>(): MockRepository<T> => ({
 describe('AuditLogsService', () => {
   let service: AuditLogsService;
   let auditLogsRepository: MockRepository<AuditLog>;
-  let usersRepository: MockRepository<User>;
-  let warehousesRepository: MockRepository<Warehouse>;
+  let warehouseStaffRepository: MockRepository<WarehouseStaff>;
+
+  const manager = { id: 'm1', role: UserRole.MANAGER };
+  const admin = { id: 'a1', role: UserRole.ADMIN };
 
   const dto = { userId: 'u1', action: 'batch.create' };
 
@@ -35,20 +37,15 @@ describe('AuditLogsService', () => {
           useValue: createMockRepository<AuditLog>(),
         },
         {
-          provide: getRepositoryToken(User),
-          useValue: createMockRepository<User>(),
-        },
-        {
-          provide: getRepositoryToken(Warehouse),
-          useValue: createMockRepository<Warehouse>(),
+          provide: getRepositoryToken(WarehouseStaff),
+          useValue: createMockRepository<WarehouseStaff>(),
         },
       ],
     }).compile();
 
     service = module.get<AuditLogsService>(AuditLogsService);
     auditLogsRepository = module.get(getRepositoryToken(AuditLog));
-    usersRepository = module.get(getRepositoryToken(User));
-    warehousesRepository = module.get(getRepositoryToken(Warehouse));
+    warehouseStaffRepository = module.get(getRepositoryToken(WarehouseStaff));
   });
 
   it('should be defined', () => {
@@ -56,23 +53,7 @@ describe('AuditLogsService', () => {
   });
 
   describe('create', () => {
-    it('throws NotFoundException when the user does not exist', async () => {
-      usersRepository.findOne!.mockResolvedValue(null);
-
-      await expect(service.create(dto)).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws NotFoundException when warehouseId does not resolve to a warehouse', async () => {
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
-      warehousesRepository.findOne!.mockResolvedValue(null);
-
-      await expect(
-        service.create({ ...dto, warehouseId: 'w1' }),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('creates the audit log entry', async () => {
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
+    it('creates the audit log entry without pre-checking user/warehouse', async () => {
       auditLogsRepository.create!.mockImplementation(
         (v: Partial<AuditLog>) => v,
       );
@@ -108,6 +89,51 @@ describe('AuditLogsService', () => {
         order: { createdAt: 'DESC' },
       });
     });
+
+    it('does not narrow results for an admin', async () => {
+      auditLogsRepository.find!.mockResolvedValue([]);
+
+      await service.findAll({}, admin);
+
+      expect(warehouseStaffRepository.find).not.toHaveBeenCalled();
+      expect(auditLogsRepository.find).toHaveBeenCalledWith({
+        where: {},
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('limits a manager to warehouses they manage', async () => {
+      warehouseStaffRepository.find!.mockResolvedValue([
+        { warehouseId: 'w1' },
+        { warehouseId: 'w2' },
+      ]);
+      auditLogsRepository.find!.mockResolvedValue([]);
+
+      await service.findAll({ targetType: 'batch' }, manager);
+
+      expect(warehouseStaffRepository.find).toHaveBeenCalledWith({
+        where: { userId: 'm1', role: UserRole.MANAGER },
+      });
+      expect(auditLogsRepository.find).toHaveBeenCalledWith({
+        where: { targetType: 'batch', warehouseId: In(['w1', 'w2']) },
+        order: { createdAt: 'DESC' },
+      });
+    });
+
+    it('returns an empty list for a manager with no managed warehouse', async () => {
+      warehouseStaffRepository.find!.mockResolvedValue([]);
+
+      await expect(service.findAll({}, manager)).resolves.toEqual([]);
+      expect(auditLogsRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('rejects a manager filtering by a warehouse they do not manage', async () => {
+      warehouseStaffRepository.find!.mockResolvedValue([{ warehouseId: 'w1' }]);
+
+      await expect(
+        service.findAll({ warehouseId: 'w9' }, manager),
+      ).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe('findOne', () => {
@@ -116,6 +142,42 @@ describe('AuditLogsService', () => {
 
       await expect(service.findOne('missing-id')).rejects.toThrow(
         NotFoundException,
+      );
+    });
+
+    it('lets a manager read an entry from a warehouse they manage', async () => {
+      auditLogsRepository.findOne!.mockResolvedValue({
+        id: 'log1',
+        warehouseId: 'w1',
+      });
+      warehouseStaffRepository.find!.mockResolvedValue([{ warehouseId: 'w1' }]);
+
+      await expect(service.findOne('log1', manager)).resolves.toMatchObject({
+        id: 'log1',
+      });
+    });
+
+    it('rejects a manager reading an entry outside their warehouses', async () => {
+      auditLogsRepository.findOne!.mockResolvedValue({
+        id: 'log1',
+        warehouseId: 'w9',
+      });
+      warehouseStaffRepository.find!.mockResolvedValue([{ warehouseId: 'w1' }]);
+
+      await expect(service.findOne('log1', manager)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('rejects a manager reading an entry not scoped to any warehouse', async () => {
+      auditLogsRepository.findOne!.mockResolvedValue({
+        id: 'log1',
+        warehouseId: null,
+      });
+      warehouseStaffRepository.find!.mockResolvedValue([{ warehouseId: 'w1' }]);
+
+      await expect(service.findOne('log1', manager)).rejects.toThrow(
+        ForbiddenException,
       );
     });
   });

@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { Shift } from './entities/shift.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { UserRole } from '../../libs/constants/user.constant';
@@ -21,6 +23,7 @@ export class ShiftsController {
 
   @Roles(UserRole.ADMIN)
   @Serialize(ShiftResponseDto)
+  @Audit({ action: 'shift.create', targetType: 'shift', entity: Shift })
   @Post()
   create(@Body() createShiftDto: CreateShiftDto) {
     return this.shiftsService.create(createShiftDto);
@@ -40,12 +43,14 @@ export class ShiftsController {
 
   @Roles(UserRole.ADMIN)
   @Serialize(ShiftResponseDto)
+  @Audit({ action: 'shift.update', targetType: 'shift', entity: Shift })
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateShiftDto: UpdateShiftDto) {
     return this.shiftsService.update(id, updateShiftDto);
   }
 
   @Roles(UserRole.ADMIN)
+  @Audit({ action: 'shift.delete', targetType: 'shift', entity: Shift })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.shiftsService.remove(id);

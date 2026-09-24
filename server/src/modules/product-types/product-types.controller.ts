@@ -9,6 +9,8 @@ import {
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { ProductType } from './entities/product-type.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
@@ -26,6 +28,11 @@ export class ProductTypesController {
 
   @Roles(UserRole.ADMIN)
   @Serialize(ProductTypeResponseDto)
+  @Audit({
+    action: 'product_type.create',
+    targetType: 'product_type',
+    entity: ProductType,
+  })
   @Post()
   create(@Body() createProductTypeDto: CreateProductTypeDto) {
     return this.productTypesService.create(createProductTypeDto);
@@ -45,6 +52,11 @@ export class ProductTypesController {
 
   @Roles(UserRole.ADMIN)
   @Serialize(ProductTypeResponseDto)
+  @Audit({
+    action: 'product_type.update',
+    targetType: 'product_type',
+    entity: ProductType,
+  })
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -54,6 +66,11 @@ export class ProductTypesController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'product_type.delete',
+    targetType: 'product_type',
+    entity: ProductType,
+  })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.productTypesService.remove(id);

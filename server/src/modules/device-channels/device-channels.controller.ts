@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { DeviceChannel } from './entities/device-channel.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -33,6 +35,11 @@ export class DeviceChannelsController {
     paramName: 'deviceId',
   })
   @Serialize(DeviceChannelResponseDto)
+  @Audit({
+    action: 'device_channel.create',
+    targetType: 'device_channel',
+    entity: DeviceChannel,
+  })
   @Post()
   create(
     @Param('deviceId') deviceId: string,
@@ -66,6 +73,11 @@ export class DeviceChannelsController {
     paramName: 'deviceId',
   })
   @Serialize(DeviceChannelResponseDto)
+  @Audit({
+    action: 'device_channel.update',
+    targetType: 'device_channel',
+    entity: DeviceChannel,
+  })
   @Patch(':id')
   update(
     @Param('deviceId') deviceId: string,
@@ -82,6 +94,11 @@ export class DeviceChannelsController {
   @Roles(...CHANNEL_MANAGE_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
     paramName: 'deviceId',
+  })
+  @Audit({
+    action: 'device_channel.delete',
+    targetType: 'device_channel',
+    entity: DeviceChannel,
   })
   @Delete(':id')
   remove(@Param('deviceId') deviceId: string, @Param('id') id: string) {

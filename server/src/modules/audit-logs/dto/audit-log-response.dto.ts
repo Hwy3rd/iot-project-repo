@@ -5,7 +5,7 @@ export class AuditLogResponseDto {
   id!: string;
 
   @Expose()
-  userId!: string;
+  userId!: string | null;
 
   @Expose()
   warehouseId!: string | null;

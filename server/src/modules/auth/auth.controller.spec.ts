@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { UsersService } from '../users/users.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -52,9 +52,17 @@ describe('AuthController', () => {
     });
     const res = buildRes();
 
+    const req = { ip: '10.0.0.1', get: jest.fn().mockReturnValue('jest-ua') };
+
     const result = await controller.login(
       { username: 'john', password: 'x' },
+      req as unknown as Request,
       res as unknown as Response,
+    );
+
+    expect(authService.login).toHaveBeenCalledWith(
+      { username: 'john', password: 'x' },
+      { ip: '10.0.0.1', userAgent: 'jest-ua' },
     );
 
     expect(result).toBe(user);
