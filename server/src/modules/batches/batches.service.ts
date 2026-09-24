@@ -4,6 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, QueryFailedError, Repository } from 'typeorm';
@@ -108,13 +113,20 @@ export class BatchesService {
   }
 
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
-  findAll(access?: WarehouseAccess) {
+  async findAll(
+    access?: WarehouseAccess,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<Batch>> {
     const ids = access?.warehouseIds;
-    if (!ids) return this.batchesRepository.find();
-    if (ids.length === 0) return Promise.resolve([]);
-    return this.batchesRepository.find({
-      where: { coldRoom: { warehouseId: In(ids) } },
+    if (ids?.length === 0) return Paginated.empty(query);
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.batchesRepository.findAndCount({
+      where: ids ? { coldRoom: { warehouseId: In(ids) } } : {},
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {

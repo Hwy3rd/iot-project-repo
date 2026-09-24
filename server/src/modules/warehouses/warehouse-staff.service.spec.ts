@@ -11,6 +11,7 @@ describe('WarehouseStaffService', () => {
   let service: WarehouseStaffService;
   let staffRepo: {
     find: jest.Mock;
+    findAndCount: jest.Mock;
     findOne: jest.Mock;
     create: jest.Mock;
     save: jest.Mock;
@@ -22,6 +23,7 @@ describe('WarehouseStaffService', () => {
   beforeEach(async () => {
     staffRepo = {
       find: jest.fn(),
+      findAndCount: jest.fn(),
       findOne: jest.fn(),
       create: jest.fn((v: Partial<WarehouseStaff>) => ({ ...v })),
       save: jest.fn((v: Partial<WarehouseStaff>) => Promise.resolve(v)),
@@ -50,14 +52,16 @@ describe('WarehouseStaffService', () => {
     });
 
     it('lists the warehouse assignments with their users', async () => {
-      staffRepo.find.mockResolvedValue([]);
+      staffRepo.findAndCount.mockResolvedValue([[], 0]);
 
       await service.findAll('w1');
 
-      expect(staffRepo.find).toHaveBeenCalledWith({
+      expect(staffRepo.findAndCount).toHaveBeenCalledWith({
         where: { warehouseId: 'w1' },
         relations: { user: true },
-        order: { createdAt: 'ASC' },
+        order: { createdAt: 'ASC', userId: 'ASC' },
+        skip: 0,
+        take: 20,
       });
     });
   });

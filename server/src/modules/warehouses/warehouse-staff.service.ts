@@ -1,4 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/entities/user.entity';
@@ -19,13 +24,20 @@ export class WarehouseStaffService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
-  async findAll(warehouseId: string) {
+  async findAll(
+    warehouseId: string,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<WarehouseStaff>> {
     await this.assertWarehouseExists(warehouseId);
-    return this.warehouseStaffRepository.find({
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.warehouseStaffRepository.findAndCount({
       where: { warehouseId },
       relations: { user: true },
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'ASC', userId: 'ASC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   // Upsert: assigning someone already in the warehouse just changes their

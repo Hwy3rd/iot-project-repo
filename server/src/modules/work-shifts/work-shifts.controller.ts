@@ -6,7 +6,9 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -47,8 +49,11 @@ export class WorkShiftsController {
   @Serialize(WorkShiftResponseDto)
   @WarehouseListScope()
   @Get()
-  findAll(@ScopedWarehouses() access: WarehouseAccess) {
-    return this.workShiftsService.findAll(access);
+  findAll(
+    @ScopedWarehouses() access: WarehouseAccess,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.workShiftsService.findAll(access, query);
   }
 
   // Staff: only their own shift, same rule as the list endpoint.

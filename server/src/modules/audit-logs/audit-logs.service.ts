@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
 import { UserRole } from '../../libs/constants/user.constant';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
@@ -71,15 +75,21 @@ export class AuditLogsService {
           throw new ForbiddenException('Not a manager of this warehouse');
         }
       } else {
-        if (managedIds.length === 0) return [];
+        if (managedIds.length === 0) {
+          return Paginated.empty<AuditLog>(queryAuditLogDto);
+        }
         where.warehouseId = In(managedIds);
       }
     }
 
-    return this.auditLogsRepository.find({
+    const pagination = resolvePagination(queryAuditLogDto);
+    const [items, total] = await this.auditLogsRepository.findAndCount({
       where,
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string, viewer?: AuditLogViewer) {

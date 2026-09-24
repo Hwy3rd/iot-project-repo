@@ -1,4 +1,5 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -22,7 +23,10 @@ export class DeviceStatusHistoryController {
   })
   @Serialize(DeviceStatusHistoryResponseDto)
   @Get()
-  findAll(@Param('deviceId') deviceId: string) {
-    return this.deviceStatusHistoryService.findAllForDevice(deviceId);
+  findAll(
+    @Param('deviceId') deviceId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.deviceStatusHistoryService.findAllForDevice(deviceId, query);
   }
 }

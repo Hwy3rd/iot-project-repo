@@ -25,7 +25,7 @@ export interface ChatbotDocMatch {
 // Correct default only for local dev, where `pnpm start:dev` always runs
 // from server/ (see CLAUDE.md) — so process.cwd() is server/ and '..'
 // lands on the repo root's docs/. Production overrides this via
-// CHATBOT_DOCS_DIR (see .env.production.example) because the Docker image
+// CHATBOT_DOCS_DIR (see the repo-root .env.example) because the Docker image
 // copies docs/ to /app/docs, not one level above the working directory.
 function resolveDocsDir(): string {
   return process.env.CHATBOT_DOCS_DIR ?? join(process.cwd(), '..', 'docs');

@@ -6,6 +6,10 @@ import {
   QueryFailedError,
   Repository,
 } from 'typeorm';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
 import { AlertType } from '../../libs/constants/alert.constant';
 import { NotificationStatus } from '../../libs/constants/notification.constant';
 import { Alert } from '../alerts/entities/alert.entity';
@@ -124,18 +128,22 @@ export class NotificationsService {
     return this.notificationsRepository.save(notifications);
   }
 
-  findAll(
+  async findAll(
     userId: string,
-    query: QueryNotificationDto,
-  ): Promise<Notification[]> {
+    query: QueryNotificationDto = {},
+  ): Promise<Paginated<Notification>> {
     const where: FindOptionsWhere<Notification> = { userId };
     if (query.unreadOnly === 'true') {
       where.readAt = IsNull();
     }
-    return this.notificationsRepository.find({
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.notificationsRepository.findAndCount({
       where,
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string): Promise<Notification> {

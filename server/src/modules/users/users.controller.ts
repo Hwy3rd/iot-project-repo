@@ -6,10 +6,12 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { User } from './entities/user.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -41,8 +43,8 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   @Serialize(UserResponseDto)
   @Get()
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.usersService.findAll(query);
   }
 
   @UseGuards(SelfScopeGuard)

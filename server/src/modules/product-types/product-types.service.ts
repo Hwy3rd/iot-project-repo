@@ -4,6 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { UploadFilesService } from '../upload-files/upload-files.service';
@@ -66,8 +71,16 @@ export class ProductTypesService {
     return this.saveProductType(productType);
   }
 
-  findAll() {
-    return this.productTypesRepository.find();
+  async findAll(
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<ProductType>> {
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.productTypesRepository.findAndCount({
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
+    });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {

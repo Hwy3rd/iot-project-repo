@@ -17,6 +17,7 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   existsBy: jest.fn(),
@@ -140,18 +141,20 @@ describe('DeviceStatusHistoryService', () => {
       await expect(service.findAllForDevice('missing')).rejects.toThrow(
         NotFoundException,
       );
-      expect(historyRepository.find).not.toHaveBeenCalled();
+      expect(historyRepository.findAndCount).not.toHaveBeenCalled();
     });
 
     it('returns entries newest first', async () => {
       devicesRepository.existsBy!.mockResolvedValue(true);
-      historyRepository.find!.mockResolvedValue([]);
+      historyRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAllForDevice('d1');
 
-      expect(historyRepository.find).toHaveBeenCalledWith({
+      expect(historyRepository.findAndCount).toHaveBeenCalledWith({
         where: { deviceId: 'd1' },
-        order: { changedAt: 'DESC' },
+        order: { changedAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
   });

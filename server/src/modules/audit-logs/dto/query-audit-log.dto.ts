@@ -1,6 +1,7 @@
 import { IsOptional, IsString } from 'class-validator';
+import { PaginationQueryDto } from '../../../common/pagination/pagination-query.dto';
 
-export class QueryAuditLogDto {
+export class QueryAuditLogDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   userId?: string;

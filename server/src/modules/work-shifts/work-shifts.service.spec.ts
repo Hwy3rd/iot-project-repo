@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { Paginated } from '../../common/pagination/paginated';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { In, QueryFailedError, Repository } from 'typeorm';
@@ -22,6 +23,7 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   delete: jest.fn(),
@@ -83,7 +85,7 @@ describe('WorkShiftsService', () => {
 
   describe('findAll', () => {
     it('is unfiltered for an admin', async () => {
-      workShiftsRepository.find!.mockResolvedValue([]);
+      workShiftsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll({
         userId: 'a1',
@@ -92,11 +94,16 @@ describe('WorkShiftsService', () => {
         staffWarehouseIds: [],
       });
 
-      expect(workShiftsRepository.find).toHaveBeenCalledWith();
+      expect(workShiftsRepository.findAndCount).toHaveBeenCalledWith({
+        where: {},
+        order: { scheduledStartAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
+      });
     });
 
     it('returns all shifts where the caller manages, only their own where they are Staff', async () => {
-      workShiftsRepository.find!.mockResolvedValue([]);
+      workShiftsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll({
         userId: 'u1',
@@ -105,11 +112,14 @@ describe('WorkShiftsService', () => {
         staffWarehouseIds: ['w2'],
       });
 
-      expect(workShiftsRepository.find).toHaveBeenCalledWith({
+      expect(workShiftsRepository.findAndCount).toHaveBeenCalledWith({
         where: [
           { warehouseId: In(['w1']) },
           { warehouseId: In(['w2']), staffId: 'u1' },
         ],
+        order: { scheduledStartAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
 
@@ -121,8 +131,8 @@ describe('WorkShiftsService', () => {
           warehouseIds: [],
           staffWarehouseIds: [],
         }),
-      ).resolves.toEqual([]);
-      expect(workShiftsRepository.find).not.toHaveBeenCalled();
+      ).resolves.toEqual(Paginated.empty());
+      expect(workShiftsRepository.findAndCount).not.toHaveBeenCalled();
     });
   });
 

@@ -1,4 +1,5 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Paginated } from '../../common/pagination/paginated';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -14,6 +15,7 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
 });
@@ -80,25 +82,29 @@ describe('AuditLogsService', () => {
 
   describe('findAll', () => {
     it('filters by the provided query fields only', async () => {
-      auditLogsRepository.find!.mockResolvedValue([]);
+      auditLogsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll({ userId: 'u1', targetType: 'batch' });
 
-      expect(auditLogsRepository.find).toHaveBeenCalledWith({
+      expect(auditLogsRepository.findAndCount).toHaveBeenCalledWith({
         where: { userId: 'u1', targetType: 'batch' },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
 
     it('does not narrow results for an admin', async () => {
-      auditLogsRepository.find!.mockResolvedValue([]);
+      auditLogsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll({}, admin);
 
       expect(warehouseStaffRepository.find).not.toHaveBeenCalled();
-      expect(auditLogsRepository.find).toHaveBeenCalledWith({
+      expect(auditLogsRepository.findAndCount).toHaveBeenCalledWith({
         where: {},
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
 
@@ -107,24 +113,28 @@ describe('AuditLogsService', () => {
         { warehouseId: 'w1' },
         { warehouseId: 'w2' },
       ]);
-      auditLogsRepository.find!.mockResolvedValue([]);
+      auditLogsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll({ targetType: 'batch' }, manager);
 
       expect(warehouseStaffRepository.find).toHaveBeenCalledWith({
         where: { userId: 'm1', role: UserRole.MANAGER },
       });
-      expect(auditLogsRepository.find).toHaveBeenCalledWith({
+      expect(auditLogsRepository.findAndCount).toHaveBeenCalledWith({
         where: { targetType: 'batch', warehouseId: In(['w1', 'w2']) },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
 
     it('returns an empty list for a manager with no managed warehouse', async () => {
       warehouseStaffRepository.find!.mockResolvedValue([]);
 
-      await expect(service.findAll({}, manager)).resolves.toEqual([]);
-      expect(auditLogsRepository.find).not.toHaveBeenCalled();
+      await expect(service.findAll({}, manager)).resolves.toEqual(
+        Paginated.empty(),
+      );
+      expect(auditLogsRepository.findAndCount).not.toHaveBeenCalled();
     });
 
     it('rejects a manager filtering by a warehouse they do not manage', async () => {

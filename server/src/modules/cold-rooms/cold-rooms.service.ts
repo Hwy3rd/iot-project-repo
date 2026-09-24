@@ -4,6 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, QueryFailedError, Repository } from 'typeorm';
@@ -74,13 +79,20 @@ export class ColdRoomsService {
   }
 
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
-  findAll(access?: WarehouseAccess) {
+  async findAll(
+    access?: WarehouseAccess,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<ColdRoom>> {
     const ids = access?.warehouseIds;
-    if (!ids) return this.coldRoomsRepository.find();
-    if (ids.length === 0) return Promise.resolve([]);
-    return this.coldRoomsRepository.find({
-      where: { warehouseId: In(ids) },
+    if (ids?.length === 0) return Paginated.empty(query);
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.coldRoomsRepository.findAndCount({
+      where: ids ? { warehouseId: In(ids) } : {},
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {

@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { parseCorsOrigins } from './libs/constants/cors.constant';
 
 // Express `trust proxy` from TRUST_PROXY: "true"/"false", a hop count ("1"),
 // or a subnet/preset list ("loopback, 10.0.0.0/8"). Unset = don't trust any
@@ -22,6 +23,9 @@ async function bootstrap() {
   if (process.env.TRUST_PROXY) {
     app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY.trim()));
   }
+  // The frontend is served from a different origin (e.g. app.<domain> vs
+  // api.<domain>), and auth rides on cookies, hence credentials: true.
+  app.enableCors({ origin: parseCorsOrigins(), credentials: true });
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   // Explicit rather than relying on auto-detection, so it's obvious this app

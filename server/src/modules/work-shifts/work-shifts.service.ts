@@ -4,6 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
@@ -133,19 +138,29 @@ export class WorkShiftsService {
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
   // In warehouses where the caller acts as Staff they only see their own
   // shifts (docs/RBAC.md: "Phạm vi (chỉ ca của mình)").
-  findAll(access?: WarehouseAccess) {
+  async findAll(
+    access?: WarehouseAccess,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<WorkShift>> {
     const ids = access?.warehouseIds;
-    if (!ids || !access) return this.workShiftsRepository.find();
-
-    const staffIds = new Set(access.staffWarehouseIds);
-    const otherIds = ids.filter((id) => !staffIds.has(id));
     const where: FindOptionsWhere<WorkShift>[] = [];
-    if (otherIds.length > 0) where.push({ warehouseId: In(otherIds) });
-    if (staffIds.size > 0) {
-      where.push({ warehouseId: In([...staffIds]), staffId: access.userId });
+    if (ids && access) {
+      const staffIds = new Set(access.staffWarehouseIds);
+      const otherIds = ids.filter((id) => !staffIds.has(id));
+      if (otherIds.length > 0) where.push({ warehouseId: In(otherIds) });
+      if (staffIds.size > 0) {
+        where.push({ warehouseId: In([...staffIds]), staffId: access.userId });
+      }
+      if (where.length === 0) return Paginated.empty(query);
     }
-    if (where.length === 0) return Promise.resolve([]);
-    return this.workShiftsRepository.find({ where });
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.workShiftsRepository.findAndCount({
+      where: where.length > 0 ? where : {},
+      order: { scheduledStartAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
+    });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {

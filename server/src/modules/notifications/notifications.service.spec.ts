@@ -18,6 +18,7 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   update: jest.fn(),
@@ -233,24 +234,28 @@ describe('NotificationsService', () => {
 
   describe('findAll', () => {
     it('scopes to the given userId', async () => {
-      notificationsRepository.find!.mockResolvedValue([]);
+      notificationsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll('u1', {});
 
-      expect(notificationsRepository.find).toHaveBeenCalledWith({
+      expect(notificationsRepository.findAndCount).toHaveBeenCalledWith({
         where: { userId: 'u1' },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
 
     it('adds an unread filter only when unreadOnly=true', async () => {
-      notificationsRepository.find!.mockResolvedValue([]);
+      notificationsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll('u1', { unreadOnly: 'true' });
 
-      expect(notificationsRepository.find).toHaveBeenCalledWith({
+      expect(notificationsRepository.findAndCount).toHaveBeenCalledWith({
         where: { userId: 'u1', readAt: IsNull() },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
   });

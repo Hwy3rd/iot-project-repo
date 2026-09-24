@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { Paginated } from '../../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { UserRole } from '../../../libs/constants/user.constant';
@@ -273,6 +275,16 @@ export class ChatbotToolExecutorService {
     }
   }
 
+  // Out-of-range values are clamped by resolvePagination(), so anything
+  // numeric from the model is safe to pass through.
+  private pagination(args: Record<string, unknown>): PaginationQueryDto {
+    const toInt = (value: unknown) =>
+      typeof value === 'number' && Number.isFinite(value)
+        ? Math.trunc(value)
+        : undefined;
+    return { page: toInt(args.page), limit: toInt(args.limit) };
+  }
+
   private requireString(args: Record<string, unknown>, key: string): string {
     const value = args[key];
     if (typeof value !== 'string' || value.length === 0) {
@@ -304,6 +316,7 @@ export class ChatbotToolExecutorService {
       type: this.optionalString(args, 'type') as never,
       deviceId: this.optionalString(args, 'deviceId'),
       batchId: this.optionalString(args, 'batchId'),
+      ...this.pagination(args),
     };
 
     if (coldRoomId) {
@@ -317,7 +330,7 @@ export class ChatbotToolExecutorService {
     if (assigned === null) {
       return this.alertsService.findAll(baseQuery);
     }
-    if (assigned.length === 0) return [];
+    if (assigned.length === 0) return Paginated.empty(baseQuery);
     return this.alertsService.findAll(baseQuery, {
       userId: caller.id,
       role: caller.role,
@@ -385,7 +398,10 @@ export class ChatbotToolExecutorService {
     const assigned = await this.getAssignedWarehouseIds(caller);
     const warehouseId = await this.warehouseIdOfDevice(deviceId);
     this.assertAllowedOrThrow(assigned, warehouseId);
-    return this.deviceStatusHistoryService.findAllForDevice(deviceId);
+    return this.deviceStatusHistoryService.findAllForDevice(
+      deviceId,
+      this.pagination(args),
+    );
   }
 
   private async getTelemetryHourly(

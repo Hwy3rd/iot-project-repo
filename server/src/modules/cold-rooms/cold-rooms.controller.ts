@@ -6,7 +6,9 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -46,8 +48,11 @@ export class ColdRoomsController {
   @Serialize(ColdRoomResponseDto)
   @WarehouseListScope()
   @Get()
-  findAll(@ScopedWarehouses() access: WarehouseAccess) {
-    return this.coldRoomsService.findAll(access);
+  findAll(
+    @ScopedWarehouses() access: WarehouseAccess,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.coldRoomsService.findAll(access, query);
   }
 
   @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)

@@ -12,7 +12,6 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER_DIR="$ROOT_DIR/server"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
 
 log()  { printf '\033[1;34m[init]\033[0m %s\n' "$1"; }
@@ -39,8 +38,13 @@ log "checking prerequisites"
 require_cmd docker
 docker compose version >/dev/null 2>&1 || die "'docker compose' (v2) is required."
 
-if [[ ! -f "$SERVER_DIR/.env.production" ]]; then
-  die "server/.env.production not found. Create it from server/.env.production.example first."
+if [[ ! -f "$ROOT_DIR/.env" ]]; then
+  die ".env not found in the repo root. Create it from .env.example first."
+fi
+# Not fatal: the rest of the stack works without it, only the public
+# hostnames behind Cloudflare don't (cloudflared keeps restarting until set).
+if ! grep -qE '^CLOUDFLARE_TUNNEL_TOKEN=[^<[:space:]]' "$ROOT_DIR/.env" 2>/dev/null; then
+  printf '\033[1;33m[warn]\033[0m %s\n' "CLOUDFLARE_TUNNEL_TOKEN not set in .env (see .env.example) — cloudflared will not connect."
 fi
 ok "prerequisites present"
 
@@ -57,4 +61,4 @@ compose run --rm app node dist/seeds/account.seed.js
 ok "seed complete"
 
 echo
-ok "system initialized — app on http://localhost:8080"
+ok "system initialized — app is reachable through the Cloudflare Tunnel hostnames (no host port is published)"
