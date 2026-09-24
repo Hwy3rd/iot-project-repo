@@ -15,6 +15,7 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   update: jest.fn(),
@@ -278,13 +279,15 @@ describe('AlertsService', () => {
 
   describe('findAll', () => {
     it('filters by the provided query fields only', async () => {
-      alertsRepository.find!.mockResolvedValue([]);
+      alertsRepository.findAndCount!.mockResolvedValue([[], 0]);
 
       await service.findAll({ status: AlertStatus.OPEN, coldRoomId: 'c1' });
 
-      expect(alertsRepository.find).toHaveBeenCalledWith({
+      expect(alertsRepository.findAndCount).toHaveBeenCalledWith({
         where: { status: AlertStatus.OPEN, coldRoomId: 'c1' },
-        order: { createdAt: 'DESC' },
+        order: { createdAt: 'DESC', id: 'DESC' },
+        skip: 0,
+        take: 20,
       });
     });
   });

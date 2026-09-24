@@ -1,4 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -56,14 +61,21 @@ export class DeviceStatusHistoryService {
   }
 
   // Backs GET /devices/:deviceId/status-history.
-  async findAllForDevice(deviceId: string): Promise<DeviceStatusHistory[]> {
+  async findAllForDevice(
+    deviceId: string,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<DeviceStatusHistory>> {
     const exists = await this.devicesRepository.existsBy({ id: deviceId });
     if (!exists) {
       throw new NotFoundException(`Device ${deviceId} not found`);
     }
-    return this.historyRepository.find({
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.historyRepository.findAndCount({
       where: { deviceId },
-      order: { changedAt: 'DESC' },
+      order: { changedAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 }

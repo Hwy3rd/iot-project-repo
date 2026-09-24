@@ -3,6 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { CreateShiftDto } from './dto/create-shift.dto';
@@ -41,8 +46,14 @@ export class ShiftsService {
     return this.saveShift(shift);
   }
 
-  findAll() {
-    return this.shiftsRepository.find();
+  async findAll(query: PaginationQueryDto = {}): Promise<Paginated<Shift>> {
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.shiftsRepository.findAndCount({
+      order: { startTime: 'ASC', id: 'ASC' },
+      skip: pagination.skip,
+      take: pagination.take,
+    });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {

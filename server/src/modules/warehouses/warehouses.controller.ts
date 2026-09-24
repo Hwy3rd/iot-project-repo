@@ -6,9 +6,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -48,8 +50,11 @@ export class WarehousesController {
   @Serialize(WarehouseResponseDto)
   @WarehouseListScope()
   @Get()
-  findAll(@ScopedWarehouses() access: WarehouseAccess) {
-    return this.warehousesService.findAll(access);
+  findAll(
+    @ScopedWarehouses() access: WarehouseAccess,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.warehousesService.findAll(access, query);
   }
 
   @WarehouseScope(WarehouseScopeSource.WAREHOUSE_PARAM)

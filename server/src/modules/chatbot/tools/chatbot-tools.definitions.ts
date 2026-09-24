@@ -1,6 +1,7 @@
 import { AlertStatus, AlertType } from '../../../libs/constants/alert.constant';
 import { BatchStatus } from '../../../libs/constants/batch.constant';
 import { CommandStatus } from '../../../libs/constants/command.constant';
+import { MAX_PAGE_LIMIT } from '../../../libs/constants/pagination.constant';
 import { UserRole } from '../../../libs/constants/user.constant';
 
 // Generic tool-calling schema — `name`/`description`/`input_schema` (plain
@@ -45,6 +46,19 @@ export interface ChatbotToolDefinition {
   scope: ChatbotToolScope;
 }
 
+// Paginated list tools return `{ items, meta: { page, limit, total,
+// totalPages } }`, so the model can see there is more and ask for the next
+// page instead of assuming the first page is everything.
+const PAGINATION_PROPS = {
+  page: { type: 'integer', minimum: 1, description: 'Trang (mặc định 1)' },
+  limit: {
+    type: 'integer',
+    minimum: 1,
+    maximum: MAX_PAGE_LIMIT,
+    description: 'Số bản ghi mỗi trang (mặc định 20)',
+  },
+};
+
 const ALL_ROLES = [
   UserRole.ADMIN,
   UserRole.MANAGER,
@@ -84,6 +98,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
         coldRoomId: { type: 'string', description: 'Lọc theo phòng lạnh' },
         deviceId: { type: 'string', description: 'Lọc theo thiết bị' },
         batchId: { type: 'string', description: 'Lọc theo lô hàng' },
+        ...PAGINATION_PROPS,
       },
     },
     allowedRoles: ALL_ROLES,
@@ -131,7 +146,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
     description: 'Lịch sử chuyển trạng thái của 1 thiết bị.',
     input_schema: {
       type: 'object',
-      properties: { deviceId: { type: 'string' } },
+      properties: { deviceId: { type: 'string' }, ...PAGINATION_PROPS },
       required: ['deviceId'],
     },
     allowedRoles: DEVICE_LOG_ROLES,

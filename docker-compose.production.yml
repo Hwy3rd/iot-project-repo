@@ -1,3 +1,13 @@
+# Production stack — standalone (not layered on docker-compose.yml), used by
+# init.sh/run.sh. Differs from the dev file in:
+#   - the root .env is required and datastore credentials must be set in it
+#     (no dev defaults);
+#   - nothing is published on the host except MQTT (1883, for devices): the
+#     API and MinIO are reached through the Cloudflare Tunnel, datastores only
+#     from inside the compose network (admin via `docker exec`);
+#   - the cloudflared service.
+# Keep the shared parts (builds, healthchecks, depends_on, volumes) in sync
+# with docker-compose.yml by hand.
 services:
   app:
     build:
@@ -5,10 +15,8 @@ services:
       additional_contexts:
         docs: ./docs
     container_name: node_server
-    ports:
-      - "8080:3000"
     env_file:
-      - ./server/.env.production
+      - ./.env
     environment:
       - NODE_ENV=production
     command: sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && node dist/main.js"
@@ -45,7 +53,7 @@ services:
     container_name: service_worker
     command: node dist/workers/main.js
     env_file:
-      - ./server/.env.production
+      - ./.env
     environment:
       - NODE_ENV=production
     depends_on:
@@ -64,8 +72,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis_db
-    ports:
-      - "6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -78,28 +84,20 @@ services:
   mysql:
     image: mysql:8.0
     container_name: mysql_db
-    ports:
-      - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_USER: user
-      MYSQL_PASSWORD: password
-      MYSQL_DATABASE: iot_database
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_USER: ${MYSQL_USER:?set MYSQL_USER in .env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?set MYSQL_DATABASE in .env}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
+      # Reads the container's own env at check time ($$ = no compose
+      # substitution), so it always matches the environment block above.
       test:
         [
-          "CMD",
-          "mysql",
-          "-h",
-          "127.0.0.1",
-          "-u",
-          "user",
-          "-ppassword",
-          "iot_database",
-          "-e",
-          "SELECT 1",
+          "CMD-SHELL",
+          'mysql -h 127.0.0.1 -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE" -e "SELECT 1"',
         ]
       interval: 5s
       timeout: 3s
@@ -110,11 +108,9 @@ services:
   mongo:
     image: mongo:7
     container_name: mongo_db
-    ports:
-      - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set MONGO_ROOT_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}
       MONGO_INITDB_DATABASE: iot
     volumes:
       - mongo_data:/data/db
@@ -129,12 +125,9 @@ services:
     image: quay.io/minio/minio:latest
     container_name: minio_bucket
     command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -161,6 +154,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  # Cloudflare Tunnel: outbound-only connection to Cloudflare's edge, which
+  # routes public hostnames back to services on this compose network by name
+  # (e.g. api.<domain> -> http://app:3000, files.<domain> -> http://minio:9000).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      app:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

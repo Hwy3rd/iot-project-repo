@@ -1,7 +1,8 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { PaginationQueryDto } from '../../../common/pagination/pagination-query.dto';
 import { AlertStatus, AlertType } from '../../../libs/constants/alert.constant';
 
-export class QueryAlertDto {
+export class QueryAlertDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(AlertStatus)
   status?: AlertStatus;

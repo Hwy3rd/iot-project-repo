@@ -14,6 +14,10 @@ import {
   AlertStatus,
   AlertType,
 } from '../../libs/constants/alert.constant';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
 import { QueryAlertDto } from './dto/query-alert.dto';
 import { Alert } from './entities/alert.entity';
@@ -176,11 +180,14 @@ export class AlertsService {
   }
 
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
-  findAll(query: QueryAlertDto = {}, access?: WarehouseAccess) {
+  async findAll(
+    query: QueryAlertDto = {},
+    access?: WarehouseAccess,
+  ): Promise<Paginated<Alert>> {
     const where: FindOptionsWhere<Alert> = {};
     const ids = access?.warehouseIds;
     if (ids) {
-      if (ids.length === 0) return Promise.resolve([]);
+      if (ids.length === 0) return Paginated.empty(query);
       where.coldRoom = { warehouseId: In(ids) };
     }
     if (query.status) where.status = query.status;
@@ -189,10 +196,14 @@ export class AlertsService {
     if (query.deviceId) where.deviceId = query.deviceId;
     if (query.batchId) where.batchId = query.batchId;
 
-    return this.alertsRepository.find({
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.alertsRepository.findAndCount({
       where,
-      order: { createdAt: 'DESC' },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string): Promise<Alert> {

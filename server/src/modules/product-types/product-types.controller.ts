@@ -6,9 +6,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { ProductType } from './entities/product-type.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -40,8 +42,8 @@ export class ProductTypesController {
 
   @Serialize(ProductTypeResponseDto)
   @Get()
-  findAll() {
-    return this.productTypesService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.productTypesService.findAll(query);
   }
 
   @Serialize(ProductTypeResponseDto)

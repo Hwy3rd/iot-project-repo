@@ -1,3 +1,5 @@
+import { parseCorsOrigins } from '../../libs/constants/cors.constant';
+
 // Minimal `key=value; key2=value2` cookie header parser — avoids adding a
 // dependency (e.g. `cookie`) just for this; socket.io's handshake only gives
 // us the raw header, not cookie-parser's already-parsed req.cookies.
@@ -29,7 +31,7 @@ export const userRoom = (userId: string): string => `user:${userId}`;
 // them all to one socket.io server, so they must not disagree on options.
 export const REALTIME_GATEWAY_OPTIONS = {
   cors: {
-    origin: (process.env.WS_CORS_ORIGIN ?? 'http://localhost:5173').split(','),
+    origin: parseCorsOrigins(),
     credentials: true,
   },
 };

@@ -6,6 +6,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import Redis from 'ioredis';
@@ -101,9 +106,16 @@ export class UsersService {
     return this.sanitize(saved);
   }
 
-  async findAll() {
-    const users = await this.usersRepository.find();
-    return users.map((user) => this.sanitize(user));
+  async findAll(query: PaginationQueryDto = {}) {
+    const pagination = resolvePagination(query);
+    const [users, total] = await this.usersRepository.findAndCount({
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
+    });
+    return Paginated.of(users, total, pagination).map((user) =>
+      this.sanitize(user),
+    );
   }
 
   async findOne(id: string) {

@@ -33,10 +33,11 @@ describe('DeviceStatusHistoryController', () => {
   it('delegates findAll to the service scoped to the device', async () => {
     deviceStatusHistoryService.findAllForDevice.mockResolvedValue([]);
 
-    await controller.findAll('d1');
+    await controller.findAll('d1', { page: 2, limit: 10 });
 
     expect(deviceStatusHistoryService.findAllForDevice).toHaveBeenCalledWith(
       'd1',
+      { page: 2, limit: 10 },
     );
   });
 });

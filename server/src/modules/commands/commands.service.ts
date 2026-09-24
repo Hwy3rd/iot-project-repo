@@ -3,6 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -51,13 +56,22 @@ export class CommandsService {
   }
 
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
-  findAll(access?: WarehouseAccess) {
+  async findAll(
+    access?: WarehouseAccess,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<Command>> {
     const ids = access?.warehouseIds;
-    if (!ids) return this.commandsRepository.find();
-    if (ids.length === 0) return Promise.resolve([]);
-    return this.commandsRepository.find({
-      where: { channel: { device: { coldRoom: { warehouseId: In(ids) } } } },
+    if (ids?.length === 0) return Paginated.empty(query);
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.commandsRepository.findAndCount({
+      where: ids
+        ? { channel: { device: { coldRoom: { warehouseId: In(ids) } } } }
+        : {},
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {

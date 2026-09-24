@@ -1,3 +1,9 @@
+# Dev stack — standalone. Datastores are published on localhost with default
+# credentials (matching server/.env.example), so `docker compose up -d redis
+# mysql mongo minio mosquitto` works without a root .env for host-run dev
+# (pnpm start:dev). Production uses docker-compose.production.yml instead;
+# keep the shared parts (builds, healthchecks, depends_on, volumes) in sync
+# with it by hand.
 services:
   app:
     build:
@@ -7,15 +13,36 @@ services:
     container_name: node_server
     ports:
       - "8080:3000"
+    # Optional so datastore-only dev works without a root .env.
     env_file:
-      - ./server/.env.production
+      - path: ./.env
+        required: false
     environment:
       - NODE_ENV=production
+    command: sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && node dist/main.js"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(3000,'localhost').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
     depends_on:
-      - redis
-      - mysql
-      - mongo
-      - minio
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
     restart: unless-stopped
 
   worker:
@@ -26,14 +53,21 @@ services:
     container_name: service_worker
     command: node dist/workers/main.js
     env_file:
-      - ./server/.env.production
+      - path: ./.env
+        required: false
     environment:
       - NODE_ENV=production
     depends_on:
-      - redis
-      - mysql
-      - mongo
-      - minio
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -56,25 +90,19 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: password
-      MYSQL_USER: user
-      MYSQL_PASSWORD: password
-      MYSQL_DATABASE: iot_database
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-password}
+      MYSQL_USER: ${MYSQL_USER:-user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-iot_database}
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
+      # Reads the container's own env at check time ($$ = no compose
+      # substitution), so it always matches the environment block above.
       test:
         [
-          "CMD",
-          "mysql",
-          "-h",
-          "127.0.0.1",
-          "-u",
-          "user",
-          "-ppassword",
-          "iot_database",
-          "-e",
-          "SELECT 1",
+          "CMD-SHELL",
+          'mysql -h 127.0.0.1 -u"$$MYSQL_USER" -p"$$MYSQL_PASSWORD" "$$MYSQL_DATABASE" -e "SELECT 1"',
         ]
       interval: 5s
       timeout: 3s
@@ -88,8 +116,8 @@ services:
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-password}
       MONGO_INITDB_DATABASE: iot
     volumes:
       - mongo_data:/data/db
@@ -108,8 +136,8 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
     volumes:
       - minio_data:/data
     healthcheck:

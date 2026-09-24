@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { GetUserId } from '../../common/decorators/get-user-id.decorator';
 import {
   ScopedWarehouses,
@@ -50,8 +51,11 @@ export class CommandsController {
   @Serialize(CommandResponseDto)
   @WarehouseListScope()
   @Get()
-  findAll(@ScopedWarehouses() access: WarehouseAccess) {
-    return this.commandsService.findAll(access);
+  findAll(
+    @ScopedWarehouses() access: WarehouseAccess,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.commandsService.findAll(access, query);
   }
 
   @Roles(...VIEW_ROLES)

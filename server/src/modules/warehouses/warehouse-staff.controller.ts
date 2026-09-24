@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Put,
+  Query,
+} from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
@@ -29,8 +38,11 @@ export class WarehouseStaffController {
   })
   @Serialize(WarehouseStaffResponseDto)
   @Get()
-  findAll(@Param('warehouseId') warehouseId: string) {
-    return this.warehouseStaffService.findAll(warehouseId);
+  findAll(
+    @Param('warehouseId') warehouseId: string,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.warehouseStaffService.findAll(warehouseId, query);
   }
 
   @Roles(UserRole.ADMIN)

@@ -1,4 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, LessThan, Repository } from 'typeorm';
 import { MessageRole } from '../../libs/constants/chatbot.constant';
@@ -39,11 +44,18 @@ export class ChatbotService {
     return this.conversationsRepository.save(conversation);
   }
 
-  findConversations(userId: string): Promise<Conversation[]> {
-    return this.conversationsRepository.find({
+  async findConversations(
+    userId: string,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<Conversation>> {
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.conversationsRepository.findAndCount({
       where: { userId },
-      order: { lastMessageAt: 'DESC', createdAt: 'DESC' },
+      order: { lastMessageAt: 'DESC', createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   // Same "same 404 whether missing or someone else's" pattern as

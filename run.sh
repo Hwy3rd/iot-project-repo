@@ -14,13 +14,13 @@
 #   ./run.sh logs [svc]       follow logs (all services, or just one)
 #   ./run.sh down             remove containers (keeps volumes/data)
 #
-# Services: app, worker, redis, mysql, mongo, minio
+# Services: app, worker, redis, mysql, mongo, minio, mosquitto, cloudflared
 #
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
-SERVICES=(app worker redis mysql mongo minio)
+SERVICES=(app worker redis mysql mongo minio mosquitto cloudflared)
 
 log()  { printf '\033[1;34m[run]\033[0m %s\n' "$1"; }
 ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$1"; }

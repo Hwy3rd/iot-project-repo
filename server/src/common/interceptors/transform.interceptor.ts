@@ -11,6 +11,7 @@ import {
 } from '../../libs/constants/metadata.constant';
 import { Reflector } from '@nestjs/core';
 import { plainToInstance } from 'class-transformer';
+import { Paginated } from '../pagination/paginated';
 
 interface Response<T> {
   success: boolean;
@@ -29,8 +30,13 @@ export class TransformInterceptor<T> implements NestInterceptor<
   private serializeData(data: unknown, dto?: new (...args: any[]) => object) {
     if (!dto || data == null) return data;
 
-    if (Array.isArray(data)) {
-      return plainToInstance(dto, data, { excludeExtraneousValues: true });
+    if (data instanceof Paginated) {
+      return {
+        items: plainToInstance(dto, data.items as unknown[], {
+          excludeExtraneousValues: true,
+        }),
+        meta: data.meta,
+      };
     }
 
     return plainToInstance(dto, data, { excludeExtraneousValues: true });

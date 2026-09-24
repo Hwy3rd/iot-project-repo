@@ -83,7 +83,7 @@ ESP32 ──MQTT──▶ mosquitto ──▶ MqttIngestService ──▶ Teleme
 
 `MqttIngestService` (`server/src/modules/mqtt-ingest/`) chạy trong tiến trình `app` (không phải `worker`) vì cần dùng thẳng `TelemetryModule`/`AlertsModule` đã wire sẵn ở đó. Kết nối MQTT dùng client `mqtt` toàn cục (`libs/mqtt/mqtt.module.ts`, `MQTT_URL`), subscribe filter `devices/+/telemetry` (QoS 1). Mỗi message được validate (`class-validator`) khớp đúng `TelemetrySample`, tra `Device` theo `unique_id` (không phải `id` nội bộ) — payload sai định dạng, thiết bị không tồn tại, hoặc bị `TelemetryService.ingest()` từ chối (chưa claim vào cold room, đã decommission...) chỉ log cảnh báo rồi bỏ qua, không làm rớt kết nối chung.
 
-Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `docker-compose.yml` và `docker-compose.production.yml`. Cấu hình hiện tại cho phép kết nối anonymous (`allow_anonymous true`), không có TLS — đủ dùng khi broker chỉ nằm trong mạng docker-compose nội bộ; khoá lại bằng `password_file`/TLS là bước cứng hoá cần làm riêng trước khi mở broker ra mạng không tin cậy (xem comment trong `server/.env.production.example`).
+Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `docker-compose.yml` và `docker-compose.production.yml`. Cấu hình hiện tại cho phép kết nối anonymous (`allow_anonymous true`), không có TLS — đủ dùng khi broker chỉ nằm trong mạng docker-compose nội bộ; khoá lại bằng `password_file`/TLS là bước cứng hoá cần làm riêng trước khi mở broker ra mạng không tin cậy (xem comment trong `.env.example`).
 
 **Gap đã biết, quan trọng khi phát triển tiếp:**
 
@@ -121,10 +121,10 @@ Dockerfile multi-stage (`server/Dockerfile`):
 
 **Đánh đổi cần biết:** cách này chỉ an toàn khi chạy đúng 1 container `app` (không có `deploy.replicas`/orchestrator scale) — vì mỗi lần `app` khởi động lại đều tự chạy `migration:run`. Nếu sau này scale `app` lên nhiều replica, cần tách migration ra container one-off riêng (build từ stage `builder`, chạy 1 lần, `app` phụ thuộc vào container đó bằng `condition: service_completed_successfully`) để tránh nhiều replica cùng chạy DDL đồng thời lên 1 DB.
 
-2 file compose có mục đích khác nhau:
+2 file compose **độc lập** (mỗi file tự đầy đủ, chạy riêng bằng `-f`), cùng tập service và cùng build/healthcheck/`depends_on`/volume — phần chung này phải sửa **cả 2 file** khi thay đổi:
 
-- `docker-compose.yml` — dev: chỉ 4 datastore (`redis`, `mysql`, `mongo`, `minio`), backend chạy trực tiếp trên host bằng `pnpm start:dev`.
-- `docker-compose.production.yml` — full stack: `app` (tự migrate rồi mới serve) → `worker` + datastore, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh) ở thư mục gốc repo.
+- `docker-compose.yml` — dev: publish port datastore ra `localhost`, credential có giá trị mặc định (khớp `server/.env.example`), `.env` ở root là tuỳ chọn — dùng cho `docker compose up -d redis mysql mongo minio mosquitto` khi chạy backend trên host bằng `pnpm start:dev`.
+- `docker-compose.production.yml` — production, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh): `.env` và credential datastore bắt buộc, không publish port nào trừ MQTT `1883`, có thêm `cloudflared`.
 
 ---
 

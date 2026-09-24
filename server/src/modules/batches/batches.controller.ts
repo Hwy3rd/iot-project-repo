@@ -6,7 +6,9 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -46,8 +48,11 @@ export class BatchesController {
   @Serialize(BatchResponseDto)
   @WarehouseListScope()
   @Get()
-  findAll(@ScopedWarehouses() access: WarehouseAccess) {
-    return this.batchesService.findAll(access);
+  findAll(
+    @ScopedWarehouses() access: WarehouseAccess,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.batchesService.findAll(access, query);
   }
 
   @Roles(...BATCH_ROLES)

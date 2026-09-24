@@ -6,7 +6,9 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { Shift } from './entities/shift.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -31,8 +33,8 @@ export class ShiftsController {
 
   @Serialize(ShiftResponseDto)
   @Get()
-  findAll() {
-    return this.shiftsService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.shiftsService.findAll(query);
   }
 
   @Serialize(ShiftResponseDto)

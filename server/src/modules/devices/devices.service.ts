@@ -4,6 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  Paginated,
+  resolvePagination,
+} from '../../common/pagination/paginated';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -53,13 +58,20 @@ export class DevicesService {
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
   // Unclaimed devices (no cold room) belong to no warehouse, so only an
   // unrestricted caller (Admin) sees them.
-  findAll(access?: WarehouseAccess) {
+  async findAll(
+    access?: WarehouseAccess,
+    query: PaginationQueryDto = {},
+  ): Promise<Paginated<Device>> {
     const ids = access?.warehouseIds;
-    if (!ids) return this.devicesRepository.find();
-    if (ids.length === 0) return Promise.resolve([]);
-    return this.devicesRepository.find({
-      where: { coldRoom: { warehouseId: In(ids) } },
+    if (ids?.length === 0) return Paginated.empty(query);
+    const pagination = resolvePagination(query);
+    const [items, total] = await this.devicesRepository.findAndCount({
+      where: ids ? { coldRoom: { warehouseId: In(ids) } } : {},
+      order: { createdAt: 'DESC', id: 'DESC' },
+      skip: pagination.skip,
+      take: pagination.take,
     });
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {

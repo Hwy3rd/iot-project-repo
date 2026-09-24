@@ -6,7 +6,9 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -52,8 +54,11 @@ export class DevicesController {
   @Serialize(DeviceResponseDto)
   @WarehouseListScope({ requireShift: true })
   @Get()
-  findAll(@ScopedWarehouses() access: WarehouseAccess) {
-    return this.devicesService.findAll(access);
+  findAll(
+    @ScopedWarehouses() access: WarehouseAccess,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.devicesService.findAll(access, query);
   }
 
   @Roles(...DEVICE_VIEW_ROLES)

@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { GetUserId } from '../../common/decorators/get-user-id.decorator';
 import { GetUserRole } from '../../common/decorators/get-user-role.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
@@ -39,8 +40,8 @@ export class ChatbotController {
 
   @Serialize(ConversationResponseDto)
   @Get()
-  findAll(@GetUserId() userId: string) {
-    return this.chatbotService.findConversations(userId);
+  findAll(@GetUserId() userId: string, @Query() query: PaginationQueryDto) {
+    return this.chatbotService.findConversations(userId, query);
   }
 
   @Serialize(ConversationResponseDto)
