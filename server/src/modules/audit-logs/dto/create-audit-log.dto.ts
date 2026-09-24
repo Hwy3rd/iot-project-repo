@@ -1,9 +1,11 @@
 import { IsObject, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CreateAuditLogDto {
+  // Omit for system actions / unknown-username login failures.
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  userId!: string;
+  userId?: string;
 
   @IsOptional()
   @IsString()

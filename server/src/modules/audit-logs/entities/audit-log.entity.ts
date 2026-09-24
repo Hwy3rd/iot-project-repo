@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryColumn,
@@ -15,7 +16,13 @@ import { Warehouse } from '../../warehouses/entities/warehouse.entity';
 // must never be editable, not even by an admin — that's the whole point.
 // No onDelete cascade on either FK: log entries must outlive the user or
 // warehouse they reference.
+// Indexes follow the list endpoint's filters, newest-first: by time alone,
+// by actor, by warehouse (the Manager-scoped view) and by target entity.
 @Entity('audit_logs')
+@Index(['createdAt'])
+@Index(['userId', 'createdAt'])
+@Index(['warehouseId', 'createdAt'])
+@Index(['targetType', 'targetId'])
 export class AuditLog {
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id!: string;
@@ -25,12 +32,15 @@ export class AuditLog {
     this.id ??= uuidv7();
   }
 
-  @Column({ type: 'varchar', name: 'user_id', length: 36 })
-  userId!: string;
+  // Null when there is no user to attribute the action to: a system/worker
+  // action, or a failed login for a username that doesn't exist (the
+  // attempted username is then kept in metadata instead).
+  @Column({ type: 'varchar', name: 'user_id', length: 36, nullable: true })
+  userId!: string | null;
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'user_id' })
-  user!: User;
+  user!: User | null;
 
   // Null when the action isn't scoped to a specific warehouse (e.g. a user
   // editing their own profile).

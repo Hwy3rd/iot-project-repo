@@ -1,8 +1,14 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
+import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { User } from './entities/user.entity';
@@ -33,9 +39,11 @@ describe('UsersService', () => {
   let service: UsersService;
   let repository: MockRepository;
   let dataSource: ReturnType<typeof createMockDataSource>;
+  let redis: { del: jest.Mock };
 
   beforeEach(async () => {
     dataSource = createMockDataSource();
+    redis = { del: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -51,6 +59,7 @@ describe('UsersService', () => {
           provide: UploadFilesService,
           useValue: { uploadImages: jest.fn(), deleteImage: jest.fn() },
         },
+        { provide: REDIS_CLIENT, useValue: redis },
       ],
     }).compile();
 
@@ -169,6 +178,87 @@ describe('UsersService', () => {
       ];
       expect(id).toBe('1');
       expect(payload.lastLoginAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('update', () => {
+    const staffUser = { id: 's1', role: UserRole.STAFF, fullName: 'A' };
+    const self = { id: 's1', role: UserRole.STAFF };
+
+    beforeEach(() => {
+      repository.save!.mockImplementation((u: User) => Promise.resolve(u));
+    });
+
+    it('forbids a non-admin from changing their own role', async () => {
+      repository.findOne!.mockResolvedValue({ ...staffUser });
+
+      await expect(
+        service.update('s1', { role: UserRole.ADMIN }, self),
+      ).rejects.toThrow(ForbiddenException);
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('lets a non-admin resend their unchanged role with other edits', async () => {
+      repository.findOne!.mockResolvedValue({ ...staffUser });
+
+      await expect(
+        service.update('s1', { role: UserRole.STAFF, fullName: 'B' }, self),
+      ).resolves.toMatchObject({ fullName: 'B', role: UserRole.STAFF });
+    });
+
+    it('lets an admin change a role', async () => {
+      repository.findOne!.mockResolvedValue({ ...staffUser });
+
+      await expect(
+        service.update(
+          's1',
+          { role: UserRole.MANAGER },
+          { id: 'a1', role: UserRole.ADMIN },
+        ),
+      ).resolves.toMatchObject({ role: UserRole.MANAGER });
+    });
+  });
+
+  describe('lock / unlock', () => {
+    beforeEach(() => {
+      repository.save!.mockImplementation((u: User) => Promise.resolve(u));
+    });
+
+    it('refuses to let an admin lock themselves', async () => {
+      await expect(service.lock('a1', 'a1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('throws NotFoundException for an unknown user', async () => {
+      repository.findOne!.mockResolvedValue(null);
+
+      await expect(service.lock('x', 'a1')).rejects.toThrow(NotFoundException);
+    });
+
+    it('locks the account and revokes its refresh session', async () => {
+      repository.findOne!.mockResolvedValue({
+        id: 'u1',
+        status: UserStatus.ACTIVE,
+        passwordHash: 'h',
+      });
+
+      const result = await service.lock('u1', 'a1');
+
+      expect(result).toMatchObject({ id: 'u1', status: UserStatus.LOCKED });
+      expect(result).not.toHaveProperty('passwordHash');
+      expect(redis.del).toHaveBeenCalledWith('refresh:u1');
+    });
+
+    it('unlocks the account', async () => {
+      repository.findOne!.mockResolvedValue({
+        id: 'u1',
+        status: UserStatus.LOCKED,
+      });
+
+      await expect(service.unlock('u1')).resolves.toMatchObject({
+        status: UserStatus.ACTIVE,
+      });
     });
   });
 

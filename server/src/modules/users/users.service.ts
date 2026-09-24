@@ -1,11 +1,20 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
+import Redis from 'ioredis';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { UserRole, UserStatus } from '../../libs/constants/user.constant';
+import {
+  REDIS_CLIENT,
+  refreshSessionKey,
+} from '../../libs/redis/redis.constant';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -13,6 +22,13 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
 
 const SALT_ROUNDS = 10;
+
+// Who is calling update() — needed because the same PATCH /users/:id route
+// serves both Admin (any user, any field) and a user editing themselves.
+export interface UserActor {
+  id: string;
+  role: UserRole;
+}
 
 @Injectable()
 export class UsersService {
@@ -22,6 +38,7 @@ export class UsersService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly uploadFilesService: UploadFilesService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   private sanitize(user: User) {
@@ -90,13 +107,56 @@ export class UsersService {
     await this.usersRepository.update(id, { lastLoginAt: new Date() });
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
+  async update(id: string, updateUserDto: UpdateUserDto, actor?: UserActor) {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException(`User ${id} not found`);
     }
 
+    // SelfScopeGuard lets any user PATCH their own record, and UpdateUserDto
+    // carries `role` — without this check a Staff could promote themselves
+    // to Admin (effective at their next token refresh). Resending the
+    // current role unchanged is harmless and allowed.
+    if (
+      actor &&
+      actor.role !== UserRole.ADMIN &&
+      updateUserDto.role !== undefined &&
+      updateUserDto.role !== user.role
+    ) {
+      throw new ForbiddenException('Only an admin can change a user role');
+    }
+
     Object.assign(user, updateUserDto);
+    const saved = await this.saveUser(user);
+    return this.sanitize(saved);
+  }
+
+  // Also ends the user's session: deleting the refresh-token hash makes the
+  // next POST /auth/refresh fail. An access token already issued stays valid
+  // until it expires (≤ JWT_EXPIRES_IN) — JwtStrategy doesn't hit the DB by
+  // design (see CLAUDE.md "Auth").
+  async lock(id: string, actorId: string) {
+    if (id === actorId) {
+      throw new BadRequestException('You cannot lock your own account');
+    }
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    user.status = UserStatus.LOCKED;
+    const saved = await this.saveUser(user);
+    await this.redis.del(refreshSessionKey(id));
+    return this.sanitize(saved);
+  }
+
+  async unlock(id: string) {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+
+    user.status = UserStatus.ACTIVE;
     const saved = await this.saveUser(user);
     return this.sanitize(saved);
   }

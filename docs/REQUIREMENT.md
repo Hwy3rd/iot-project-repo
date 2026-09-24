@@ -96,7 +96,7 @@ Mỗi loại sự cố tại một đối tượng chỉ giữ đúng một cả
 
 - Ghi lại nhật ký các thao tác quan trọng trong hệ thống: ai, làm gì, trên đối tượng nào, khi nào — phục vụ tra soát và tuân thủ nội bộ.
 - Nhật ký, cũng như lịch sử cảnh báo/lệnh điều khiển/đổi trạng thái thiết bị, không bị xoá hay chỉnh sửa sau khi ghi, kể cả khi đối tượng liên quan (thiết bị, người dùng, kho) sau đó bị xoá khỏi hệ thống.
-- Chỉ vai trò quản trị cao nhất (Admin) được xem nhật ký ở phạm vi toàn hệ thống.
+- Chỉ vai trò quản trị cao nhất (Admin) được xem nhật ký ở phạm vi toàn hệ thống; Quản lý kho xem được nhật ký các thao tác diễn ra tại (các) kho mình quản lý.
 
 ### 3.11 Phân quyền theo vai trò & phạm vi
 

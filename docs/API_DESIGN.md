@@ -73,8 +73,10 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `POST /users` | A | `{ username, email?, phone?, password, fullName?, role, imageUrls? }` | `UserResponseDto` |
 | `GET /users` | A | — | `UserResponseDto[]` (toàn bộ hệ thống) |
 | `GET /users/:id` | TT | — | `UserResponseDto` |
-| `PATCH /users/:id` | TT | như create, trừ `password` | `UserResponseDto` |
+| `PATCH /users/:id` | TT | như create, trừ `password` | `UserResponseDto` — chỉ Admin được đổi `role` (người khác gửi `role` khác role hiện tại → `403`) |
 | `DELETE /users/:id` | A | — | `null` (soft delete) |
+| `POST /users/:id/lock` | A | — | `UserResponseDto` — `status → locked`, xoá phiên refresh (access token đang có hết hạn tự nhiên ≤ `JWT_EXPIRES_IN`); không tự khoá chính mình (`400`) |
+| `POST /users/:id/unlock` | A | — | `UserResponseDto` — `status → active` |
 | `POST /users/:id/images` | TT | `multipart/form-data` | `UserResponseDto` |
 | `DELETE /users/:id/images` | TT | `{ url }` | `UserResponseDto` |
 
@@ -91,6 +93,9 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `DELETE /warehouses/:id` | A | — | `null` (soft delete) |
 | `POST /warehouses/:id/images` | A | `multipart/form-data` | `WarehouseResponseDto` |
 | `DELETE /warehouses/:id/images` | A | `{ url }` | `WarehouseResponseDto` |
+| `GET /warehouses/:warehouseId/staff` | A, M (**P**) | — | `WarehouseStaffResponseDto[]` (`userId`, `warehouseId`, `role` tại kho, `user { id, username, fullName }`) |
+| `PUT /warehouses/:warehouseId/staff/:userId` | A | `{ role: manager \| technician \| staff }` | `WarehouseStaffResponseDto` — upsert: gán mới hoặc đổi role tại kho |
+| `DELETE /warehouses/:warehouseId/staff/:userId` | A | — | `null` (`404` nếu user chưa được gán) |
 
 > Các endpoint `GET` liệt kê danh sách (`findAll`) trong toàn bộ tài liệu này trả về **toàn bộ** bản ghi, không tự lọc theo warehouse mà caller được gán — `WarehouseScopeGuard` chỉ áp dụng được cho endpoint thao tác trên 1 tài nguyên cụ thể (`:id`). Lọc theo phạm vi ở endpoint danh sách là việc của tầng service, hiện chưa triển khai.
 
@@ -261,13 +266,12 @@ Web Push. Các endpoint dưới đây nhận `userId` trực tiếp từ request
 
 ## 17. Audit Logs — `/audit-logs`
 
-Append-only, chỉ Admin — không có `PATCH`/`DELETE`.
+Append-only và **chỉ đọc qua API** — không có `POST`/`PATCH`/`DELETE`, kể cả với Admin. Bản ghi chỉ được thêm từ bên trong server (các module khác gọi trực tiếp `AuditLogsService.create()`), để không client nào giả mạo hay sửa được nhật ký. Xem: Admin toàn hệ thống; Manager chỉ thấy bản ghi có `warehouse_id` thuộc warehouse mình giữ vai trò Manager (lọc `warehouseId` ngoài phạm vi → `403`, xem 1 bản ghi ngoài phạm vi hoặc không gắn warehouse → `403`).
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
-| `POST /audit-logs` | A (nội bộ — ghi bởi các module khác, không phải form nhập liệu người dùng) | `{ userId, warehouseId?, action, targetType?, targetId?, metadata? }` | `AuditLogResponseDto` |
-| `GET /audit-logs` | A | Query lọc (xem `QueryAuditLogDto`) | `AuditLogResponseDto[]` |
-| `GET /audit-logs/:id` | A | — | `AuditLogResponseDto` |
+| `GET /audit-logs` | A, M (**P**) | Query lọc (xem `QueryAuditLogDto`) | `AuditLogResponseDto[]` |
+| `GET /audit-logs/:id` | A, M (**P**) | — | `AuditLogResponseDto` |
 
 ---
 
@@ -300,5 +304,5 @@ Chiều server → client (`emitToWarehouse(warehouseId, event, payload)`) đã 
 | Commands — gửi lệnh | A, T (**P**), S (**C**) | A, M, T, S |
 | Alerts — acknowledge | A, M, T, S (**C**) | A, M, T, S |
 | Alerts — resolve | A, M, T (**P**) | — |
-| Audit Logs | A | A |
+| Audit Logs | Nội bộ (không qua API) | A, M (**P**) |
 | Notifications | mọi role (tự khai `userId`) | mọi role |

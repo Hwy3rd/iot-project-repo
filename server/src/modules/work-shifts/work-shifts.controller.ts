@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { WorkShift } from './entities/work-shift.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -26,6 +28,11 @@ export class WorkShiftsController {
     paramName: 'warehouseId',
   })
   @Serialize(WorkShiftResponseDto)
+  @Audit({
+    action: 'work_shift.create',
+    targetType: 'work_shift',
+    entity: WorkShift,
+  })
   @Post()
   create(@Body() createWorkShiftDto: CreateWorkShiftDto) {
     return this.workShiftsService.create(createWorkShiftDto);
@@ -49,6 +56,11 @@ export class WorkShiftsController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM)
   @Serialize(WorkShiftResponseDto)
+  @Audit({
+    action: 'work_shift.update',
+    targetType: 'work_shift',
+    entity: WorkShift,
+  })
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -62,6 +74,11 @@ export class WorkShiftsController {
     ownStaffOnly: true,
   })
   @Serialize(WorkShiftResponseDto)
+  @Audit({
+    action: 'work_shift.check_in',
+    targetType: 'work_shift',
+    entity: WorkShift,
+  })
   @Post(':id/check-in')
   checkIn(@Param('id') id: string) {
     return this.workShiftsService.checkIn(id);
@@ -72,6 +89,11 @@ export class WorkShiftsController {
     ownStaffOnly: true,
   })
   @Serialize(WorkShiftResponseDto)
+  @Audit({
+    action: 'work_shift.check_out',
+    targetType: 'work_shift',
+    entity: WorkShift,
+  })
   @Post(':id/check-out')
   checkOut(@Param('id') id: string) {
     return this.workShiftsService.checkOut(id);
@@ -79,6 +101,11 @@ export class WorkShiftsController {
 
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM)
+  @Audit({
+    action: 'work_shift.delete',
+    targetType: 'work_shift',
+    entity: WorkShift,
+  })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.workShiftsService.remove(id);

@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { GlobalExceptionFilter } from './common/fitlers/global-exception.filter';
+import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { RbacModule } from './common/rbac/rbac.module';
 import { dataSourceOptions } from './database/data-source';
@@ -78,6 +79,11 @@ import { ChatbotModule } from './modules/chatbot/chatbot.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: TransformInterceptor,
+    },
+    // No-op unless the handler has @Audit() — see audit.interceptor.ts.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
     {
       provide: APP_FILTER,

@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { Batch } from './entities/batch.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -29,6 +31,7 @@ export class BatchesController {
     requireShift: true,
   })
   @Serialize(BatchResponseDto)
+  @Audit({ action: 'batch.create', targetType: 'batch', entity: Batch })
   @Post()
   create(@Body() createBatchDto: CreateBatchDto) {
     return this.batchesService.create(createBatchDto);
@@ -54,6 +57,7 @@ export class BatchesController {
   @Roles(...BATCH_ROLES)
   @WarehouseScope(WarehouseScopeSource.BATCH_PARAM, { requireShift: true })
   @Serialize(BatchResponseDto)
+  @Audit({ action: 'batch.update', targetType: 'batch', entity: Batch })
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateBatchDto: UpdateBatchDto) {
     return this.batchesService.update(id, updateBatchDto);
@@ -61,6 +65,7 @@ export class BatchesController {
 
   @Roles(...BATCH_ROLES)
   @WarehouseScope(WarehouseScopeSource.BATCH_PARAM, { requireShift: true })
+  @Audit({ action: 'batch.remove', targetType: 'batch', entity: Batch })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.batchesService.remove(id);

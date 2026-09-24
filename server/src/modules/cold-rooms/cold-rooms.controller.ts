@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import { Audit } from '../../common/decorators/audit.decorator';
+import { ColdRoom } from './entities/cold-room.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -26,6 +28,11 @@ export class ColdRoomsController {
     paramName: 'warehouseId',
   })
   @Serialize(ColdRoomResponseDto)
+  @Audit({
+    action: 'cold_room.create',
+    targetType: 'cold_room',
+    entity: ColdRoom,
+  })
   @Post()
   create(@Body() createColdRoomDto: CreateColdRoomDto) {
     return this.coldRoomsService.create(createColdRoomDto);
@@ -49,6 +56,11 @@ export class ColdRoomsController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)
   @Serialize(ColdRoomResponseDto)
+  @Audit({
+    action: 'cold_room.update',
+    targetType: 'cold_room',
+    entity: ColdRoom,
+  })
   @Patch(':id')
   update(
     @Param('id') id: string,
@@ -58,6 +70,11 @@ export class ColdRoomsController {
   }
 
   @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'cold_room.delete',
+    targetType: 'cold_room',
+    entity: ColdRoom,
+  })
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.coldRoomsService.remove(id);
