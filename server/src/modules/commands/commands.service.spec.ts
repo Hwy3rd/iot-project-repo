@@ -8,7 +8,6 @@ import {
 } from '../../libs/constants/command.constant';
 import { ChannelRole } from '../../libs/constants/device-channel.constant';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
-import { User } from '../users/entities/user.entity';
 import { CommandsService } from './commands.service';
 import { Command } from './entities/command.entity';
 
@@ -28,7 +27,6 @@ describe('CommandsService', () => {
   let service: CommandsService;
   let commandsRepository: MockRepository<Command>;
   let channelsRepository: MockRepository<DeviceChannel>;
-  let usersRepository: MockRepository<User>;
 
   const dto = { channelId: 'c1', action: CommandAction.ON };
 
@@ -44,17 +42,12 @@ describe('CommandsService', () => {
           provide: getRepositoryToken(DeviceChannel),
           useValue: createMockRepository<DeviceChannel>(),
         },
-        {
-          provide: getRepositoryToken(User),
-          useValue: createMockRepository<User>(),
-        },
       ],
     }).compile();
 
     service = module.get<CommandsService>(CommandsService);
     commandsRepository = module.get(getRepositoryToken(Command));
     channelsRepository = module.get(getRepositoryToken(DeviceChannel));
-    usersRepository = module.get(getRepositoryToken(User));
   });
 
   it('should be defined', () => {
@@ -65,7 +58,9 @@ describe('CommandsService', () => {
     it('throws NotFoundException when the channel does not exist', async () => {
       channelsRepository.findOne!.mockResolvedValue(null);
 
-      await expect(service.create(dto)).rejects.toThrow(NotFoundException);
+      await expect(service.create(dto, 'u1')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('throws ConflictException when the channel is a sensor', async () => {
@@ -74,18 +69,8 @@ describe('CommandsService', () => {
         channelRole: ChannelRole.SENSOR,
       });
 
-      await expect(service.create(dto)).rejects.toThrow(ConflictException);
-    });
-
-    it('throws NotFoundException when issuedBy does not resolve to a user', async () => {
-      channelsRepository.findOne!.mockResolvedValue({
-        id: 'c1',
-        channelRole: ChannelRole.ACTUATOR,
-      });
-      usersRepository.findOne!.mockResolvedValue(null);
-
-      await expect(service.create({ ...dto, issuedBy: 'u1' })).rejects.toThrow(
-        NotFoundException,
+      await expect(service.create(dto, 'u1')).rejects.toThrow(
+        ConflictException,
       );
     });
 
@@ -100,12 +85,12 @@ describe('CommandsService', () => {
         ...v,
       }));
 
-      const result = await service.create(dto);
+      const result = await service.create(dto, 'u1');
 
       expect(commandsRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           channelId: 'c1',
-          issuedBy: null,
+          issuedBy: 'u1',
           status: CommandStatus.PENDING,
         }),
       );

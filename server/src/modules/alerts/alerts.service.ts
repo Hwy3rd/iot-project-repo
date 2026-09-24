@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
@@ -14,10 +15,7 @@ import {
   AlertType,
 } from '../../libs/constants/alert.constant';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
-import { User } from '../users/entities/user.entity';
-import { AcknowledgeAlertDto } from './dto/acknowledge-alert.dto';
 import { QueryAlertDto } from './dto/query-alert.dto';
-import { ResolveAlertDto } from './dto/resolve-alert.dto';
 import { Alert } from './entities/alert.entity';
 import { buildActiveKey } from './alerts.util';
 
@@ -52,8 +50,6 @@ export class AlertsService {
   constructor(
     @InjectRepository(Alert)
     private readonly alertsRepository: Repository<Alert>,
-    @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
     @InjectQueue(QUEUE_NAMES.ALERT_NOTIFICATIONS)
     private readonly notificationsQueue: Queue,
   ) {}
@@ -127,9 +123,12 @@ export class AlertsService {
 
   // Atomic conditional update (not find-then-save) so two people
   // acknowledging the same alert at once can't both "succeed".
-  async acknowledge(id: string, dto: AcknowledgeAlertDto): Promise<Alert> {
-    const acknowledgedBy = await this.resolveActorId(dto.userId);
-
+  // acknowledgedBy: the authenticated user, or null for an automated caller
+  // — never client-supplied (see AlertsController).
+  async acknowledge(
+    id: string,
+    acknowledgedBy: string | null = null,
+  ): Promise<Alert> {
     const result = await this.alertsRepository.update(
       { id, status: AlertStatus.OPEN },
       {
@@ -153,9 +152,10 @@ export class AlertsService {
   // "câu hỏi 1". Deferred until there's a live-state read (Redis
   // device:latest/door:open) to check against; doing it only for some types
   // today would be an inconsistent half-measure.
-  async resolveManual(id: string, dto: ResolveAlertDto): Promise<Alert> {
-    const resolvedBy = await this.resolveActorId(dto.userId);
-
+  async resolveManual(
+    id: string,
+    resolvedBy: string | null = null,
+  ): Promise<Alert> {
     const result = await this.alertsRepository.update(
       { id, status: In([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]) },
       {
@@ -175,8 +175,14 @@ export class AlertsService {
     return this.findOne(id);
   }
 
-  findAll(query: QueryAlertDto = {}) {
+  // access omitted = unfiltered (internal callers); see WarehouseAccess.
+  findAll(query: QueryAlertDto = {}, access?: WarehouseAccess) {
     const where: FindOptionsWhere<Alert> = {};
+    const ids = access?.warehouseIds;
+    if (ids) {
+      if (ids.length === 0) return Promise.resolve([]);
+      where.coldRoom = { warehouseId: In(ids) };
+    }
     if (query.status) where.status = query.status;
     if (query.type) where.type = query.type;
     if (query.coldRoomId) where.coldRoomId = query.coldRoomId;
@@ -223,16 +229,5 @@ export class AlertsService {
         `Failed to enqueue notification for alert ${alertId}: ${(error as Error).message}`,
       );
     }
-  }
-
-  private async resolveActorId(userId?: string): Promise<string | null> {
-    if (!userId) {
-      return null;
-    }
-    const user = await this.usersRepository.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException(`User ${userId} not found`);
-    }
-    return user.id;
   }
 }

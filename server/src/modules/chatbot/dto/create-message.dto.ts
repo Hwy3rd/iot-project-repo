@@ -1,4 +1,5 @@
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { CHATBOT_MESSAGE_MAX_LENGTH } from '../../../libs/constants/chatbot.constant';
 
 // Role is deliberately not a field here — this DTO is only ever used for
 // the client-facing "send a message" endpoint, which always writes
@@ -7,6 +8,8 @@ import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
 export class CreateMessageDto {
   @IsNotEmpty()
   @IsString()
-  @MaxLength(8000)
+  @MaxLength(CHATBOT_MESSAGE_MAX_LENGTH, {
+    message: `Tin nhắn tối đa ${CHATBOT_MESSAGE_MAX_LENGTH} ký tự`,
+  })
   content!: string;
 }

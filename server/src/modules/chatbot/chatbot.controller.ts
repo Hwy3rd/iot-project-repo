@@ -66,12 +66,13 @@ export class ChatbotController {
     return this.chatbotService.findMessages(id, userId, query);
   }
 
-  // The only route that triggers an LLM call — see ChatbotRateLimitGuard
-  // for why this is the one route that needs it. Persists the user's
-  // message, runs the full tool-calling loop, and returns the final
-  // assistant reply (the client already has its own message locally; the
-  // intermediate tool-call/tool-result rows this turn also wrote are
-  // available via GET :id/messages if needed, not returned here).
+  // The only REST route that triggers an LLM call — see
+  // ChatbotRateLimitGuard. The primary way to send is the socket event
+  // `chatbot:send` (ChatbotGateway); this synchronous variant runs the same
+  // turn but answers only with the final assistant reply, for REST Client
+  // testing and socket-less callers. Progress/reply events are still pushed
+  // to the user's sockets. The intermediate tool-call/tool-result rows are
+  // available via GET :id/messages, not returned here.
   @UseGuards(ChatbotRateLimitGuard)
   @Serialize(MessageResponseDto)
   @Post(':id/messages')

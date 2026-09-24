@@ -75,7 +75,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `GET /users/:id` | TT | — | `UserResponseDto` |
 | `PATCH /users/:id` | TT | như create, trừ `password` | `UserResponseDto` — chỉ Admin được đổi `role` (người khác gửi `role` khác role hiện tại → `403`) |
 | `DELETE /users/:id` | A | — | `null` (soft delete) |
-| `POST /users/:id/lock` | A | — | `UserResponseDto` — `status → locked`, xoá phiên refresh (access token đang có hết hạn tự nhiên ≤ `JWT_EXPIRES_IN`); không tự khoá chính mình (`400`) |
+| `POST /users/:id/lock` | A | — | `UserResponseDto` — `status → locked`, có hiệu lực ngay: xoá phiên refresh, access token đang có bị từ chối (key `blocked:<id>` trong Redis), WebSocket bị ngắt; không tự khoá chính mình (`400`). `DELETE /users/:id` cũng thu hồi quyền truy cập ngay theo cách này |
 | `POST /users/:id/unlock` | A | — | `UserResponseDto` — `status → active` |
 | `POST /users/:id/images` | TT | `multipart/form-data` | `UserResponseDto` |
 | `DELETE /users/:id/images` | TT | `{ url }` | `UserResponseDto` |
@@ -97,7 +97,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `PUT /warehouses/:warehouseId/staff/:userId` | A | `{ role: manager \| technician \| staff }` | `WarehouseStaffResponseDto` — upsert: gán mới hoặc đổi role tại kho |
 | `DELETE /warehouses/:warehouseId/staff/:userId` | A | — | `null` (`404` nếu user chưa được gán) |
 
-> Các endpoint `GET` liệt kê danh sách (`findAll`) trong toàn bộ tài liệu này trả về **toàn bộ** bản ghi, không tự lọc theo warehouse mà caller được gán — `WarehouseScopeGuard` chỉ áp dụng được cho endpoint thao tác trên 1 tài nguyên cụ thể (`:id`). Lọc theo phạm vi ở endpoint danh sách là việc của tầng service, hiện chưa triển khai.
+> Các endpoint `GET` liệt kê danh sách của tài nguyên gắn warehouse (`/warehouses`, `/cold-rooms`, `/devices`, `/batches`, `/work-shifts`, `/commands`, `/alerts`, `/audit-logs`) chỉ trả về bản ghi thuộc các warehouse caller được đọc, xét theo **role tại từng warehouse** (`warehouse_staff.role`) — Admin thấy toàn bộ. Chi tiết mô hình: `docs/RBAC.md` §1, §3.
 
 ---
 
@@ -152,7 +152,7 @@ Gán 1 mẫu ca cho 1 nhân viên vào 1 ngày, tại 1 warehouse.
 | `POST /work-shifts` | A, M (**P** theo `warehouseId` trong body) | `{ shiftId, staffId, warehouseId, workDate }` | `WorkShiftResponseDto` |
 | `GET /work-shifts` | A, M, S | — | `WorkShiftResponseDto[]` |
 | `GET /work-shifts/:id` | A, M, S, **P** | — | `WorkShiftResponseDto` |
-| `PATCH /work-shifts/:id` | A, M, **P** | | `WorkShiftResponseDto` |
+| `PATCH /work-shifts/:id` | A, M, **P** | các field như create (trừ `warehouseId` — ca ở kho khác phải tạo mới; `staffId` mới phải thuộc cùng kho) | `WorkShiftResponseDto` |
 | `POST /work-shifts/:id/check-in` | S, **P** + chỉ đúng ca của chính mình | — | `WorkShiftResponseDto` |
 | `POST /work-shifts/:id/check-out` | S, **P** + chỉ đúng ca của chính mình | — | `WorkShiftResponseDto` |
 | `DELETE /work-shifts/:id` | A, M, **P** | — | `null` (hard delete — bảng này không có `deleted_at`) |
@@ -166,7 +166,7 @@ Gán 1 mẫu ca cho 1 nhân viên vào 1 ngày, tại 1 warehouse.
 | `POST /batches` | A, M, S (**C** cho Staff, phạm vi theo `coldRoomId` trong body) | `{ coldRoomId, productTypeId, batchCode, quantity, supplier?, receivedAt, expiryDate, notes? }` | `BatchResponseDto` |
 | `GET /batches` | A, M, S | — | `BatchResponseDto[]` |
 | `GET /batches/:id` | A, M, S, **P** | — | `BatchResponseDto` |
-| `PATCH /batches/:id` | A, M, S (**C** cho Staff) | | `BatchResponseDto` |
+| `PATCH /batches/:id` | A, M, S (**C** cho Staff) | các field như create (trừ `coldRoomId` — không có luồng chuyển hàng; chuyển hàng = xuất lô cũ + nhập lô mới) | `BatchResponseDto` |
 | `DELETE /batches/:id` | A, M, S (**C** cho Staff) | — | `null` (hard delete — không có `deleted_at`, dùng `status=removed` làm vòng đời riêng) |
 
 Backend validate: khoảng nhiệt độ khuyến nghị của `product_type` (`storageTempMin/Max`) phải nằm trong ngưỡng an toàn của `cold_room` (`tempMin/Max`) khi tạo/gán batch — không thể ép bằng CHECK constraint SQL vì so sánh chéo 2 bảng.
@@ -231,8 +231,8 @@ Không có `POST /` — alert được hệ thống tự phát sinh nội bộ, 
 |---|---|---|---|
 | `GET /alerts` | A, M, T, S | Query: `status?`, `type?`, `coldRoomId?`, `deviceId?`, `batchId?` | `AlertResponseDto[]` |
 | `GET /alerts/:id` | A, M, T, S, **P** | — | `AlertResponseDto` |
-| `POST /alerts/:id/acknowledge` | A, M, T, S (**C** cho Staff) | `{ userId? }` (bỏ trống nếu do hệ thống tự acknowledge) | `AlertResponseDto` — `status → acknowledged` |
-| `POST /alerts/:id/resolve` | A, M, T, **P** | `{ userId? }` | `AlertResponseDto` — `status → resolved`, `resolution = manual` |
+| `POST /alerts/:id/acknowledge` | A, M, T, S (**C** cho Staff) | — (`acknowledgedBy` = user đang đăng nhập, không nhận từ body) | `AlertResponseDto` — `status → acknowledged` |
+| `POST /alerts/:id/resolve` | A, M, T, **P** | — (`resolvedBy` = user đang đăng nhập) | `AlertResponseDto` — `status → resolved`, `resolution = manual` |
 
 ---
 
@@ -242,7 +242,7 @@ Không có `DELETE /:id` — lịch sử lệnh là vĩnh viễn, cùng nguyên 
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
-| `POST /commands` | A, T, S (**C** cho Staff, phạm vi theo `channelId` trong body) | `{ channelId, action, payload?, issuedBy? }` | `CommandResponseDto` — `status = pending` |
+| `POST /commands` | A, T, S (**C** cho Staff, phạm vi theo `channelId` trong body) | `{ channelId, action, payload? }` | `CommandResponseDto` — `status = pending`; `issuedBy` = user đang đăng nhập, không nhận từ body (lệnh do hệ thống tự phát có `issuedBy = null`) |
 | `GET /commands` | A, M, T, S | — | `CommandResponseDto[]` |
 | `GET /commands/:id` | A, M, T, S, **P** | — | `CommandResponseDto` |
 | `POST /commands/:id/sent` | A (nội bộ — do cầu nối thiết bị/broker gọi, chưa có cơ chế service-account riêng) | — | `CommandResponseDto` — `status → sent` |
@@ -252,15 +252,15 @@ Không có `DELETE /:id` — lịch sử lệnh là vĩnh viễn, cùng nguyên 
 
 ## 16. Notifications — `/notifications`
 
-Web Push. Các endpoint dưới đây nhận `userId` trực tiếp từ request (body/query) thay vì suy ra từ cookie phiên đăng nhập — client tự khai báo mình là ai, chưa có kiểm tra "tự thân" ở tầng guard cho nhóm này.
+Web Push. Mọi endpoint (trừ `vapid-public-key`) chỉ thao tác trên dữ liệu của **chính user đang đăng nhập** — `userId` luôn lấy từ cookie phiên, không nhận từ body/query.
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `GET /notifications/vapid-public-key` | công khai | — | `{ publicKey: string \| null }` (không qua `@Serialize`, không phải entity) |
-| `POST /notifications/subscriptions` | mọi role | `{ userId, endpoint, keys: { p256dh, auth }, userAgent? }` | `PushSubscriptionResponseDto` |
-| `DELETE /notifications/subscriptions` | mọi role | `{ endpoint }` | `null` |
-| `GET /notifications` | mọi role | `userId` (bắt buộc), `unreadOnly?` (`"true"`/`"false"` dạng chuỗi) | `NotificationResponseDto[]` |
-| `POST /notifications/:id/read` | mọi role | `{ userId }` (bắt buộc — dùng để kiểm tra quyền sở hữu thông báo trước khi đánh dấu đã đọc) | `NotificationResponseDto` |
+| `POST /notifications/subscriptions` | mọi role | `{ endpoint, keys: { p256dh, auth }, userAgent? }` | `PushSubscriptionResponseDto` — endpoint đã tồn tại (cùng trình duyệt) được chuyển sang user hiện tại |
+| `DELETE /notifications/subscriptions` | mọi role | `{ endpoint }` | `null` — chỉ xoá subscription của chính mình |
+| `GET /notifications` | mọi role | `unreadOnly?` (`"true"`/`"false"` dạng chuỗi) | `NotificationResponseDto[]` của chính mình |
+| `POST /notifications/:id/read` | mọi role | — | `NotificationResponseDto` (`404` nếu thông báo không thuộc về mình) |
 
 ---
 
@@ -277,16 +277,53 @@ Append-only và **chỉ đọc qua API** — không có `POST`/`PATCH`/`DELETE`,
 
 ## 18. WebSocket (Realtime)
 
-Cùng HTTP server, xác thực bằng cookie `access_token` lúc bắt tay kết nối (không hit DB, cùng cơ chế với REST). Kết nối không có `access_token` hợp lệ hoặc tài khoản `locked` bị `disconnect` ngay lập tức. CORS origin cấu hình qua `WS_CORS_ORIGIN` (mặc định `http://localhost:5173`), `credentials: true`.
+Cùng HTTP server, namespace mặc định `/`. Xác thực bằng cookie `access_token` trong **middleware bắt tay** (`RealtimeGateway.afterInit`): không hit DB, cùng cơ chế với REST, và kiểm tra key Redis `blocked:<id>`. Kết nối không có token hợp lệ, hoặc của tài khoản `locked`, bị từ chối trước khi mở. Client nhận `connect_error` với message `Unauthorized`, không bao giờ nhận `connect`. Vì vậy không handler nào thấy được socket chưa xác thực xong. CORS origin cấu hình qua `WS_CORS_ORIGIN` (mặc định `http://localhost:5173`), `credentials: true`. Khoá hoặc xoá tài khoản sẽ ngắt ngay mọi socket đang mở của user đó.
 
-Phòng (room) theo từng warehouse (`warehouse:{id}`) — client phải chủ động `join` mới nhận được sự kiện của warehouse đó, không có kênh broadcast dùng chung cho toàn hệ thống.
+Có 2 loại phòng (room):
+- `user:{id}`: mọi socket tự join khi kết nối. Sự kiện riêng của một người (chatbot) đi qua đây, tới tất cả tab của người đó.
+- `warehouse:{id}`: client phải chủ động `join` mới nhận được sự kiện của warehouse đó. Không có kênh broadcast dùng chung cho toàn hệ thống.
 
 | Sự kiện (client → server) | Payload | Ghi chú |
 |---|---|---|
 | `join:warehouse` | `{ warehouseId }` | Admin join được mọi warehouse; role khác chỉ join được warehouse mình có mặt trong `warehouse_staff` (`WsException` nếu không hợp lệ). Trả về `{ warehouseId }` khi thành công. |
 | `leave:warehouse` | `{ warehouseId }` | Rời phòng, trả về `{ warehouseId }`. |
+| `chatbot:send` | `{ conversationId, content }` | Xem §18.1. |
 
-Chiều server → client (`emitToWarehouse(warehouseId, event, payload)`) đã có sẵn hạ tầng nhưng **chưa có module nghiệp vụ nào gọi tới** — tên sự kiện tự do (vd dự kiến `alert:new`), chưa có danh mục sự kiện cố định.
+Chiều server → client theo warehouse (`emitToWarehouse(warehouseId, event, payload)`) đã có sẵn hạ tầng nhưng **chưa có module nghiệp vụ nào gọi tới**. Dự kiến dùng cho `alert:new`.
+
+### 18.1 Chatbot qua WebSocket
+
+Quản lý cuộc trò chuyện và đọc lịch sử vẫn dùng REST (`/chatbot/conversations`, `GET :id/messages`). **Gửi tin nhắn** thì dùng socket:
+
+```js
+socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
+```
+
+- **Ack** trả về ngay khi tin nhắn của user đã được lưu, không đợi model:
+  - Thành công: `{ ok: true, message: MessageResponseDto }`.
+  - Lỗi: `{ ok: false, error: { statusCode, message } }`. Mọi lỗi đều nằm trong ack, không phát sự kiện `exception`.
+
+  | `statusCode` | Nguyên nhân |
+  |---|---|
+  | `400` | Payload sai. `content` tối đa 2000 ký tự. |
+  | `401` | Access token của socket đã hết hạn. Client gọi `POST /auth/refresh` rồi kết nối lại. |
+  | `404` | Cuộc trò chuyện không tồn tại hoặc không thuộc về mình. |
+  | `409` | Cuộc trò chuyện đang có một lượt trả lời chưa xong. |
+  | `429` | Vượt giới hạn tin nhắn. |
+
+  `400`, `401` và `404` không tính vào giới hạn tin nhắn.
+- **Sự kiện server → client**, gửi tới phòng `user:{id}` (mọi tab của người gửi):
+
+  | Sự kiện | Payload | Khi nào |
+  |---|---|---|
+  | `chatbot:message` | `MessageResponseDto` | Tin nhắn user vừa lưu. Sau đó là **câu trả lời cuối** của trợ lý (`role: "assistant"`), sự kiện này kết thúc lượt. Tab gửi nhận tin của chính mình cả qua ack lẫn qua sự kiện, nên client cần **khử trùng theo `id`**. |
+  | `chatbot:tool_call` | `{ conversationId, tools: string[] }` | Trợ lý đang tra cứu dữ liệu. Dùng để hiện "Đang tra cứu…". Tên tool là tên nội bộ, frontend tự ánh xạ sang nhãn hiển thị. |
+  | `chatbot:error` | `{ conversationId, message }` | Lượt đã được nhận nhưng lỗi ngoài dự kiến (vd DB lỗi). Lỗi của Gemini (hết quota, mất mạng) **không** đi qua đây: chúng thành một `chatbot:message` của trợ lý với nội dung thông báo lỗi. |
+
+- **Mỗi cuộc trò chuyện chỉ chạy một lượt tại một thời điểm**, dùng khoá Redis `chatbot:turn:<conversationId>` (TTL 180s phòng khi process chết giữa lượt). Nhờ vậy gửi trùng hay gửi từ hai tab không làm lịch sử bị xen kẽ.
+- Giới hạn tin nhắn (`CHATBOT_RATE_LIMIT_PER_MINUTE` / `_PER_DAY`) dùng chung bộ đếm với REST.
+- `POST /chatbot/conversations/:id/messages` vẫn còn: chạy cùng một lượt, nhưng chỉ trả về câu trả lời cuối khi đã xong. Các sự kiện trên vẫn được phát. Endpoint này dùng khi test bằng REST Client, hoặc khi client không có socket.
+- Kịch bản test tay: `node http/chatbot-socket.mjs "câu hỏi" [conversationId]` (chạy trong `server/`).
 
 ---
 
@@ -305,4 +342,4 @@ Chiều server → client (`emitToWarehouse(warehouseId, event, payload)`) đã 
 | Alerts — acknowledge | A, M, T, S (**C**) | A, M, T, S |
 | Alerts — resolve | A, M, T (**P**) | — |
 | Audit Logs | Nội bộ (không qua API) | A, M (**P**) |
-| Notifications | mọi role (tự khai `userId`) | mọi role |
+| Notifications | mọi role (tự thân) | mọi role (tự thân) |

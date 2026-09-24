@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, LessThan, Repository } from 'typeorm';
 import { MessageRole } from '../../libs/constants/chatbot.constant';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -66,17 +66,70 @@ export class ChatbotService {
     }
   }
 
+  // The latest `limit` messages (or the page before `query.before`), in
+  // chronological order — newest-first query, then reversed. Ordering by
+  // ASC with a limit would return the *oldest* page and never the newest.
   async findMessages(
     conversationId: string,
     userId: string,
     query: QueryMessageDto,
   ): Promise<Message[]> {
     await this.findConversation(conversationId, userId);
-    return this.messagesRepository.find({
-      where: { conversationId },
-      order: { createdAt: 'ASC' },
+
+    let createdBefore: Date | undefined;
+    if (query.before) {
+      const cursor = await this.messagesRepository.findOne({
+        where: { id: query.before, conversationId },
+      });
+      if (!cursor) {
+        throw new NotFoundException(`Message ${query.before} not found`);
+      }
+      createdBefore = cursor.createdAt;
+    }
+
+    const rows = await this.messagesRepository.find({
+      where: {
+        conversationId,
+        ...(createdBefore ? { createdAt: LessThan(createdBefore) } : {}),
+      },
+      order: { createdAt: 'DESC', id: 'DESC' },
       take: query.limit ?? DEFAULT_MESSAGE_LIMIT,
     });
+    return rows.reverse();
+  }
+
+  // What gets replayed to the LLM for a new turn: the most recent `limit`
+  // *conversational* messages — user messages and the assistant's text
+  // replies — in chronological order, starting at a USER message.
+  //
+  // Tool-call rows and tool results of earlier, finished turns are left out
+  // on purpose: they were only needed to produce that turn's answer, which
+  // is itself kept, while replaying them would resend every past tool
+  // output (often large JSON lists) on every later request — the main
+  // driver of Gemini token-per-minute rate limits. The turn in progress
+  // still sees its own tool results; the orchestrator keeps those in
+  // memory for the length of the tool loop. They also stay stored, so
+  // GET :id/messages still shows them.
+  //
+  // Caller must already have checked the conversation's ownership.
+  async findRecentHistory(
+    conversationId: string,
+    limit: number,
+  ): Promise<Message[]> {
+    const rows = await this.messagesRepository.find({
+      where: {
+        conversationId,
+        role: In([MessageRole.USER, MessageRole.ASSISTANT]),
+        toolCalls: IsNull(),
+      },
+      order: { createdAt: 'DESC', id: 'DESC' },
+      take: limit,
+    });
+    rows.reverse();
+    const firstUserTurn = rows.findIndex(
+      (message) => message.role === MessageRole.USER,
+    );
+    return firstUserTurn === -1 ? [] : rows.slice(firstUserTurn);
   }
 
   // The only write path reachable over HTTP — always writes role=USER, so a

@@ -7,6 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import {
+  ScopedWarehouses,
+  WarehouseListScope,
+} from '../../common/decorators/warehouse-list-scope.decorator';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { ColdRoom } from './entities/cold-room.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -38,12 +43,11 @@ export class ColdRoomsController {
     return this.coldRoomsService.create(createColdRoomDto);
   }
 
-  // No warehouse scope on the list endpoint: the service does not yet
-  // filter results by the caller's assigned warehouses (see docs/rbac.md).
   @Serialize(ColdRoomResponseDto)
+  @WarehouseListScope()
   @Get()
-  findAll() {
-    return this.coldRoomsService.findAll();
+  findAll(@ScopedWarehouses() access: WarehouseAccess) {
+    return this.coldRoomsService.findAll(access);
   }
 
   @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)

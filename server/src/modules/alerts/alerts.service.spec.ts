@@ -5,7 +5,6 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { AlertStatus, AlertType } from '../../libs/constants/alert.constant';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
-import { User } from '../users/entities/user.entity';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
 
@@ -31,7 +30,6 @@ const duplicateKeyError = () =>
 describe('AlertsService', () => {
   let service: AlertsService;
   let alertsRepository: MockRepository<Alert>;
-  let usersRepository: MockRepository<User>;
   let notificationsQueue: { add: jest.Mock };
 
   beforeEach(async () => {
@@ -43,10 +41,6 @@ describe('AlertsService', () => {
           useValue: createMockRepository<Alert>(),
         },
         {
-          provide: getRepositoryToken(User),
-          useValue: createMockRepository<User>(),
-        },
-        {
           provide: getQueueToken(QUEUE_NAMES.ALERT_NOTIFICATIONS),
           useValue: { add: jest.fn().mockResolvedValue(undefined) },
         },
@@ -55,7 +49,6 @@ describe('AlertsService', () => {
 
     service = module.get(AlertsService);
     alertsRepository = module.get(getRepositoryToken(Alert));
-    usersRepository = module.get(getRepositoryToken(User));
     notificationsQueue = module.get(
       getQueueToken(QUEUE_NAMES.ALERT_NOTIFICATIONS),
     );
@@ -194,25 +187,30 @@ describe('AlertsService', () => {
   });
 
   describe('acknowledge', () => {
-    it('throws NotFoundException when userId is given but does not resolve', async () => {
-      usersRepository.findOne!.mockResolvedValue(null);
-
-      await expect(
-        service.acknowledge('a1', { userId: 'missing' }),
-      ).rejects.toThrow(NotFoundException);
-      expect(alertsRepository.update).not.toHaveBeenCalled();
-    });
-
-    it('acknowledges without an actor when userId is omitted', async () => {
+    it('records the given actor as acknowledgedBy', async () => {
       alertsRepository.update!.mockResolvedValue({ affected: 1 });
       alertsRepository.findOne!.mockResolvedValue({
         id: 'a1',
         status: AlertStatus.ACKNOWLEDGED,
       });
 
-      await service.acknowledge('a1', {});
+      await service.acknowledge('a1', 'u1');
 
-      expect(usersRepository.findOne).not.toHaveBeenCalled();
+      expect(alertsRepository.update).toHaveBeenCalledWith(
+        { id: 'a1', status: AlertStatus.OPEN },
+        expect.objectContaining({ acknowledgedBy: 'u1' }),
+      );
+    });
+
+    it('acknowledges without an actor for an automated caller', async () => {
+      alertsRepository.update!.mockResolvedValue({ affected: 1 });
+      alertsRepository.findOne!.mockResolvedValue({
+        id: 'a1',
+        status: AlertStatus.ACKNOWLEDGED,
+      });
+
+      await service.acknowledge('a1');
+
       expect(alertsRepository.update).toHaveBeenCalledWith(
         { id: 'a1', status: AlertStatus.OPEN },
         expect.objectContaining({
@@ -229,7 +227,7 @@ describe('AlertsService', () => {
         status: AlertStatus.RESOLVED,
       });
 
-      await expect(service.acknowledge('a1', {})).rejects.toThrow(
+      await expect(service.acknowledge('a1')).rejects.toThrow(
         ConflictException,
       );
     });
@@ -238,7 +236,7 @@ describe('AlertsService', () => {
       alertsRepository.update!.mockResolvedValue({ affected: 0 });
       alertsRepository.findOne!.mockResolvedValue(null);
 
-      await expect(service.acknowledge('missing', {})).rejects.toThrow(
+      await expect(service.acknowledge('missing')).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -252,12 +250,13 @@ describe('AlertsService', () => {
         status: AlertStatus.RESOLVED,
       });
 
-      await service.resolveManual('a1', { userId: undefined });
+      await service.resolveManual('a1', 'u1');
 
       expect(alertsRepository.update).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'a1' }),
         expect.objectContaining({
           status: AlertStatus.RESOLVED,
+          resolvedBy: 'u1',
           resolution: 'manual',
           activeKey: null,
         }),
@@ -271,7 +270,7 @@ describe('AlertsService', () => {
         status: AlertStatus.RESOLVED,
       });
 
-      await expect(service.resolveManual('a1', {})).rejects.toThrow(
+      await expect(service.resolveManual('a1')).rejects.toThrow(
         ConflictException,
       );
     });

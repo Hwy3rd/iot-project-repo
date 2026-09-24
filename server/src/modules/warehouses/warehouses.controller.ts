@@ -9,6 +9,11 @@ import {
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
+import {
+  ScopedWarehouses,
+  WarehouseListScope,
+} from '../../common/decorators/warehouse-list-scope.decorator';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { Warehouse } from './entities/warehouse.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -40,12 +45,11 @@ export class WarehousesController {
     return this.warehousesService.create(createWarehouseDto);
   }
 
-  // No warehouse scope on the list endpoint: the service does not yet
-  // filter results by the caller's assigned warehouses (see docs/rbac.md).
   @Serialize(WarehouseResponseDto)
+  @WarehouseListScope()
   @Get()
-  findAll() {
-    return this.warehousesService.findAll();
+  findAll(@ScopedWarehouses() access: WarehouseAccess) {
+    return this.warehousesService.findAll(access);
   }
 
   @WarehouseScope(WarehouseScopeSource.WAREHOUSE_PARAM)

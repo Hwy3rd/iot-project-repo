@@ -4,8 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
 import { WorkShiftStatus } from '../../libs/constants/work-shift.constant';
 import { Shift } from '../shifts/entities/shift.entity';
 import { User } from '../users/entities/user.entity';
@@ -129,8 +130,22 @@ export class WorkShiftsService {
     return this.saveWorkShift(workShift);
   }
 
-  findAll() {
-    return this.workShiftsRepository.find();
+  // access omitted = unfiltered (internal callers); see WarehouseAccess.
+  // In warehouses where the caller acts as Staff they only see their own
+  // shifts (docs/RBAC.md: "Phạm vi (chỉ ca của mình)").
+  findAll(access?: WarehouseAccess) {
+    const ids = access?.warehouseIds;
+    if (!ids || !access) return this.workShiftsRepository.find();
+
+    const staffIds = new Set(access.staffWarehouseIds);
+    const otherIds = ids.filter((id) => !staffIds.has(id));
+    const where: FindOptionsWhere<WorkShift>[] = [];
+    if (otherIds.length > 0) where.push({ warehouseId: In(otherIds) });
+    if (staffIds.size > 0) {
+      where.push({ warehouseId: In([...staffIds]), staffId: access.userId });
+    }
+    if (where.length === 0) return Promise.resolve([]);
+    return this.workShiftsRepository.find({ where });
   }
 
   async findOne(id: string) {
@@ -146,10 +161,13 @@ export class WorkShiftsService {
   async update(id: string, updateWorkShiftDto: UpdateWorkShiftDto) {
     const workShift = await this.findOne(id);
 
-    const staffId = updateWorkShiftDto.staffId ?? workShift.staffId;
-    const warehouseId = updateWorkShiftDto.warehouseId ?? workShift.warehouseId;
-    if (updateWorkShiftDto.staffId || updateWorkShiftDto.warehouseId) {
-      await this.assertStaffAssignedToWarehouse(staffId, warehouseId);
+    // Reassigning to another staff member: they must work in this shift's
+    // (fixed) warehouse.
+    if (updateWorkShiftDto.staffId) {
+      await this.assertStaffAssignedToWarehouse(
+        updateWorkShiftDto.staffId,
+        workShift.warehouseId,
+      );
     }
 
     let scheduleUpdate: Partial<WorkShift> = {};

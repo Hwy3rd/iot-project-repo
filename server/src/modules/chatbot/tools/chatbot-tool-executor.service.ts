@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { UserRole } from '../../../libs/constants/user.constant';
 import { AlertsService } from '../../alerts/alerts.service';
 import { Batch } from '../../batches/entities/batch.entity';
@@ -12,15 +12,25 @@ import { Device } from '../../devices/entities/device.entity';
 import { ProductType } from '../../product-types/entities/product-type.entity';
 import { TelemetryService } from '../../telemetry/telemetry.service';
 import { Warehouse } from '../../warehouses/entities/warehouse.entity';
-import { WarehouseStaff } from '../../warehouses/entities/warehouse-staff.entity';
 import { WorkShift } from '../../work-shifts/entities/work-shift.entity';
 import { searchChatbotDocs } from './chatbot-docs-search';
+import type { WarehouseAccess } from '../../../common/rbac/warehouse-access';
+import { WarehouseAccessService } from '../../../common/rbac/warehouse-access.service';
 import { CHATBOT_TOOLS } from './chatbot-tools.definitions';
 
 export interface ChatbotToolCaller {
   id: string;
   role: UserRole;
+  // Set by execute() for the running tool — resolved by the same
+  // WarehouseAccessService the REST list routes use, from the tool's
+  // allowedRoles/requireShift, so a tool never sees more than its REST
+  // counterpart (per-warehouse role model, docs/RBAC.md §3).
+  access?: WarehouseAccess;
 }
+
+// Tools reading data that belongs to no warehouse (shared catalogue,
+// business docs) — every other tool is warehouse-scoped.
+const GLOBAL_DATA_TOOLS = new Set(['get_product_types', 'search_docs']);
 
 export interface ChatbotToolResult {
   result?: unknown;
@@ -85,8 +95,7 @@ export class ChatbotToolExecutorService {
     private readonly deviceChannelsRepo: Repository<DeviceChannel>,
     @InjectRepository(WorkShift)
     private readonly workShiftsRepo: Repository<WorkShift>,
-    @InjectRepository(WarehouseStaff)
-    private readonly warehouseStaffRepo: Repository<WarehouseStaff>,
+    private readonly warehouseAccess: WarehouseAccessService,
   ) {}
 
   async execute(
@@ -98,17 +107,36 @@ export class ChatbotToolExecutorService {
     if (!def) {
       return { error: `Không tồn tại tool "${name}".` };
     }
-    if (!def.allowedRoles.includes(caller.role)) {
-      return { error: 'Bạn không có quyền sử dụng chức năng này.' };
-    }
     if (CHATBOT_TOOLS_NOT_IMPLEMENTED.has(name)) {
       return {
         error: `Chức năng "${name}" chưa được triển khai ở phiên bản hiện tại.`,
       };
     }
 
+    const access = await this.warehouseAccess.resolve(
+      caller,
+      def.allowedRoles,
+      { requireShift: def.requireShift },
+    );
+    // Warehouse data tools: usable only if at least one warehouse is
+    // reachable under the tool's roles/shift rule — the caller's global
+    // role doesn't count, same as the REST routes. Only the two tools with
+    // no warehouse data at all are gated on the global role.
+    const usable =
+      caller.role === UserRole.ADMIN ||
+      (GLOBAL_DATA_TOOLS.has(name)
+        ? def.allowedRoles.includes(caller.role)
+        : (access.warehouseIds?.length ?? 0) > 0);
+    if (!usable) {
+      return {
+        error: def.requireShift
+          ? 'Bạn không có quyền sử dụng chức năng này (nhân viên cần đang trong ca trực đã check-in tại kho).'
+          : 'Bạn không có quyền sử dụng chức năng này.',
+      };
+    }
+
     try {
-      const result = await this.dispatch(name, args, caller);
+      const result = await this.dispatch(name, args, { ...caller, access });
       return { result };
     } catch (error) {
       if (error instanceof ChatbotToolError) {
@@ -174,14 +202,21 @@ export class ChatbotToolExecutorService {
   // null = unrestricted (Admin). Never null and empty at once — empty means
   // "authenticated, zero warehouse assignments", which is a real state for
   // a freshly created Manager/Staff account.
+  // null = unrestricted (Admin). Never null and empty at once — empty means
+  // "no warehouse where this tool's data is reachable for you right now"
+  // (not assigned, wrong role there, or — for Staff on requireShift tools —
+  // not checked in).
   private async getAssignedWarehouseIds(
     caller: ChatbotToolCaller,
   ): Promise<string[] | null> {
-    if (caller.role === UserRole.ADMIN) return null;
-    const rows = await this.warehouseStaffRepo.find({
-      where: { userId: caller.id },
-    });
-    return rows.map((row) => row.warehouseId);
+    const access =
+      caller.access ?? (await this.warehouseAccess.resolve(caller, undefined));
+    return access.warehouseIds;
+  }
+
+  // Of the caller's reachable warehouses, those where they act as Staff.
+  private getStaffWarehouseIds(caller: ChatbotToolCaller): string[] {
+    return caller.access?.staffWarehouseIds ?? [];
   }
 
   private isWarehouseAllowed(
@@ -277,19 +312,18 @@ export class ChatbotToolExecutorService {
       return this.alertsService.findAll({ ...baseQuery, coldRoomId });
     }
 
+    // One query filtered by warehouse (AlertsService joins cold_rooms),
+    // instead of one findAll per cold room in the caller's warehouses.
     if (assigned === null) {
       return this.alertsService.findAll(baseQuery);
     }
-    const coldRoomIds = await this.getColdRoomIdsForWarehouses(assigned);
-    if (coldRoomIds.length === 0) return [];
-    const perRoom = await Promise.all(
-      coldRoomIds.map((id) =>
-        this.alertsService.findAll({ ...baseQuery, coldRoomId: id }),
-      ),
-    );
-    return perRoom
-      .flat()
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    if (assigned.length === 0) return [];
+    return this.alertsService.findAll(baseQuery, {
+      userId: caller.id,
+      role: caller.role,
+      warehouseIds: assigned,
+      staffWarehouseIds: caller.access?.staffWarehouseIds ?? [],
+    });
   }
 
   private async getAlertDetail(
@@ -505,32 +539,42 @@ export class ChatbotToolExecutorService {
     const assigned = await this.getAssignedWarehouseIds(caller);
     const warehouseId = this.optionalString(args, 'warehouseId');
     const date = this.optionalString(args, 'date');
-    // Staff can only ever see their own shifts through the chatbot — the
-    // LLM-supplied staffId (if any) is ignored for that role, never trusted.
-    const staffId =
-      caller.role === UserRole.STAFF
-        ? caller.id
-        : this.optionalString(args, 'staffId');
+    const requestedStaffId = this.optionalString(args, 'staffId');
 
-    const where: Record<string, unknown> = {};
-    if (staffId) where.staffId = staffId;
-    if (date) where.workDate = date;
+    const base: FindOptionsWhere<WorkShift> = {};
+    if (date) base.workDate = date;
+    const order = { workDate: 'DESC' as const };
 
+    if (assigned === null) {
+      if (requestedStaffId) base.staffId = requestedStaffId;
+      if (warehouseId) base.warehouseId = warehouseId;
+      return this.workShiftsRepo.find({ where: base, order });
+    }
+
+    // In warehouses where the caller acts as Staff they only ever see their
+    // own shifts — the LLM-supplied staffId is ignored there, never trusted.
+    const staffSet = new Set(this.getStaffWarehouseIds(caller));
+    let scoped = assigned;
     if (warehouseId) {
       this.assertAllowedOrThrow(assigned, warehouseId);
-      return this.workShiftsRepo.find({
-        where: { ...where, warehouseId },
-        order: { workDate: 'DESC' },
+      scoped = [warehouseId];
+    }
+    const otherIds = scoped.filter((id) => !staffSet.has(id));
+    const staffIds = scoped.filter((id) => staffSet.has(id));
+
+    const where: FindOptionsWhere<WorkShift>[] = [];
+    if (otherIds.length > 0) {
+      where.push({
+        ...base,
+        warehouseId: In(otherIds),
+        ...(requestedStaffId ? { staffId: requestedStaffId } : {}),
       });
     }
-    if (assigned === null) {
-      return this.workShiftsRepo.find({ where, order: { workDate: 'DESC' } });
+    if (staffIds.length > 0) {
+      where.push({ ...base, warehouseId: In(staffIds), staffId: caller.id });
     }
-    if (assigned.length === 0) return [];
-    return this.workShiftsRepo.find({
-      where: { ...where, warehouseId: In(assigned) },
-      order: { workDate: 'DESC' },
-    });
+    if (where.length === 0) return [];
+    return this.workShiftsRepo.find({ where, order });
   }
 
   // Not warehouse-scoped — the 3 whitelisted docs are business-wide

@@ -4,10 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 import { DeviceStatus } from '../../libs/constants/device.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { ClaimDeviceDto } from './dto/claim-device.dto';
@@ -49,8 +50,16 @@ export class DevicesService {
     return this.saveDevice(device);
   }
 
-  findAll() {
-    return this.devicesRepository.find();
+  // access omitted = unfiltered (internal callers); see WarehouseAccess.
+  // Unclaimed devices (no cold room) belong to no warehouse, so only an
+  // unrestricted caller (Admin) sees them.
+  findAll(access?: WarehouseAccess) {
+    const ids = access?.warehouseIds;
+    if (!ids) return this.devicesRepository.find();
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.devicesRepository.find({
+      where: { coldRoom: { warehouseId: In(ids) } },
+    });
   }
 
   async findOne(id: string) {

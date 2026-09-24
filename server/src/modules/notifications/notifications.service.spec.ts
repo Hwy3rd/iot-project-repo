@@ -6,7 +6,6 @@ import { AlertType } from '../../libs/constants/alert.constant';
 import { NotificationStatus } from '../../libs/constants/notification.constant';
 import { Alert } from '../alerts/entities/alert.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
-import { User } from '../users/entities/user.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { Notification } from './entities/notification.entity';
 import { PushSubscription } from './entities/push-subscription.entity';
@@ -36,7 +35,6 @@ describe('NotificationsService', () => {
   let service: NotificationsService;
   let subscriptionsRepository: MockRepository<PushSubscription>;
   let notificationsRepository: MockRepository<Notification>;
-  let usersRepository: MockRepository<User>;
   let coldRoomsRepository: MockRepository<ColdRoom>;
   let warehouseStaffRepository: MockRepository<WarehouseStaff>;
 
@@ -53,10 +51,6 @@ describe('NotificationsService', () => {
           useValue: createMockRepository<Notification>(),
         },
         {
-          provide: getRepositoryToken(User),
-          useValue: createMockRepository<User>(),
-        },
-        {
           provide: getRepositoryToken(ColdRoom),
           useValue: createMockRepository<ColdRoom>(),
         },
@@ -70,27 +64,17 @@ describe('NotificationsService', () => {
     service = module.get(NotificationsService);
     subscriptionsRepository = module.get(getRepositoryToken(PushSubscription));
     notificationsRepository = module.get(getRepositoryToken(Notification));
-    usersRepository = module.get(getRepositoryToken(User));
     coldRoomsRepository = module.get(getRepositoryToken(ColdRoom));
     warehouseStaffRepository = module.get(getRepositoryToken(WarehouseStaff));
   });
 
   describe('subscribe', () => {
     const dto = {
-      userId: 'u1',
       endpoint: 'https://push.example/1',
       keys: { p256dh: 'p', auth: 'a' },
     };
 
-    it('throws NotFoundException when the user does not exist', async () => {
-      usersRepository.findOne!.mockResolvedValue(null);
-
-      await expect(service.subscribe(dto)).rejects.toThrow(NotFoundException);
-      expect(subscriptionsRepository.create).not.toHaveBeenCalled();
-    });
-
     it('creates a new subscription row', async () => {
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
       subscriptionsRepository.create!.mockImplementation(
         (v: Partial<PushSubscription>) => v,
       );
@@ -98,7 +82,7 @@ describe('NotificationsService', () => {
         (v: Partial<PushSubscription>) => ({ id: 's1', ...v }),
       );
 
-      const result = await service.subscribe(dto);
+      const result = await service.subscribe('u1', dto);
 
       expect(subscriptionsRepository.create).toHaveBeenCalledWith({
         endpoint: 'https://push.example/1',
@@ -111,7 +95,6 @@ describe('NotificationsService', () => {
     });
 
     it('upserts onto the existing row when the endpoint collides', async () => {
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
       subscriptionsRepository.create!.mockImplementation(
         (v: Partial<PushSubscription>) => v,
       );
@@ -126,7 +109,7 @@ describe('NotificationsService', () => {
       };
       subscriptionsRepository.findOne!.mockResolvedValue(existing);
 
-      const result = await service.subscribe(dto);
+      const result = await service.subscribe('u1', dto);
 
       expect(subscriptionsRepository.findOne).toHaveBeenCalledWith({
         where: { endpoint: dto.endpoint },
@@ -137,7 +120,6 @@ describe('NotificationsService', () => {
     });
 
     it('rethrows a non-duplicate-key write error', async () => {
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
       subscriptionsRepository.create!.mockImplementation(
         (v: Partial<PushSubscription>) => v,
       );
@@ -145,7 +127,9 @@ describe('NotificationsService', () => {
         new Error('connection lost'),
       );
 
-      await expect(service.subscribe(dto)).rejects.toThrow('connection lost');
+      await expect(service.subscribe('u1', dto)).rejects.toThrow(
+        'connection lost',
+      );
     });
   });
 
@@ -154,10 +138,11 @@ describe('NotificationsService', () => {
       subscriptionsRepository.delete!.mockResolvedValue({ affected: 0 });
 
       await expect(
-        service.unsubscribe('https://push.example/gone'),
+        service.unsubscribe('u1', 'https://push.example/gone'),
       ).resolves.toBeUndefined();
       expect(subscriptionsRepository.delete).toHaveBeenCalledWith({
         endpoint: 'https://push.example/gone',
+        userId: 'u1',
       });
     });
   });

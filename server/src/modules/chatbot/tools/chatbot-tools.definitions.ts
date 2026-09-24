@@ -33,7 +33,15 @@ export interface ChatbotToolDefinition {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  // Mirrors the @Roles of the REST route(s) exposing the same data. For a
+  // non-admin these are matched against their role *in each warehouse*
+  // (warehouse_staff.role), same model as WarehouseScopeGuard — see
+  // WarehouseAccessService.
   allowedRoles: UserRole[];
+  // Mirrors the REST route's @WarehouseScope({ requireShift }): in a
+  // warehouse where the caller acts as Staff, the data is only reachable
+  // while they're checked into a shift there.
+  requireShift?: boolean;
   scope: ChatbotToolScope;
 }
 
@@ -45,6 +53,17 @@ const ALL_ROLES = [
 ];
 
 const MANAGEMENT_ROLES = [UserRole.ADMIN, UserRole.MANAGER];
+// Detailed device logs (status history, raw telemetry) — docs/RBAC.md:
+// Staff only gets basic alerts, not device logs.
+const DEVICE_LOG_ROLES = [
+  UserRole.ADMIN,
+  UserRole.MANAGER,
+  UserRole.TECHNICIAN,
+];
+// Batches are stock operations — Technician has no part in them.
+const BATCH_ROLES = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
+// Shift scheduling — Technician has no access (docs/RBAC.md).
+const WORK_SHIFT_ROLES = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
 
 const DATE_DESC = 'Định dạng ISO date (YYYY-MM-DD) hoặc datetime ISO 8601';
 
@@ -91,6 +110,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       },
     },
     allowedRoles: ALL_ROLES,
+    requireShift: true,
     scope: 'coldRoomId',
   },
   {
@@ -103,6 +123,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       required: ['deviceId'],
     },
     allowedRoles: ALL_ROLES,
+    requireShift: true,
     scope: 'deviceId',
   },
   {
@@ -113,7 +134,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       properties: { deviceId: { type: 'string' } },
       required: ['deviceId'],
     },
-    allowedRoles: ALL_ROLES,
+    allowedRoles: DEVICE_LOG_ROLES,
     scope: 'deviceId',
   },
   {
@@ -130,6 +151,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       required: ['deviceId'],
     },
     allowedRoles: ALL_ROLES,
+    requireShift: true,
     scope: 'deviceId',
   },
   {
@@ -146,7 +168,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       },
       required: ['deviceId'],
     },
-    allowedRoles: ALL_ROLES,
+    allowedRoles: DEVICE_LOG_ROLES,
     scope: 'deviceId',
   },
   {
@@ -159,7 +181,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
         status: { type: 'string', enum: Object.values(BatchStatus) },
       },
     },
-    allowedRoles: ALL_ROLES,
+    allowedRoles: BATCH_ROLES,
     scope: 'coldRoomId',
   },
   {
@@ -171,7 +193,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       properties: { batchId: { type: 'string' } },
       required: ['batchId'],
     },
-    allowedRoles: ALL_ROLES,
+    allowedRoles: BATCH_ROLES,
     scope: 'batchId',
   },
   {
@@ -242,7 +264,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
         date: { type: 'string', description: DATE_DESC },
       },
     },
-    allowedRoles: ALL_ROLES,
+    allowedRoles: WORK_SHIFT_ROLES,
     scope: 'warehouseId',
   },
 

@@ -1,4 +1,10 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { GetUserId } from '../../common/decorators/get-user-id.decorator';
+import {
+  ScopedWarehouses,
+  WarehouseListScope,
+} from '../../common/decorators/warehouse-list-scope.decorator';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -33,17 +39,19 @@ export class CommandsController {
   })
   @Serialize(CommandResponseDto)
   @Post()
-  create(@Body() createCommandDto: CreateCommandDto) {
-    return this.commandsService.create(createCommandDto);
+  create(
+    @Body() createCommandDto: CreateCommandDto,
+    @GetUserId() userId: string,
+  ) {
+    return this.commandsService.create(createCommandDto, userId);
   }
 
-  // No warehouse scope on the list endpoint: the service does not yet
-  // filter results by the caller's assigned warehouses (see docs/rbac.md).
   @Roles(...VIEW_ROLES)
   @Serialize(CommandResponseDto)
+  @WarehouseListScope()
   @Get()
-  findAll() {
-    return this.commandsService.findAll();
+  findAll(@ScopedWarehouses() access: WarehouseAccess) {
+    return this.commandsService.findAll(access);
   }
 
   @Roles(...VIEW_ROLES)

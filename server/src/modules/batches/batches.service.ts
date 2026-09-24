@@ -4,8 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 import { BatchStatus } from '../../libs/constants/batch.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { ProductType } from '../product-types/entities/product-type.entity';
@@ -106,8 +107,14 @@ export class BatchesService {
     return this.saveBatch(batch);
   }
 
-  findAll() {
-    return this.batchesRepository.find();
+  // access omitted = unfiltered (internal callers); see WarehouseAccess.
+  findAll(access?: WarehouseAccess) {
+    const ids = access?.warehouseIds;
+    if (!ids) return this.batchesRepository.find();
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.batchesRepository.find({
+      where: { coldRoom: { warehouseId: In(ids) } },
+    });
   }
 
   async findOne(id: string) {

@@ -9,6 +9,7 @@ import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { User } from './entities/user.entity';
@@ -39,11 +40,19 @@ describe('UsersService', () => {
   let service: UsersService;
   let repository: MockRepository;
   let dataSource: ReturnType<typeof createMockDataSource>;
-  let redis: { del: jest.Mock };
+  let redis: { del: jest.Mock; multi: jest.Mock };
+  let pipeline: { set: jest.Mock; del: jest.Mock; exec: jest.Mock };
+  let realtimeGateway: { disconnectUser: jest.Mock };
 
   beforeEach(async () => {
     dataSource = createMockDataSource();
-    redis = { del: jest.fn() };
+    pipeline = {
+      set: jest.fn().mockReturnThis(),
+      del: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue([]),
+    };
+    redis = { del: jest.fn(), multi: jest.fn(() => pipeline) };
+    realtimeGateway = { disconnectUser: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
@@ -60,6 +69,7 @@ describe('UsersService', () => {
           useValue: { uploadImages: jest.fn(), deleteImage: jest.fn() },
         },
         { provide: REDIS_CLIENT, useValue: redis },
+        { provide: RealtimeGateway, useValue: realtimeGateway },
       ],
     }).compile();
 
@@ -236,7 +246,7 @@ describe('UsersService', () => {
       await expect(service.lock('x', 'a1')).rejects.toThrow(NotFoundException);
     });
 
-    it('locks the account and revokes its refresh session', async () => {
+    it('locks the account and revokes all of its access immediately', async () => {
       repository.findOne!.mockResolvedValue({
         id: 'u1',
         status: UserStatus.ACTIVE,
@@ -247,7 +257,9 @@ describe('UsersService', () => {
 
       expect(result).toMatchObject({ id: 'u1', status: UserStatus.LOCKED });
       expect(result).not.toHaveProperty('passwordHash');
-      expect(redis.del).toHaveBeenCalledWith('refresh:u1');
+      expect(pipeline.set).toHaveBeenCalledWith('blocked:u1', '1');
+      expect(pipeline.del).toHaveBeenCalledWith('refresh:u1');
+      expect(realtimeGateway.disconnectUser).toHaveBeenCalledWith('u1');
     });
 
     it('unlocks the account', async () => {
@@ -259,6 +271,7 @@ describe('UsersService', () => {
       await expect(service.unlock('u1')).resolves.toMatchObject({
         status: UserStatus.ACTIVE,
       });
+      expect(redis.del).toHaveBeenCalledWith('blocked:u1');
     });
   });
 
@@ -280,6 +293,8 @@ describe('UsersService', () => {
       expect(dataSource.manager.delete).toHaveBeenCalledWith(WarehouseStaff, {
         userId: '1',
       });
+      expect(pipeline.set).toHaveBeenCalledWith('blocked:1', '1');
+      expect(realtimeGateway.disconnectUser).toHaveBeenCalledWith('1');
     });
   });
 });

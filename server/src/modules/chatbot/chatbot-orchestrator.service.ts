@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  ApiError,
   Content,
   createModelContent,
   createPartFromFunctionCall,
@@ -9,11 +10,24 @@ import {
   FunctionDeclaration,
   Part,
 } from '@google/genai';
+import { plainToInstance } from 'class-transformer';
+import type { Redis } from 'ioredis';
+import { WarehouseAccessService } from '../../common/rbac/warehouse-access.service';
 import { LlmService } from '../../libs/llm/llm.service';
-import { MessageRole } from '../../libs/constants/chatbot.constant';
+import {
+  CHATBOT_EVENTS,
+  CHATBOT_HISTORY_LIMIT,
+  CHATBOT_TIMEZONE,
+  CHATBOT_TURN_LOCK_TTL_SECONDS,
+  MessageRole,
+} from '../../libs/constants/chatbot.constant';
 import { UserRole } from '../../libs/constants/user.constant';
+import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ChatbotService } from './chatbot.service';
-import { CHATBOT_SYSTEM_PROMPT } from './chatbot-system-prompt.constant';
+import { buildChatbotSystemInstruction } from './chatbot-system-prompt.constant';
+import { MessageResponseDto } from './dto/message-response.dto';
+import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { CHATBOT_TOOLS } from './tools/chatbot-tools.definitions';
 import {
@@ -29,80 +43,206 @@ import {
 // this module on a single stuck conversation turn.
 const MAX_TOOL_ITERATIONS = 5;
 
+const LLM_QUOTA_MESSAGE =
+  'Trợ lý đang tạm hết lượt xử lý (vượt hạn mức dịch vụ AI). Bạn vui lòng thử lại sau ít phút nhé.';
+const TURN_FAILED_MESSAGE =
+  'Xin lỗi, đã có lỗi khi xử lý tin nhắn. Bạn vui lòng thử lại.';
+const LLM_UNAVAILABLE_MESSAGE =
+  'Xin lỗi, trợ lý tạm thời không phản hồi được. Bạn vui lòng thử lại sau.';
+
+const turnLockKey = (conversationId: string) =>
+  `chatbot:turn:${conversationId}`;
+
+const RELEASE_LOCK_SCRIPT = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
+
+export interface ChatbotTurn {
+  userMessage: Message;
+  // Settles with the assistant's final reply (already emitted as
+  // CHATBOT_EVENTS.MESSAGE); rejects only on an unexpected failure (already
+  // emitted as CHATBOT_EVENTS.ERROR).
+  completion: Promise<Message>;
+}
+
 // Ties ChatbotService (persistence), LlmService (Gemini) and
 // ChatbotToolExecutorService (RBAC-checked tool dispatch) into the actual
 // conversation loop: persist the user's turn, replay history to the model,
 // and on every function-call response execute the tool, persist both the
 // call and its result, and feed the result back — repeating until the
-// model answers in plain text or MAX_TOOL_ITERATIONS is hit.
+// model answers in plain text or MAX_TOOL_ITERATIONS is hit. Progress and
+// the reply are pushed to the user's sockets (RealtimeGateway.emitToUser)
+// whichever transport the message came in on.
 @Injectable()
 export class ChatbotOrchestratorService {
+  private readonly logger = new Logger(ChatbotOrchestratorService.name);
+
   constructor(
     private readonly chatbotService: ChatbotService,
     private readonly llmService: LlmService,
     private readonly toolExecutor: ChatbotToolExecutorService,
+    private readonly warehouseAccess: WarehouseAccessService,
+    private readonly realtime: RealtimeGateway,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
+  // Accepts one user message: checks ownership, takes the conversation's
+  // turn lock, stores the message and broadcasts it, then starts the
+  // model/tool loop without waiting for it. Anything thrown from here
+  // (404 conversation, 409 turn already running) means nothing was stored.
+  //
+  // One turn at a time per conversation: two overlapping turns (double
+  // send, two tabs) would each read history without the other's messages
+  // and interleave their rows, leaving a history the model can't follow.
+  async startTurn(
+    conversationId: string,
+    caller: ChatbotToolCaller,
+    content: string,
+  ): Promise<ChatbotTurn> {
+    const conversation = await this.chatbotService.findConversation(
+      conversationId,
+      caller.id,
+    );
+    const lockToken = await this.acquireTurnLock(conversationId);
+
+    let userMessage: Message;
+    try {
+      userMessage = await this.chatbotService.addUserMessage(
+        conversationId,
+        caller.id,
+        { content },
+      );
+    } catch (error) {
+      await this.releaseTurnLock(conversationId, lockToken);
+      throw error;
+    }
+    this.emitMessage(caller.id, userMessage);
+
+    const completion = this.runTurn(conversation, caller)
+      .then((reply) => {
+        this.emitMessage(caller.id, reply);
+        return reply;
+      })
+      .catch((error: unknown) => {
+        this.logger.error(
+          `Chatbot turn failed for conversation ${conversationId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        this.realtime.emitToUser(caller.id, CHATBOT_EVENTS.ERROR, {
+          conversationId,
+          message: TURN_FAILED_MESSAGE,
+        });
+        throw error;
+      })
+      .finally(() => this.releaseTurnLock(conversationId, lockToken));
+
+    return { userMessage, completion };
+  }
+
+  // REST path (POST :id/messages): same turn, but answered only once the
+  // reply exists. Its events still go out, so the sender's other tabs stay
+  // in sync.
   async sendMessage(
     conversationId: string,
     caller: ChatbotToolCaller,
     content: string,
   ): Promise<Message> {
-    const conversation = await this.chatbotService.findConversation(
-      conversationId,
-      caller.id,
-    );
-    await this.chatbotService.addUserMessage(conversationId, caller.id, {
-      content,
-    });
+    const turn = await this.startTurn(conversationId, caller, content);
+    return turn.completion;
+  }
 
-    const history = await this.chatbotService.findMessages(
+  private async runTurn(
+    conversation: Conversation,
+    caller: ChatbotToolCaller,
+  ): Promise<Message> {
+    const conversationId = conversation.id;
+    const history = await this.chatbotService.findRecentHistory(
       conversationId,
-      caller.id,
-      {},
+      CHATBOT_HISTORY_LIMIT,
     );
-    const contents: Content[] = history.map((message) =>
-      this.toGeminiContent(message),
+    const contents: Content[] = mergeConsecutiveRoles(
+      history.map((message) => this.toGeminiContent(message)),
     );
-    const toolDeclarations = this.toolDeclarationsForRole(caller.role);
+    const toolDeclarations = await this.toolDeclarationsFor(caller);
+    const systemInstruction = buildChatbotSystemInstruction(
+      new Date(),
+      CHATBOT_TIMEZONE,
+    );
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
-      const response = await this.llmService.generateContent({
-        contents,
-        config: {
-          systemInstruction: CHATBOT_SYSTEM_PROMPT,
-          tools:
-            toolDeclarations.length > 0
-              ? [{ functionDeclarations: toolDeclarations }]
-              : undefined,
-        },
-      });
+      let response: Awaited<ReturnType<LlmService['generateContent']>>;
+      try {
+        response = await this.llmService.generateContent({
+          contents,
+          config: {
+            systemInstruction,
+            tools:
+              toolDeclarations.length > 0
+                ? [{ functionDeclarations: toolDeclarations }]
+                : undefined,
+          },
+        });
+      } catch (error) {
+        // Reached only after LlmService's own retries gave up (quota
+        // exhausted, Gemini down, network). End the turn with a visible
+        // reply instead of a 500: the user's message is already stored,
+        // and a closing assistant row keeps the history well-formed even
+        // if this failed mid tool-loop (after a tool result).
+        return this.endTurnWithLlmFailure(conversation, error);
+      }
+
+      const modelContent = response.candidates?.[0]?.content;
+      // Read text from the parts directly: `response.text` logs an SDK
+      // warning whenever function-call parts are present too. Thought
+      // parts (the model's internal reasoning) are never user-facing.
+      const text = extractText(modelContent);
 
       const functionCalls = response.functionCalls ?? [];
       if (functionCalls.length === 0) {
         return this.chatbotService.appendAssistantMessage(
           conversation,
-          response.text ?? '',
+          text ?? '',
         );
       }
 
       const toolCalls = functionCalls.map((call) => ({
+        // Gemini may omit ids; ours only keys the stored TOOL rows.
         id: call.id ?? randomUUID(),
+        // Echoed back on the functionResponse only if Gemini set one.
+        modelCallId: call.id,
         name: call.name ?? '',
         arguments: call.args ?? {},
       }));
       await this.chatbotService.appendAssistantMessage(
         conversation,
-        response.text ?? null,
-        toolCalls,
+        text,
+        toolCalls.map(({ id, name, arguments: args }) => ({
+          id,
+          name,
+          arguments: args,
+        })),
       );
+      // Replay the model's own content verbatim — not rebuilt from the
+      // parsed calls. Thinking models (Gemini 3.x) attach a
+      // `thoughtSignature` to function-call parts and reject the follow-up
+      // request (400 INVALID_ARGUMENT) if it doesn't come back unchanged.
+      // See https://ai.google.dev/gemini-api/docs/thought-signatures
       contents.push(
-        createModelContent(
-          toolCalls.map((call) =>
-            createPartFromFunctionCall(call.name, call.arguments),
+        modelContent ??
+          createModelContent(
+            toolCalls.map((call) =>
+              createPartFromFunctionCall(call.name, call.arguments),
+            ),
           ),
-        ),
       );
+
+      this.realtime.emitToUser(caller.id, CHATBOT_EVENTS.TOOL_CALL, {
+        conversationId,
+        tools: toolCalls.map((call) => call.name),
+      });
 
       const responseParts: Part[] = [];
       for (const call of toolCalls) {
@@ -120,9 +260,13 @@ export class ChatbotOrchestratorService {
           call.name,
           JSON.stringify(payload),
         );
-        responseParts.push(
-          createPartFromFunctionResponse(call.id, call.name, payload),
-        );
+        responseParts.push({
+          functionResponse: {
+            ...(call.modelCallId ? { id: call.modelCallId } : {}),
+            name: call.name,
+            response: payload,
+          },
+        });
       }
       contents.push(createUserContent(responseParts));
     }
@@ -137,10 +281,22 @@ export class ChatbotOrchestratorService {
     );
   }
 
-  private toolDeclarationsForRole(role: UserRole): FunctionDeclaration[] {
+  // Offers a tool if the caller's global role or any role they hold in a
+  // warehouse is allowed for it — same gate as ChatbotToolExecutorService.
+  // execute(), which still filters the data per warehouse on every call.
+  private async toolDeclarationsFor(
+    caller: ChatbotToolCaller,
+  ): Promise<FunctionDeclaration[]> {
+    const roles =
+      caller.role === UserRole.ADMIN
+        ? null
+        : new Set([
+            caller.role,
+            ...(await this.warehouseAccess.assignedRoles(caller.id)),
+          ]);
     return CHATBOT_TOOLS.filter(
       (tool) =>
-        tool.allowedRoles.includes(role) &&
+        (roles === null || tool.allowedRoles.some((r) => roles.has(r))) &&
         !CHATBOT_TOOLS_NOT_IMPLEMENTED.has(tool.name),
     ).map((tool) => ({
       name: tool.name,
@@ -150,6 +306,69 @@ export class ChatbotOrchestratorService {
       // shape chatbot-tools.definitions.ts already writes.
       parametersJsonSchema: tool.input_schema,
     }));
+  }
+
+  private async acquireTurnLock(conversationId: string): Promise<string> {
+    const token = randomUUID();
+    const acquired = await this.redis.set(
+      turnLockKey(conversationId),
+      token,
+      'EX',
+      CHATBOT_TURN_LOCK_TTL_SECONDS,
+      'NX',
+    );
+    if (acquired !== 'OK') {
+      throw new ConflictException(
+        'Trợ lý đang trả lời tin nhắn trước trong cuộc trò chuyện này, bạn vui lòng đợi.',
+      );
+    }
+    return token;
+  }
+
+  // Deletes the lock only if it is still ours: had this turn outlived the
+  // TTL, the key may now belong to the next turn. Never throws — a lock it
+  // fails to release just expires on its own.
+  private async releaseTurnLock(
+    conversationId: string,
+    token: string,
+  ): Promise<void> {
+    try {
+      await this.redis.eval(
+        RELEASE_LOCK_SCRIPT,
+        1,
+        turnLockKey(conversationId),
+        token,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to release turn lock for conversation ${conversationId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  private emitMessage(userId: string, message: Message): void {
+    this.realtime.emitToUser(
+      userId,
+      CHATBOT_EVENTS.MESSAGE,
+      plainToInstance(MessageResponseDto, message, {
+        excludeExtraneousValues: true,
+      }),
+    );
+  }
+
+  private endTurnWithLlmFailure(
+    conversation: Conversation,
+    error: unknown,
+  ): Promise<Message> {
+    const quotaExceeded = error instanceof ApiError && error.status === 429;
+    this.logger.error(
+      `Gemini call failed for conversation ${conversation.id}${quotaExceeded ? ' (quota exceeded)' : ''}`,
+      error instanceof Error ? error.stack : String(error),
+    );
+    return this.chatbotService.appendAssistantMessage(
+      conversation,
+      quotaExceeded ? LLM_QUOTA_MESSAGE : LLM_UNAVAILABLE_MESSAGE,
+    );
   }
 
   private toGeminiContent(message: Message): Content {
@@ -201,4 +420,32 @@ export class ChatbotOrchestratorService {
         return createUserContent(message.content ?? '');
     }
   }
+}
+
+// With finished turns reduced to their user/assistant text, two messages of
+// the same role can end up adjacent — e.g. a turn whose reply was never
+// stored (process crashed mid-turn) leaves user, user. Folding them into
+// one content keeps the history strictly alternating.
+function mergeConsecutiveRoles(contents: Content[]): Content[] {
+  const merged: Content[] = [];
+  for (const content of contents) {
+    const previous = merged[merged.length - 1];
+    if (previous && previous.role === content.role) {
+      previous.parts = [...(previous.parts ?? []), ...(content.parts ?? [])];
+    } else {
+      merged.push({ ...content, parts: [...(content.parts ?? [])] });
+    }
+  }
+  return merged;
+}
+
+// User-facing text of a model turn: its text parts, excluding thought
+// (internal reasoning) parts. Null when there is none — e.g. a turn that
+// only calls tools.
+function extractText(content: Content | undefined): string | null {
+  const text = (content?.parts ?? [])
+    .filter((part) => typeof part.text === 'string' && !part.thought)
+    .map((part) => part.text)
+    .join('');
+  return text.length > 0 ? text : null;
 }
