@@ -7,6 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import {
+  ScopedWarehouses,
+  WarehouseListScope,
+} from '../../common/decorators/warehouse-list-scope.decorator';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { Batch } from './entities/batch.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -37,13 +42,12 @@ export class BatchesController {
     return this.batchesService.create(createBatchDto);
   }
 
-  // No warehouse scope on the list endpoint: the service does not yet
-  // filter results by the caller's assigned warehouses (see docs/rbac.md).
   @Roles(...BATCH_ROLES)
   @Serialize(BatchResponseDto)
+  @WarehouseListScope()
   @Get()
-  findAll() {
-    return this.batchesService.findAll();
+  findAll(@ScopedWarehouses() access: WarehouseAccess) {
+    return this.batchesService.findAll(access);
   }
 
   @Roles(...BATCH_ROLES)

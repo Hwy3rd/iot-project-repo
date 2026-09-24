@@ -44,22 +44,22 @@ describe('NotificationsController', () => {
     expect(controller.getVapidPublicKey()).toEqual({ publicKey: null });
   });
 
-  it('delegates subscribe to the service', async () => {
+  it('subscribes for the authenticated caller', async () => {
     const dto = {
-      userId: 'u1',
       endpoint: 'https://push.example/1',
       keys: { p256dh: 'p', auth: 'a' },
     };
 
-    await controller.subscribe(dto);
+    await controller.subscribe('u1', dto);
 
-    expect(notificationsService.subscribe).toHaveBeenCalledWith(dto);
+    expect(notificationsService.subscribe).toHaveBeenCalledWith('u1', dto);
   });
 
-  it('delegates unsubscribe to the service with just the endpoint', async () => {
-    await controller.unsubscribe({ endpoint: 'https://push.example/1' });
+  it("unsubscribes only the caller's own endpoint", async () => {
+    await controller.unsubscribe('u1', { endpoint: 'https://push.example/1' });
 
     expect(notificationsService.unsubscribe).toHaveBeenCalledWith(
+      'u1',
       'https://push.example/1',
     );
   });

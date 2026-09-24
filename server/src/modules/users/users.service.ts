@@ -12,9 +12,11 @@ import Redis from 'ioredis';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import {
+  blockedUserKey,
   REDIS_CLIENT,
   refreshSessionKey,
 } from '../../libs/redis/redis.constant';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -39,7 +41,20 @@ export class UsersService {
     private readonly dataSource: DataSource,
     private readonly uploadFilesService: UploadFilesService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
+
+  // Cuts off every form of access the user still holds: the refresh
+  // session, their current access token (via the blocked-user key checked
+  // by JwtStrategy) and any open realtime sockets.
+  private async revokeAccess(userId: string): Promise<void> {
+    await this.redis
+      .multi()
+      .set(blockedUserKey(userId), '1')
+      .del(refreshSessionKey(userId))
+      .exec();
+    await this.realtimeGateway.disconnectUser(userId);
+  }
 
   private sanitize(user: User) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -131,10 +146,7 @@ export class UsersService {
     return this.sanitize(saved);
   }
 
-  // Also ends the user's session: deleting the refresh-token hash makes the
-  // next POST /auth/refresh fail. An access token already issued stays valid
-  // until it expires (≤ JWT_EXPIRES_IN) — JwtStrategy doesn't hit the DB by
-  // design (see CLAUDE.md "Auth").
+  // Takes effect immediately — see revokeAccess().
   async lock(id: string, actorId: string) {
     if (id === actorId) {
       throw new BadRequestException('You cannot lock your own account');
@@ -146,7 +158,7 @@ export class UsersService {
 
     user.status = UserStatus.LOCKED;
     const saved = await this.saveUser(user);
-    await this.redis.del(refreshSessionKey(id));
+    await this.revokeAccess(id);
     return this.sanitize(saved);
   }
 
@@ -158,6 +170,7 @@ export class UsersService {
 
     user.status = UserStatus.ACTIVE;
     const saved = await this.saveUser(user);
+    await this.redis.del(blockedUserKey(id));
     return this.sanitize(saved);
   }
 
@@ -193,5 +206,6 @@ export class UsersService {
       }
       await manager.delete(WarehouseStaff, { userId: id });
     });
+    await this.revokeAccess(id);
   }
 }

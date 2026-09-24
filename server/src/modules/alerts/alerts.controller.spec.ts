@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { UserRole } from '../../libs/constants/user.constant';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
 
@@ -30,9 +31,16 @@ describe('AlertsController', () => {
     const query = { coldRoomId: 'c1' };
     alertsService.findAll.mockResolvedValue([{ id: 'a1' }]);
 
-    await controller.findAll(query);
+    const access = {
+      userId: 'u1',
+      role: UserRole.MANAGER,
+      warehouseIds: ['w1'],
+      staffWarehouseIds: [],
+    };
 
-    expect(alertsService.findAll).toHaveBeenCalledWith(query);
+    await controller.findAll(query, access);
+
+    expect(alertsService.findAll).toHaveBeenCalledWith(query, access);
   });
 
   it('delegates findOne to the service', async () => {
@@ -43,19 +51,15 @@ describe('AlertsController', () => {
     expect(alertsService.findOne).toHaveBeenCalledWith('a1');
   });
 
-  it('delegates acknowledge to the service', async () => {
-    const dto = { userId: 'u1' };
+  it('acknowledges as the authenticated caller', async () => {
+    await controller.acknowledge('a1', 'u1');
 
-    await controller.acknowledge('a1', dto);
-
-    expect(alertsService.acknowledge).toHaveBeenCalledWith('a1', dto);
+    expect(alertsService.acknowledge).toHaveBeenCalledWith('a1', 'u1');
   });
 
-  it('delegates resolve to resolveManual on the service', async () => {
-    const dto = { userId: 'u1' };
+  it('resolves as the authenticated caller', async () => {
+    await controller.resolve('a1', 'u1');
 
-    await controller.resolve('a1', dto);
-
-    expect(alertsService.resolveManual).toHaveBeenCalledWith('a1', dto);
+    expect(alertsService.resolveManual).toHaveBeenCalledWith('a1', 'u1');
   });
 });

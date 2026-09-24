@@ -5,13 +5,14 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 import { WorkShiftStatus } from '../../libs/constants/work-shift.constant';
 import { Shift } from '../shifts/entities/shift.entity';
 import { User } from '../users/entities/user.entity';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { WorkShift } from './entities/work-shift.entity';
+import { UserRole } from '../../libs/constants/user.constant';
 import { WorkShiftsService } from './work-shifts.service';
 
 type MockRepository<T extends object> = Partial<
@@ -78,6 +79,51 @@ describe('WorkShiftsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  describe('findAll', () => {
+    it('is unfiltered for an admin', async () => {
+      workShiftsRepository.find!.mockResolvedValue([]);
+
+      await service.findAll({
+        userId: 'a1',
+        role: UserRole.ADMIN,
+        warehouseIds: null,
+        staffWarehouseIds: [],
+      });
+
+      expect(workShiftsRepository.find).toHaveBeenCalledWith();
+    });
+
+    it('returns all shifts where the caller manages, only their own where they are Staff', async () => {
+      workShiftsRepository.find!.mockResolvedValue([]);
+
+      await service.findAll({
+        userId: 'u1',
+        role: UserRole.MANAGER,
+        warehouseIds: ['w1', 'w2'],
+        staffWarehouseIds: ['w2'],
+      });
+
+      expect(workShiftsRepository.find).toHaveBeenCalledWith({
+        where: [
+          { warehouseId: In(['w1']) },
+          { warehouseId: In(['w2']), staffId: 'u1' },
+        ],
+      });
+    });
+
+    it('returns nothing without any readable warehouse', async () => {
+      await expect(
+        service.findAll({
+          userId: 'u1',
+          role: UserRole.STAFF,
+          warehouseIds: [],
+          staffWarehouseIds: [],
+        }),
+      ).resolves.toEqual([]);
+      expect(workShiftsRepository.find).not.toHaveBeenCalled();
+    });
   });
 
   describe('create', () => {

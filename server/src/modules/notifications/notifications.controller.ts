@@ -35,13 +35,25 @@ export class NotificationsController {
 
   @Serialize(PushSubscriptionResponseDto)
   @Post('subscriptions')
-  subscribe(@Body() createPushSubscriptionDto: CreatePushSubscriptionDto) {
-    return this.notificationsService.subscribe(createPushSubscriptionDto);
+  subscribe(
+    @GetUserId() userId: string,
+    @Body() createPushSubscriptionDto: CreatePushSubscriptionDto,
+  ) {
+    return this.notificationsService.subscribe(
+      userId,
+      createPushSubscriptionDto,
+    );
   }
 
   @Delete('subscriptions')
-  unsubscribe(@Body() unsubscribeDto: UnsubscribeDto) {
-    return this.notificationsService.unsubscribe(unsubscribeDto.endpoint);
+  unsubscribe(
+    @GetUserId() userId: string,
+    @Body() unsubscribeDto: UnsubscribeDto,
+  ) {
+    return this.notificationsService.unsubscribe(
+      userId,
+      unsubscribeDto.endpoint,
+    );
   }
 
   @Serialize(NotificationResponseDto)

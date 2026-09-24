@@ -20,13 +20,10 @@ class PushSubscriptionKeysDto {
 }
 
 export class CreatePushSubscriptionDto {
-  // No auth wired on this controller (same gap as every other module in
-  // this repo — see server/CLAUDE.md) — the caller states who it's for,
-  // same convention as CreateCommandDto.issuedBy.
-  @IsString()
-  @MinLength(1)
-  userId!: string;
-
+  // No `userId`: a subscription always belongs to the authenticated caller
+  // (NotificationsController passes req.user.id). Accepting it from the
+  // body would let anyone register their browser for another user's
+  // alert pushes.
   @IsString()
   @MinLength(1)
   endpoint!: string;

@@ -10,7 +10,6 @@ import { AlertType } from '../../libs/constants/alert.constant';
 import { NotificationStatus } from '../../libs/constants/notification.constant';
 import { Alert } from '../alerts/entities/alert.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
-import { User } from '../users/entities/user.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
 import { QueryNotificationDto } from './dto/query-notification.dto';
@@ -39,8 +38,6 @@ export class NotificationsService {
     private readonly subscriptionsRepository: Repository<PushSubscription>,
     @InjectRepository(Notification)
     private readonly notificationsRepository: Repository<Notification>,
-    @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
     @InjectRepository(ColdRoom)
     private readonly coldRoomsRepository: Repository<ColdRoom>,
     @InjectRepository(WarehouseStaff)
@@ -52,16 +49,15 @@ export class NotificationsService {
   // it. Uses the same try-insert/catch-duplicate pattern as
   // AlertsService.raise() so two tabs subscribing at once can't race into
   // two rows either.
-  async subscribe(dto: CreatePushSubscriptionDto): Promise<PushSubscription> {
-    const user = await this.usersRepository.findOne({
-      where: { id: dto.userId },
-    });
-    if (!user) {
-      throw new NotFoundException(`User ${dto.userId} not found`);
-    }
-
+  // userId is the authenticated caller. Re-subscribing an endpoint that's
+  // already stored (same browser, e.g. a different person now logged in on
+  // it) moves it to this user.
+  async subscribe(
+    userId: string,
+    dto: CreatePushSubscriptionDto,
+  ): Promise<PushSubscription> {
     const values = {
-      userId: dto.userId,
+      userId,
       p256dhKey: dto.keys.p256dh,
       authKey: dto.keys.auth,
       userAgent: dto.userAgent ?? null,
@@ -91,8 +87,9 @@ export class NotificationsService {
   // Idempotent no-op if the endpoint is already gone (matches
   // AlertNotificationProcessor deleting it itself once the push service
   // reports it as expired).
-  async unsubscribe(endpoint: string): Promise<void> {
-    await this.subscriptionsRepository.delete({ endpoint });
+  // Scoped to the caller: you can only remove your own subscription.
+  async unsubscribe(userId: string, endpoint: string): Promise<void> {
+    await this.subscriptionsRepository.delete({ endpoint, userId });
   }
 
   // Not exposed over HTTP — called by AlertNotificationProcessor for a

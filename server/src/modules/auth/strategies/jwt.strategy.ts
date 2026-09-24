@@ -1,9 +1,14 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { Request } from 'express';
+import Redis from 'ioredis';
 import { Strategy } from 'passport-jwt';
 import { UserRole, UserStatus } from '../../../libs/constants/user.constant';
+import {
+  blockedUserKey,
+  REDIS_CLIENT,
+} from '../../../libs/redis/redis.constant';
 
 function extractJwtFromCookie(req: Request): string | null {
   const cookies = req?.cookies as Record<string, string> | undefined;
@@ -20,7 +25,10 @@ interface AccessTokenPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+  ) {
     super({
       jwtFromRequest: extractJwtFromCookie,
       ignoreExpiration: false,
@@ -28,9 +36,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: AccessTokenPayload) {
+  // Still no DB read: the one extra lookup is a Redis EXISTS on the
+  // blocked-user key, so locking/deleting an account takes effect on the
+  // next request instead of when the current access token expires. Role
+  // changes still only apply from the next refresh.
+  async validate(payload: AccessTokenPayload) {
     if (payload.status === UserStatus.LOCKED) {
       throw new UnauthorizedException('Account is locked');
+    }
+    if (await this.redis.exists(blockedUserKey(payload.sub))) {
+      throw new UnauthorizedException('Account is locked or no longer exists');
     }
 
     return {

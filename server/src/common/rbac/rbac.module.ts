@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { WarehouseAccessService } from './warehouse-access.service';
 import { APP_GUARD } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Alert } from '../../modules/alerts/entities/alert.entity';
@@ -35,9 +36,13 @@ import { WarehouseScopeGuard } from '../guards/warehouse-scope.guard';
     ]),
   ],
   providers: [
+    WarehouseAccessService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: WarehouseScopeGuard },
   ],
+  // For non-HTTP callers that must apply the same scope rules (the
+  // chatbot's tool executor — guards never run there).
+  exports: [WarehouseAccessService],
 })
 export class RbacModule {}

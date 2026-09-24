@@ -1,0 +1,207 @@
+# Chatbot API — chạy bằng extension REST Client (humao.rest-client).
+#
+# Cách dùng:
+#   1. Chạy server (`pnpm run start:dev` trong server/) cùng MySQL/Redis.
+#   2. Sửa @username/@password bên dưới thành một tài khoản có thật (ví dụ
+#      admin tạo bằng `pnpm run seed:admin`). Không commit mật khẩu thật.
+#   3. Chạy request "Login" trước — REST Client tự lưu cookie access_token
+#      và gửi lại ở các request sau, không cần copy token thủ công.
+#   4. Chạy "Tạo hội thoại" — các request phía dưới dùng lại id của nó qua
+#      {{createConversation.response.body.data.id}}.
+#
+# Mọi response thành công có dạng { success, statusCode, message, data }.
+# Các request gửi tin nhắn gọi Gemini thật: tốn quota và bị giới hạn 10
+# tin/phút, 200 tin/ngày cho mỗi user (CHATBOT_RATE_LIMIT_PER_*).
+#
+# Frontend gửi tin nhắn qua WebSocket (`chatbot:send`), không qua POST bên
+# dưới — POST chỉ để test nhanh. Test đường socket bằng:
+#   CHATBOT_PASSWORD=... node http/chatbot-socket.mjs "câu hỏi" [conversationId]
+# (xem docs/API_DESIGN.md §18.1).
+
+@baseUrl = http://localhost:3000
+@username = admin
+@password = change-me-dev-admin-password
+
+@conversationId = 01a0d1a9-4dcd-779c-b8b1-7789a7707ff6
+
+### ─────────────────────────────────────────────────────────────
+### 0. Đăng nhập (bắt buộc chạy trước)
+### ─────────────────────────────────────────────────────────────
+
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "{{username}}",
+  "password": "{{password}}"
+}
+
+### ─────────────────────────────────────────────────────────────
+### 1. Hội thoại
+### ─────────────────────────────────────────────────────────────
+
+# Tạo hội thoại có tiêu đề
+# @name createConversation
+POST {{baseUrl}}/chatbot/conversations
+Content-Type: application/json
+
+{
+  "title": "Kiểm tra kho lạnh"
+}
+
+### Tạo hội thoại không tiêu đề — tiêu đề tự lấy từ tin nhắn đầu tiên
+POST {{baseUrl}}/chatbot/conversations
+Content-Type: application/json
+
+{}
+
+### Danh sách hội thoại của chính mình (mới nhất trước)
+GET {{baseUrl}}/chatbot/conversations
+
+### Chi tiết 1 hội thoại
+GET {{baseUrl}}/chatbot/conversations/{{conversationId}}
+
+### Hội thoại không tồn tại / của người khác → 404 (không phân biệt 2 trường hợp)
+GET {{baseUrl}}/chatbot/conversations/00000000-0000-0000-0000-000000000000
+
+### ─────────────────────────────────────────────────────────────
+### 2. Gửi tin nhắn (gọi Gemini — tốn quota)
+### ─────────────────────────────────────────────────────────────
+
+# Câu hỏi đơn giản, không cần tool
+# @name sendGreeting
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": "Xin chào, bạn hỗ trợ được những gì?"
+}
+
+### Câu hỏi cần tool + mốc thời gian "hôm nay" (kiểm tra model biết ngày hiện tại)
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": "Hôm nay có cảnh báo nào đang mở không?"
+}
+
+### Câu hỏi cần tool, phạm vi theo kho của người hỏi
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": "Liệt kê các thiết bị trong kho của tôi và trạng thái hiện tại."
+}
+
+### Câu hỏi ngoài phạm vi — bot phải từ chối lịch sự
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": "Viết giúp tôi một bài thơ về mùa thu."
+}
+
+### Cố gắng ghi dữ liệu qua chatbot — bot phải nói là chỉ có quyền đọc
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": "Hãy xác nhận tất cả cảnh báo đang mở giúp tôi."
+}
+
+### ─────────────────────────────────────────────────────────────
+### 3. Lịch sử tin nhắn
+### ─────────────────────────────────────────────────────────────
+
+# Trang mới nhất (mặc định 50 tin), sắp xếp cũ → mới.
+# Gồm cả các dòng tool call / tool result của lượt trả lời.
+# @name latestMessages
+GET {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+
+### Giới hạn số tin
+GET {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages?limit=5
+
+### Tải các tin cũ hơn tin đầu tiên của trang mới nhất (phân trang lùi)
+GET {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages?limit=5&before={{latestMessages.response.body.data[0].id}}
+
+### Cursor không thuộc hội thoại này → 404
+GET {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages?before=00000000-0000-0000-0000-000000000000
+
+### limit ngoài khoảng 1–200 → 400
+GET {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages?limit=500
+
+### ─────────────────────────────────────────────────────────────
+### 4. Kiểm tra validation (không gọi Gemini)
+### ─────────────────────────────────────────────────────────────
+
+# Nội dung rỗng → 400
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": ""
+}
+
+### Thiếu field content → 400
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{}
+
+### Tin nhắn 2001 ký tự (vượt giới hạn 2000) → 400 "Tin nhắn tối đa 2000 ký tự"
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
+
+### Tiêu đề hội thoại quá 255 ký tự → 400
+POST {{baseUrl}}/chatbot/conversations
+Content-Type: application/json
+
+{
+  "title": "tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt"
+}
+
+### Gửi tin vào hội thoại không tồn tại → 404 (không gọi Gemini)
+POST {{baseUrl}}/chatbot/conversations/00000000-0000-0000-0000-000000000000/messages
+Content-Type: application/json
+
+{
+  "content": "Xin chào"
+}
+
+### ─────────────────────────────────────────────────────────────
+### 5. Rate limit
+### ─────────────────────────────────────────────────────────────
+
+# Gửi request này liên tục hơn 10 lần trong 1 phút → 429
+# "Bạn đang gửi tin nhắn quá nhanh...". Mỗi lần đều gọi Gemini thật.
+POST {{baseUrl}}/chatbot/conversations/{{conversationId}}/messages
+Content-Type: application/json
+
+{
+  "content": "Kiểm tra rate limit"
+}
+
+### ─────────────────────────────────────────────────────────────
+### 6. Xoá hội thoại
+### ─────────────────────────────────────────────────────────────
+
+# Xoá hội thoại (kèm toàn bộ tin nhắn) → 200, data: null
+DELETE {{baseUrl}}/chatbot/conversations/{{conversationId}}
+
+### Xoá lại lần nữa → 404
+DELETE {{baseUrl}}/chatbot/conversations/{{conversationId}}
+
+### ─────────────────────────────────────────────────────────────
+### 7. Chưa đăng nhập
+### ─────────────────────────────────────────────────────────────
+
+# Đăng xuất (xoá cookie), rồi chạy request kế tiếp → 401
+POST {{baseUrl}}/auth/logout
+
+### Gọi khi chưa đăng nhập → 401
+GET {{baseUrl}}/chatbot/conversations

@@ -3,8 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
@@ -46,8 +47,12 @@ export class WarehousesService {
     return this.saveWarehouse(warehouse);
   }
 
-  findAll() {
-    return this.warehousesRepository.find();
+  // access omitted = unfiltered (internal callers); see WarehouseAccess.
+  findAll(access?: WarehouseAccess) {
+    const ids = access?.warehouseIds;
+    if (!ids) return this.warehousesRepository.find();
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.warehousesRepository.find({ where: { id: In(ids) } });
   }
 
   async findOne(id: string) {

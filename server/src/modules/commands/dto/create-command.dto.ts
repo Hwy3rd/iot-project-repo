@@ -19,9 +19,8 @@ export class CreateCommandDto {
   @IsObject()
   payload?: Record<string, unknown>;
 
-  // Omit when the command is issued by an automated rule rather than a user.
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  issuedBy?: string;
+  // No `issuedBy` here on purpose: the issuer is always the authenticated
+  // caller (CommandsController passes req.user.id), never client-supplied —
+  // command history is kept forever to trace responsibility (REQUIREMENT
+  // §3.8), so it must not be spoofable.
 }

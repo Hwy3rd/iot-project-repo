@@ -1,4 +1,4 @@
-import { Logger, UsePipes, ValidationPipe } from '@nestjs/common';
+import { Inject, Logger, UsePipes, ValidationPipe } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -6,53 +6,41 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import Redis from 'ioredis';
+import { Server } from 'socket.io';
 import { Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
+import { blockedUserKey, REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { JoinWarehouseDto } from './dto/join-warehouse.dto';
-import { readCookie, warehouseRoom } from './realtime.util';
+import type { AppSocket, SocketData } from './realtime.types';
+import {
+  readCookie,
+  REALTIME_GATEWAY_OPTIONS,
+  userRoom,
+  warehouseRoom,
+} from './realtime.util';
 
 interface AccessTokenPayload {
   sub: string;
   username: string;
   role: UserRole;
   status: UserStatus;
+  exp: number;
 }
 
-// What handleConnection puts on client.data — the same shape JwtStrategy
-// puts on req.user for REST, minus the DB round-trip (same "don't hit the DB
-// per request" reasoning as the REST access token — see server/CLAUDE.md).
-interface SocketUser {
-  id: string;
-  username: string;
-  role: UserRole;
-}
-
-interface SocketData {
-  user?: SocketUser;
-}
-
-// Socket.io types client.data as `any` unless the 4th generic (SocketData)
-// is filled in — this is what makes client.data.user a typed access instead
-// of one, everywhere in this gateway.
-type AppSocket = Socket<
-  Record<string, (...args: unknown[]) => void>,
-  Record<string, (...args: unknown[]) => void>,
-  Record<string, never>,
-  SocketData
->;
-
-// Base realtime transport, config-only for now: connection auth + warehouse-
-// scoped rooms (`join:warehouse`/`leave:warehouse`) + emitToWarehouse() for
-// other services to call. Nothing calls emitToWarehouse() yet — no
-// module pushes alerts/telemetry over this — wiring that up is a separate
-// follow-up (see AlertsService, which currently only enqueues a push
+// Base realtime transport: connection auth, a per-user room every socket
+// joins (`user:{id}`, emitToUser()), warehouse-scoped rooms
+// (`join:warehouse`/`leave:warehouse`, emitToWarehouse()). Feature gateways
+// (ChatbotGateway) share this socket.io server and rely on the auth done
+// here. Nothing calls emitToWarehouse() yet — pushing alerts/telemetry over
+// it is a separate follow-up (AlertsService currently only enqueues a push
 // notification job, not a realtime broadcast).
 //
 // Rooms are per-warehouse (`warehouse:{id}`), not one global channel, so a
@@ -60,14 +48,9 @@ type AppSocket = Socket<
 // docs/system-design.md's `/topic/alerts` note, which this deliberately
 // deviates from (a single shared channel would leak every warehouse's
 // alerts to every connected client).
-@WebSocketGateway({
-  cors: {
-    origin: (process.env.WS_CORS_ORIGIN ?? 'http://localhost:5173').split(','),
-    credentials: true,
-  },
-})
+@WebSocketGateway(REALTIME_GATEWAY_OPTIONS)
 export class RealtimeGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(RealtimeGateway.name);
 
@@ -78,22 +61,35 @@ export class RealtimeGateway
     private readonly jwtService: JwtService,
     @InjectRepository(WarehouseStaff)
     private readonly warehouseStaffRepository: Repository<WarehouseStaff>,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
+
+  // Auth runs as handshake middleware, not in handleConnection: socket.io
+  // only fires the client's `connect` (and only lets events through) after
+  // every middleware calls next(), so no handler — in this gateway or a
+  // feature gateway — can ever see a socket whose auth is still in flight.
+  // A rejected handshake surfaces on the client as `connect_error`.
+  afterInit(server: Server): void {
+    server.use((socket, next) => {
+      void this.authenticate(socket as AppSocket).then((ok) =>
+        ok ? next() : next(new Error('Unauthorized')),
+      );
+    });
+  }
 
   // Cookie-based, same as the REST access token (see JwtStrategy) — the
   // browser sends it automatically on the socket.io handshake as long as
   // the client connects with `withCredentials: true` and the CORS origin
   // above matches. No DB read here either, same "role/status only refresh
   // once the token itself expires" tradeoff as the REST side.
-  async handleConnection(client: AppSocket): Promise<void> {
+  async authenticate(client: AppSocket): Promise<boolean> {
     const token = readCookie(
       client.handshake.headers.cookie,
       process.env.COOKIE_NAME ?? 'access_token',
     );
     if (!token) {
       this.logger.debug(`Rejected connection ${client.id}: no access token`);
-      client.disconnect(true);
-      return;
+      return false;
     }
 
     try {
@@ -101,19 +97,34 @@ export class RealtimeGateway
         token,
         { secret: process.env.JWT_SECRET },
       );
-      if (payload.status === UserStatus.LOCKED) {
+      if (
+        payload.status === UserStatus.LOCKED ||
+        (await this.redis.exists(blockedUserKey(payload.sub)))
+      ) {
         throw new Error('locked');
       }
-      const user: SocketUser = {
+      client.data.user = {
         id: payload.sub,
         username: payload.username,
         role: payload.role,
+        tokenExpiresAt: payload.exp * 1000,
       };
-      client.data.user = user;
+      return true;
     } catch {
       this.logger.debug(`Rejected connection ${client.id}: invalid token`);
-      client.disconnect(true);
+      return false;
     }
+  }
+
+  async handleConnection(client: AppSocket): Promise<void> {
+    const user = client.data.user;
+    if (!user) {
+      // Unreachable while the middleware above is registered — never trust
+      // that alone.
+      client.disconnect(true);
+      return;
+    }
+    await client.join(userRoom(user.id));
   }
 
   handleDisconnect(client: AppSocket): void {
@@ -158,6 +169,23 @@ export class RealtimeGateway
   ): Promise<{ warehouseId: string }> {
     await client.leave(warehouseRoom(dto.warehouseId));
     return { warehouseId: dto.warehouseId };
+  }
+
+  // Called when an account is locked or deleted: drops the user's open
+  // sockets now, rather than leaving them connected until they reconnect
+  // (handleConnection would then refuse them via the blocked-user key).
+  async disconnectUser(userId: string): Promise<void> {
+    const sockets = await this.server.fetchSockets();
+    for (const socket of sockets) {
+      if ((socket.data as SocketData | undefined)?.user?.id === userId) {
+        socket.disconnect(true);
+      }
+    }
+  }
+
+  // All open sockets of one user (every tab/device), nobody else's.
+  emitToUser(userId: string, event: string, payload: unknown): void {
+    this.server.to(userRoom(userId)).emit(event, payload);
   }
 
   // For other services to call once they're wired up to push realtime

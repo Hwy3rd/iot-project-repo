@@ -1,14 +1,18 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { GetUserId } from '../../common/decorators/get-user-id.decorator';
+import {
+  ScopedWarehouses,
+  WarehouseListScope,
+} from '../../common/decorators/warehouse-list-scope.decorator';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
 import { UserRole } from '../../libs/constants/user.constant';
 import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.constant';
 import { AlertsService } from './alerts.service';
-import { AcknowledgeAlertDto } from './dto/acknowledge-alert.dto';
 import { AlertResponseDto } from './dto/alert-response.dto';
 import { QueryAlertDto } from './dto/query-alert.dto';
-import { ResolveAlertDto } from './dto/resolve-alert.dto';
 
 const VIEW_ROLES = [
   UserRole.ADMIN,
@@ -23,13 +27,15 @@ const VIEW_ROLES = [
 export class AlertsController {
   constructor(private readonly alertsService: AlertsService) {}
 
-  // No warehouse scope on the list endpoint: the service does not yet
-  // filter results by the caller's assigned warehouses (see docs/rbac.md).
   @Roles(...VIEW_ROLES)
   @Serialize(AlertResponseDto)
+  @WarehouseListScope()
   @Get()
-  findAll(@Query() query: QueryAlertDto) {
-    return this.alertsService.findAll(query);
+  findAll(
+    @Query() query: QueryAlertDto,
+    @ScopedWarehouses() access: WarehouseAccess,
+  ) {
+    return this.alertsService.findAll(query, access);
   }
 
   @Roles(...VIEW_ROLES)
@@ -44,11 +50,8 @@ export class AlertsController {
   @WarehouseScope(WarehouseScopeSource.ALERT_PARAM, { requireShift: true })
   @Serialize(AlertResponseDto)
   @Post(':id/acknowledge')
-  acknowledge(
-    @Param('id') id: string,
-    @Body() acknowledgeAlertDto: AcknowledgeAlertDto,
-  ) {
-    return this.alertsService.acknowledge(id, acknowledgeAlertDto);
+  acknowledge(@Param('id') id: string, @GetUserId() userId: string) {
+    return this.alertsService.acknowledge(id, userId);
   }
 
   // Resolve is a business decision, not Staff's call (see docs/rbac.md).
@@ -56,7 +59,7 @@ export class AlertsController {
   @WarehouseScope(WarehouseScopeSource.ALERT_PARAM)
   @Serialize(AlertResponseDto)
   @Post(':id/resolve')
-  resolve(@Param('id') id: string, @Body() resolveAlertDto: ResolveAlertDto) {
-    return this.alertsService.resolveManual(id, resolveAlertDto);
+  resolve(@Param('id') id: string, @GetUserId() userId: string) {
+    return this.alertsService.resolveManual(id, userId);
   }
 }

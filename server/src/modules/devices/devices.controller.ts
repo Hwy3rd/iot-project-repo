@@ -7,6 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import {
+  ScopedWarehouses,
+  WarehouseListScope,
+} from '../../common/decorators/warehouse-list-scope.decorator';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { Device } from './entities/device.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -43,13 +48,12 @@ export class DevicesController {
     return this.devicesService.create(createDeviceDto);
   }
 
-  // No warehouse scope on the list endpoint: the service does not yet
-  // filter results by the caller's assigned warehouses (see docs/rbac.md).
   @Roles(...DEVICE_VIEW_ROLES)
   @Serialize(DeviceResponseDto)
+  @WarehouseListScope({ requireShift: true })
   @Get()
-  findAll() {
-    return this.devicesService.findAll();
+  findAll(@ScopedWarehouses() access: WarehouseAccess) {
+    return this.devicesService.findAll(access);
   }
 
   @Roles(...DEVICE_VIEW_ROLES)

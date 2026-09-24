@@ -3,12 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CommandStatus } from '../../libs/constants/command.constant';
 import { ChannelRole } from '../../libs/constants/device-channel.constant';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
-import { User } from '../users/entities/user.entity';
 import { AcknowledgeCommandDto } from './dto/acknowledge-command.dto';
 import { CreateCommandDto } from './dto/create-command.dto';
 import { Command } from './entities/command.entity';
@@ -20,11 +20,12 @@ export class CommandsService {
     private readonly commandsRepository: Repository<Command>,
     @InjectRepository(DeviceChannel)
     private readonly channelsRepository: Repository<DeviceChannel>,
-    @InjectRepository(User)
-    private readonly usersRepository: Repository<User>,
   ) {}
 
-  async create(createCommandDto: CreateCommandDto) {
+  // issuedBy: the authenticated user, or null for a command raised by an
+  // automated rule (e.g. an alert-triggered actuator) — never taken from
+  // the request body.
+  async create(createCommandDto: CreateCommandDto, issuedBy: string | null) {
     const channel = await this.channelsRepository.findOne({
       where: { id: createCommandDto.channelId },
     });
@@ -39,20 +40,9 @@ export class CommandsService {
       );
     }
 
-    if (createCommandDto.issuedBy) {
-      const issuer = await this.usersRepository.findOne({
-        where: { id: createCommandDto.issuedBy },
-      });
-      if (!issuer) {
-        throw new NotFoundException(
-          `User ${createCommandDto.issuedBy} not found`,
-        );
-      }
-    }
-
     const command = this.commandsRepository.create({
       channelId: createCommandDto.channelId,
-      issuedBy: createCommandDto.issuedBy ?? null,
+      issuedBy,
       action: createCommandDto.action,
       payload: createCommandDto.payload ?? null,
       status: CommandStatus.PENDING,
@@ -60,8 +50,14 @@ export class CommandsService {
     return this.commandsRepository.save(command);
   }
 
-  findAll() {
-    return this.commandsRepository.find();
+  // access omitted = unfiltered (internal callers); see WarehouseAccess.
+  findAll(access?: WarehouseAccess) {
+    const ids = access?.warehouseIds;
+    if (!ids) return this.commandsRepository.find();
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.commandsRepository.find({
+      where: { channel: { device: { coldRoom: { warehouseId: In(ids) } } } },
+    });
   }
 
   async findOne(id: string) {

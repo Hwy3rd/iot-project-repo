@@ -7,6 +7,11 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import {
+  ScopedWarehouses,
+  WarehouseListScope,
+} from '../../common/decorators/warehouse-list-scope.decorator';
+import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { WorkShift } from './entities/work-shift.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -40,13 +45,15 @@ export class WorkShiftsController {
 
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
   @Serialize(WorkShiftResponseDto)
+  @WarehouseListScope()
   @Get()
-  findAll() {
-    return this.workShiftsService.findAll();
+  findAll(@ScopedWarehouses() access: WarehouseAccess) {
+    return this.workShiftsService.findAll(access);
   }
 
+  // Staff: only their own shift, same rule as the list endpoint.
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
-  @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM)
+  @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM, { ownStaffOnly: true })
   @Serialize(WorkShiftResponseDto)
   @Get(':id')
   findOne(@Param('id') id: string) {

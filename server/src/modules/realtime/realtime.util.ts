@@ -19,3 +19,17 @@ export const readCookie = (
 
 export const warehouseRoom = (warehouseId: string): string =>
   `warehouse:${warehouseId}`;
+
+// Every user's sockets join this room on connect, so events meant for one
+// person (their own chatbot conversations) reach all of their open tabs and
+// nobody else.
+export const userRoom = (userId: string): string => `user:${userId}`;
+
+// Shared by every @WebSocketGateway on the default namespace: Nest attaches
+// them all to one socket.io server, so they must not disagree on options.
+export const REALTIME_GATEWAY_OPTIONS = {
+  cors: {
+    origin: (process.env.WS_CORS_ORIGIN ?? 'http://localhost:5173').split(','),
+    credentials: true,
+  },
+};
