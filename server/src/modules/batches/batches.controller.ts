@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ScopedWarehouses,
@@ -25,6 +27,7 @@ import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
 import { QueryBatchDto } from './dto/query-batch.dto';
 import { BatchesService } from './batches.service';
+import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 const BATCH_ROLES = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
 
@@ -78,5 +81,24 @@ export class BatchesController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.batchesService.remove(id);
+  }
+
+  // Bulk counterpart of DELETE /batches/:id: same roles, and the per-row
+  // warehouse/shift check moves into the service (see bulkRemove there).
+  @Roles(...BATCH_ROLES)
+  @WarehouseListScope({ requireShift: true })
+  @Audit({
+    action: 'batch.remove',
+    targetType: 'batch',
+    entity: Batch,
+    bulk: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk-delete')
+  bulkRemove(
+    @Body() dto: BulkDeleteDto,
+    @ScopedWarehouses() access: WarehouseAccess,
+  ) {
+    return this.batchesService.bulkRemove(dto.ids, access);
   }
 }

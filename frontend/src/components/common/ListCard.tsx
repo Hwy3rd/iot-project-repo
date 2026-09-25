@@ -30,6 +30,8 @@ export function ListCard<T>({
   filters,
   noun,
   empty,
+  selection,
+  toolbarEnd,
   children,
 }: {
   list: ListState
@@ -42,6 +44,10 @@ export function ListCard<T>({
   noun: string
   /** Shown when the list is empty and nothing is filtered. */
   empty: { title: string; description?: ReactNode; action?: ReactNode }
+  /** Right end of the toolbar, e.g. a table/grid switch. */
+  toolbarEnd?: ReactNode
+  /** Bulk-action bar, shown while rows are checked. */
+  selection?: { count: number; offPageCount: number; onClear: () => void; actions: ReactNode }
   children: (items: T[]) => ReactNode
 }) {
   const clearButton = (
@@ -51,7 +57,7 @@ export function ListCard<T>({
   )
 
   return (
-    <Card className="gap-0 py-0">
+    <Card className="gap-0 py-0 shadow-sm">
       <div className="flex flex-col gap-2 border-b p-3 sm:flex-row sm:items-center">
         {search && (
           <SearchInput
@@ -70,12 +76,38 @@ export function ListCard<T>({
             </Button>
           )}
         </div>
-        {list.isFiltered && query.data && (
-          <p className="text-muted-foreground tabular-nums sm:ml-auto" aria-live="polite">
-            Tìm thấy {formatNumber(query.data.meta.total)} {noun}
-          </p>
-        )}
+        <div className="flex items-center gap-3 sm:ml-auto">
+          {list.isFiltered && query.data && (
+            <p className="text-muted-foreground tabular-nums" aria-live="polite">
+              Tìm thấy {formatNumber(query.data.meta.total)} {noun}
+            </p>
+          )}
+          {toolbarEnd}
+        </div>
       </div>
+
+      {selection && selection.count > 0 && (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b bg-primary/5 px-4 py-2.5"
+          aria-live="polite"
+        >
+          <p className="tabular-nums">
+            <span className="font-medium">
+              Đã chọn {formatNumber(selection.count)} {noun}
+            </span>
+            {selection.offPageCount > 0 && (
+              <span className="text-muted-foreground">
+                {' '}
+                (gồm {formatNumber(selection.offPageCount)} ở trang khác)
+              </span>
+            )}
+          </p>
+          <Button variant="ghost" size="lg" onClick={selection.onClear}>
+            Bỏ chọn
+          </Button>
+          <div className="ml-auto flex items-center gap-2">{selection.actions}</div>
+        </div>
+      )}
 
       <CardContent className="px-0">
         {query.isPending ? (

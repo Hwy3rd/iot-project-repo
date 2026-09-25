@@ -8,6 +8,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AlertType } from '../../libs/constants/alert.constant';
 import { DeviceStatus } from '../../libs/constants/device.constant';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AlertsService } from '../alerts/alerts.service';
 import { Device } from '../devices/entities/device.entity';
 import { TelemetryHourly } from './schemas/telemetry-hourly.schema';
@@ -31,13 +32,20 @@ describe('TelemetryService', () => {
   let hourlyModel: { find: jest.Mock };
   let devicesRepository: { findOne: jest.Mock; existsBy: jest.Mock };
   let alertsService: { raise: jest.Mock; resolveAuto: jest.Mock };
+  let realtime: { emitToWarehouse: jest.Mock };
 
   // tempMax=-15, hysteresis=1 → the alert only auto-resolves at <= -16, not
   // merely back inside [-20,-15] — see the "hysteresis band" tests below.
   const activeDevice = {
     id: 'd1',
     status: DeviceStatus.ACTIVE,
-    coldRoom: { id: 'c1', tempMin: -20, tempMax: -15, hysteresis: 1 },
+    coldRoom: {
+      id: 'c1',
+      warehouseId: 'w1',
+      tempMin: -20,
+      tempMax: -15,
+      hysteresis: 1,
+    },
   };
   const sample = {
     ts: new Date('2026-09-21T10:00:05.000Z'),
@@ -66,6 +74,10 @@ describe('TelemetryService', () => {
           provide: AlertsService,
           useValue: { raise: jest.fn(), resolveAuto: jest.fn() },
         },
+        {
+          provide: RealtimeGateway,
+          useValue: { emitToWarehouse: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -74,9 +86,58 @@ describe('TelemetryService', () => {
     hourlyModel = module.get(getModelToken(TelemetryHourly.name));
     devicesRepository = module.get(getRepositoryToken(Device));
     alertsService = module.get(AlertsService);
+    realtime = module.get(RealtimeGateway);
   });
 
   describe('ingest', () => {
+    it('pushes the stored reading to the warehouse room', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      rawModel.create.mockResolvedValue({});
+
+      await service.ingest('d1', sample);
+
+      expect(realtime.emitToWarehouse).toHaveBeenCalledWith(
+        'w1',
+        'coldroom:reading',
+        {
+          warehouseId: 'w1',
+          coldRoomId: 'c1',
+          deviceId: 'd1',
+          latest: {
+            ts: sample.ts,
+            temperature: -18,
+            doorOpen: false,
+            sensorFault: false,
+            outOfRange: false,
+          },
+        },
+      );
+    });
+
+    it('does not push a redelivered (duplicate) sample', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      rawModel.create.mockRejectedValue(
+        Object.assign(new Error('dup'), { code: 11000 }),
+      );
+
+      await expect(service.ingest('d1', sample)).resolves.toEqual({
+        stored: false,
+      });
+      expect(realtime.emitToWarehouse).not.toHaveBeenCalled();
+    });
+
+    it('still stores the sample when the realtime push throws', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      rawModel.create.mockResolvedValue({});
+      realtime.emitToWarehouse.mockImplementation(() => {
+        throw new Error('socket server not ready');
+      });
+
+      await expect(service.ingest('d1', sample)).resolves.toEqual({
+        stored: true,
+      });
+    });
+
     it('throws NotFoundException when the device does not exist', async () => {
       devicesRepository.findOne.mockResolvedValue(null);
 
@@ -131,6 +192,8 @@ describe('TelemetryService', () => {
       expect(alertsService.resolveAuto).toHaveBeenCalledWith({
         type: AlertType.TEMPERATURE_OUT_OF_RANGE,
         deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
       });
       expect(alertsService.raise).not.toHaveBeenCalled();
     });
@@ -283,6 +346,8 @@ describe('TelemetryService', () => {
       expect(alertsService.resolveAuto).toHaveBeenCalledWith({
         type: AlertType.TEMPERATURE_OUT_OF_RANGE,
         deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
       });
       expect(alertsService.raise).not.toHaveBeenCalled();
     });

@@ -3,10 +3,12 @@ import type { DeviceStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { CreateDeviceDialog } from '@/components/devices/CreateDeviceDialog'
+import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { LocationFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { DeviceStatusBadge } from '@/components/common/StatusBadge'
 import {
   Table,
@@ -21,6 +23,7 @@ import { formatDateTime, formatRelative } from '@/lib/format'
 import { DEVICE_STATUS_LABEL } from '@/lib/labels'
 import { useColdRoomLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = ['status', 'warehouseId', 'coldRoomId', 'unassigned'] as const
@@ -85,6 +88,7 @@ export function DevicesPage() {
   const { user } = useAuth()
   // Registering devices and seeing unclaimed ones are Admin-only (docs/RBAC.md).
   const isAdmin = hasRole(user?.role, ['admin'])
+  const canDelete = isAdmin
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const coldRooms = useColdRoomLookup()
@@ -103,16 +107,40 @@ export function DevicesPage() {
     queryFn: () => devicesApi.list(params),
     placeholderData: keepPreviousData,
   })
+  const selection = useRowSelection(
+    canDelete
+      ? (query.data?.items ?? []).map((d) => ({ id: d.id, name: d.uniqueId }))
+      : [],
+    // Paging or resizing pages keeps the selection; a new search/filter starts over.
+    JSON.stringify({ ...params, page: undefined, limit: undefined }),
+  )
 
   return (
     <>
-      <PageHeader title="Thiết bị" description="Thiết bị IoT và vòng đời kỹ thuật."
+      <PageHeader
+        title="Thiết bị"
+        description="Thiết bị IoT và vòng đời kỹ thuật."
         actions={isAdmin && <CreateDeviceDialog />}
       />
       <ListCard
         list={list}
         query={query}
         noun="thiết bị"
+        selection={{
+          count: selection.count,
+          offPageCount: selection.offPageCount,
+          onClear: selection.clear,
+          actions: (
+            <BulkDeleteDialog
+              ids={selection.ids}
+              noun="thiết bị"
+              bulkRemove={devicesApi.bulkRemove}
+              invalidate={[['devices']]}
+              onDone={selection.clear}
+              describe={selection.nameOf}
+            />
+          ),
+        }}
         search={{ label: 'Tìm thiết bị', placeholder: 'Tìm theo mã thiết bị hoặc firmware…' }}
         filters={
           <DeviceFilterDialog
@@ -132,6 +160,9 @@ export function DevicesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {canDelete && (
+                  <SelectAllHead selection={selection} label="Chọn tất cả thiết bị trên trang" />
+                )}
                 <TableHead className="pl-4">Mã thiết bị</TableHead>
                 <TableHead>Trạng thái</TableHead>
                 <TableHead className="hidden md:table-cell">Phòng lạnh</TableHead>
@@ -142,7 +173,10 @@ export function DevicesPage() {
             <TableBody>
               {items.map((d) => (
                 <TableRow key={d.id}>
-                  <TableCell className="pl-4 font-mono text-xs break-all whitespace-normal" translate="no">
+                  {canDelete && (
+                    <SelectRowCell selection={selection} id={d.id} label={`Chọn thiết bị ${d.uniqueId}`} />
+                  )}
+                  <TableCell className="pl-4 font-mono text-sm break-all whitespace-normal" translate="no">
                     {d.uniqueId}
                   </TableCell>
                   <TableCell>
@@ -155,7 +189,7 @@ export function DevicesPage() {
                       <span className="text-muted-foreground">Chưa gán</span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden font-mono text-xs lg:table-cell" translate="no">
+                  <TableCell className="hidden font-mono text-sm lg:table-cell" translate="no">
                     {d.firmwareVersion || '—'}
                   </TableCell>
                   <TableCell className="hidden pr-4 text-muted-foreground sm:table-cell">

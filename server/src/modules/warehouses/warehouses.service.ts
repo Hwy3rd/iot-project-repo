@@ -29,6 +29,7 @@ import { QueryWarehouseDto } from './dto/query-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { Warehouse } from './entities/warehouse.entity';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
+import { bulkDelete, BulkDeleteResult } from '../../common/bulk/bulk-delete';
 
 @Injectable()
 export class WarehousesService {
@@ -142,6 +143,12 @@ export class WarehousesService {
       await manager.softDelete(ColdRoom, { warehouseId: id });
       await manager.delete(WarehouseStaff, { warehouseId: id });
     });
+  }
+
+  // POST /warehouses/bulk-delete — each id through remove(), see
+  // common/bulk/bulk-delete.ts.
+  bulkRemove(ids: string[]): Promise<BulkDeleteResult> {
+    return bulkDelete(ids, (id) => this.remove(id));
   }
 }
 

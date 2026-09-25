@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ScopedWarehouses,
@@ -25,6 +27,7 @@ import { UpdateWorkShiftDto } from './dto/update-work-shift.dto';
 import { WorkShiftResponseDto } from './dto/work-shift-response.dto';
 import { QueryWorkShiftDto } from './dto/query-work-shift.dto';
 import { WorkShiftsService } from './work-shifts.service';
+import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 @Controller('work-shifts')
 export class WorkShiftsController {
@@ -121,5 +124,24 @@ export class WorkShiftsController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.workShiftsService.remove(id);
+  }
+
+  // Bulk counterpart of DELETE /work-shifts/:id (same roles; per-row
+  // warehouse check in the service).
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @WarehouseListScope()
+  @Audit({
+    action: 'work_shift.delete',
+    targetType: 'work_shift',
+    entity: WorkShift,
+    bulk: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk-delete')
+  bulkRemove(
+    @Body() dto: BulkDeleteDto,
+    @ScopedWarehouses() access: WarehouseAccess,
+  ) {
+    return this.workShiftsService.bulkRemove(dto.ids, access);
   }
 }

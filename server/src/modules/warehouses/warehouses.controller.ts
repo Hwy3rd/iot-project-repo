@@ -9,6 +9,8 @@ import {
   Query,
   UploadedFiles,
   UseInterceptors,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ScopedWarehouses,
@@ -30,6 +32,7 @@ import { QueryWarehouseDto } from './dto/query-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { WarehouseResponseDto } from './dto/warehouse-response.dto';
 import { WarehousesService } from './warehouses.service';
+import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 @Controller('warehouses')
 export class WarehousesController {
@@ -88,6 +91,19 @@ export class WarehousesController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.warehousesService.remove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'warehouse.delete',
+    targetType: 'warehouse',
+    entity: Warehouse,
+    bulk: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk-delete')
+  bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.warehousesService.bulkRemove(dto.ids);
   }
 
   @Roles(UserRole.ADMIN)

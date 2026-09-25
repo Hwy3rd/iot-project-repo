@@ -76,8 +76,8 @@ export function DashboardPage() {
     queryFn: () => warehousesApi.list(COUNT),
   })
   const recent = useQuery({
-    queryKey: ['alerts', { status: 'open', limit: 8 }],
-    queryFn: () => alertsApi.list({ status: 'open', limit: 8 }),
+    queryKey: ['alerts', { status: 'open', limit: 10 }],
+    queryFn: () => alertsApi.list({ status: 'open', limit: 10 }),
   })
 
   return (

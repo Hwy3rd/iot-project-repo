@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ScopedWarehouses,
@@ -27,6 +29,7 @@ import { DeviceResponseDto } from './dto/device-response.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 import { QueryDeviceDto } from './dto/query-device.dto';
 import { DevicesService } from './devices.service';
+import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 const DEVICE_VIEW_ROLES = [
   UserRole.ADMIN,
@@ -124,5 +127,18 @@ export class DevicesController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.devicesService.remove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'device.delete',
+    targetType: 'device',
+    entity: Device,
+    bulk: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk-delete')
+  bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.devicesService.bulkRemove(dto.ids);
   }
 }

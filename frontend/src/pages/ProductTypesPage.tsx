@@ -3,10 +3,12 @@ import type { ProductUnit } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { CreateProductTypeDialog } from '@/components/product-types/CreateProductTypeDialog'
+import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import {
   Table,
   TableBody,
@@ -19,6 +21,7 @@ import { emptyFilters, labelOptions } from '@/lib/filters'
 import { formatTemp } from '@/lib/format'
 import { PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { param, useListParams } from '@/lib/useListParams'
+import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = ['unit'] as const
@@ -34,6 +37,7 @@ function tempRange(min: number | null, max: number | null) {
 export function ProductTypesPage() {
   const { user } = useAuth()
   const canCreate = hasRole(user?.role, ['admin'])
+  const canDelete = hasRole(user?.role, ['admin'])
   const list = useListParams(FILTER_KEYS)
 
   const params: ProductTypeQuery = {
@@ -47,16 +51,40 @@ export function ProductTypesPage() {
     queryFn: () => productTypesApi.list(params),
     placeholderData: keepPreviousData,
   })
+  const selection = useRowSelection(
+    canDelete
+      ? (query.data?.items ?? []).map((p) => ({ id: p.id, name: p.name }))
+      : [],
+    // Paging or resizing pages keeps the selection; a new search/filter starts over.
+    JSON.stringify({ ...params, page: undefined, limit: undefined }),
+  )
 
   return (
     <>
-      <PageHeader title="Loại sản phẩm" description="Danh mục loại sản phẩm dùng chung."
+      <PageHeader
+        title="Loại sản phẩm"
+        description="Danh mục loại sản phẩm dùng chung."
         actions={canCreate && <CreateProductTypeDialog />}
       />
       <ListCard
         list={list}
         query={query}
         noun="loại sản phẩm"
+        selection={{
+          count: selection.count,
+          offPageCount: selection.offPageCount,
+          onClear: selection.clear,
+          actions: (
+            <BulkDeleteDialog
+              ids={selection.ids}
+              noun="loại sản phẩm"
+              bulkRemove={productTypesApi.bulkRemove}
+              invalidate={[['product-types']]}
+              onDone={selection.clear}
+              describe={selection.nameOf}
+            />
+          ),
+        }}
         search={{ label: 'Tìm loại sản phẩm', placeholder: 'Tìm theo tên hoặc nhóm hàng…' }}
         filters={
           <FilterDialog
@@ -87,6 +115,9 @@ export function ProductTypesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {canDelete && (
+                  <SelectAllHead selection={selection} label="Chọn tất cả loại sản phẩm trên trang" />
+                )}
                 <TableHead className="pl-4">Tên</TableHead>
                 <TableHead className="hidden sm:table-cell">Nhóm hàng</TableHead>
                 <TableHead>Đơn vị</TableHead>
@@ -96,6 +127,9 @@ export function ProductTypesPage() {
             <TableBody>
               {items.map((p) => (
                 <TableRow key={p.id}>
+                  {canDelete && (
+                    <SelectRowCell selection={selection} id={p.id} label={`Chọn loại sản phẩm ${p.name}`} />
+                  )}
                   <TableCell className="pl-4 whitespace-normal">
                     <span className="font-medium">{p.name}</span>
                     {p.category && (

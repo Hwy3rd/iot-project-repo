@@ -30,6 +30,7 @@ import { ClaimDeviceDto } from './dto/claim-device.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 import { Device } from './entities/device.entity';
+import { bulkDelete, BulkDeleteResult } from '../../common/bulk/bulk-delete';
 
 const CLAIM_CODE_SALT_ROUNDS = 10;
 const CLAIM_CODE_TTL_MS = 15 * 60 * 1000;
@@ -183,5 +184,9 @@ export class DevicesService {
     if (!result.affected) {
       throw new NotFoundException(`Device ${id} not found`);
     }
+  }
+
+  bulkRemove(ids: string[]): Promise<BulkDeleteResult> {
+    return bulkDelete(ids, (id) => this.remove(id));
   }
 }

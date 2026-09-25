@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 
 export const PAGE_SIZES = [10, 20, 50, 100] as const
-export const DEFAULT_PAGE_SIZE = 20
+export const DEFAULT_PAGE_SIZE = 10
 
 type Patch = Record<string, string | number | null | undefined>
 

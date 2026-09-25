@@ -16,6 +16,7 @@ import { UploadFilesService } from '../upload-files/upload-files.service';
 import { CreateProductTypeDto } from './dto/create-product-type.dto';
 import { UpdateProductTypeDto } from './dto/update-product-type.dto';
 import { ProductType } from './entities/product-type.entity';
+import { bulkDelete, BulkDeleteResult } from '../../common/bulk/bulk-delete';
 
 @Injectable()
 export class ProductTypesService {
@@ -117,6 +118,10 @@ export class ProductTypesService {
     if (!result.affected) {
       throw new NotFoundException(`Product type ${id} not found`);
     }
+  }
+
+  bulkRemove(ids: string[]): Promise<BulkDeleteResult> {
+    return bulkDelete(ids, (id) => this.remove(id));
   }
 
   async addImages(id: string, files: Express.Multer.File[]) {

@@ -21,6 +21,11 @@ import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateWorkShiftDto } from './dto/create-work-shift.dto';
 import { UpdateWorkShiftDto } from './dto/update-work-shift.dto';
 import { WorkShift } from './entities/work-shift.entity';
+import {
+  assertInScope,
+  bulkDelete,
+  BulkDeleteResult,
+} from '../../common/bulk/bulk-delete';
 
 @Injectable()
 export class WorkShiftsService {
@@ -253,5 +258,22 @@ export class WorkShiftsService {
     if (!result.affected) {
       throw new NotFoundException(`Work shift ${id} not found`);
     }
+  }
+
+  // `access` comes from @WarehouseListScope() with the same roles as
+  // DELETE /work-shifts/:id.
+  async bulkRemove(
+    ids: string[],
+    access: WarehouseAccess,
+  ): Promise<BulkDeleteResult> {
+    const shifts = await this.workShiftsRepository.find({
+      where: { id: In(ids) },
+      select: { id: true, warehouseId: true },
+    });
+    const warehouseOf = new Map(shifts.map((w) => [w.id, w.warehouseId]));
+    return bulkDelete(ids, (id) => {
+      assertInScope(id, warehouseOf, access.warehouseIds);
+      return this.remove(id);
+    });
   }
 }

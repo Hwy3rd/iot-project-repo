@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ColdRoomsController } from './cold-rooms.controller';
+import { ColdRoomStatusService } from './cold-room-status.service';
 import { ColdRoomsService } from './cold-rooms.service';
 
 describe('ColdRoomsController', () => {
@@ -17,7 +18,13 @@ describe('ColdRoomsController', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ColdRoomsController],
-      providers: [{ provide: ColdRoomsService, useValue: coldRoomsService }],
+      providers: [
+        { provide: ColdRoomsService, useValue: coldRoomsService },
+        {
+          provide: ColdRoomStatusService,
+          useValue: { findStatuses: jest.fn() },
+        },
+      ],
     }).compile();
 
     controller = module.get<ColdRoomsController>(ColdRoomsController);

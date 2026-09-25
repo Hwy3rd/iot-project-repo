@@ -10,6 +10,8 @@ import {
   UploadedFiles,
   UseGuards,
   UseInterceptors,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { User } from './entities/user.entity';
@@ -27,6 +29,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UsersService } from './users.service';
+import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 @Controller('users')
 export class UsersController {
@@ -101,6 +104,19 @@ export class UsersController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.usersService.remove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'user.delete',
+    targetType: 'user',
+    entity: User,
+    bulk: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk-delete')
+  bulkRemove(@Body() dto: BulkDeleteDto, @GetUserId() callerId: string) {
+    return this.usersService.bulkRemove(dto.ids, callerId);
   }
 
   @UseGuards(SelfScopeGuard)

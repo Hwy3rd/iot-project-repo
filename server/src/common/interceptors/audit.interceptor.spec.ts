@@ -67,6 +67,60 @@ describe('AuditInterceptor', () => {
       key === AUDIT_KEY ? { idParam: 'id', ...meta } : undefined,
     );
 
+  it('bulk: writes one delete entry per id the handler reports as deleted', async () => {
+    withMeta({
+      action: 'cold_room.delete',
+      targetType: 'cold_room',
+      entity: ColdRoom,
+      bulk: true,
+    });
+    const rows: Record<string, object> = {
+      cr1: { id: 'cr1', warehouseId: 'w1', name: 'A1' },
+      cr2: { id: 'cr2', warehouseId: 'w1', name: 'A2' },
+    };
+    // "before" for every requested id; "after" is gone for the deleted one.
+    repo(ColdRoom).findOne.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve(rows[where.id] ?? null),
+    );
+    const context = {
+      getHandler: () => () => undefined,
+      switchToHttp: () => ({
+        getRequest: () => ({
+          user: { id: 'actor-1' },
+          params: {},
+          body: { ids: ['cr1', 'cr2'] },
+          ip: '10.0.0.1',
+          headers: { 'user-agent': 'jest-ua' },
+        }),
+      }),
+    } as unknown as ExecutionContext;
+    const bulkHandler: CallHandler = {
+      handle: () => {
+        delete rows.cr1;
+        return of({
+          deleted: ['cr1'],
+          failed: [{ id: 'cr2', statusCode: 409, message: 'x' }],
+        });
+      },
+    };
+
+    await lastValueFrom(interceptor.intercept(context, bulkHandler));
+
+    expect(auditLogsService.create).toHaveBeenCalledTimes(1);
+    expect(recordedEntry()).toEqual({
+      userId: 'actor-1',
+      warehouseId: 'w1',
+      action: 'cold_room.delete',
+      targetType: 'cold_room',
+      targetId: 'cr1',
+      metadata: {
+        before: { id: 'cr1', warehouseId: 'w1', name: 'A1' },
+        request: { ip: '10.0.0.1', userAgent: 'jest-ua' },
+      },
+    });
+  });
+
   it('passes through untouched when the handler has no @Audit()', async () => {
     const result = await lastValueFrom(
       interceptor.intercept(buildContext(), handler({ id: 'x' })),

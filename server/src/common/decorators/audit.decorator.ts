@@ -20,6 +20,11 @@ export interface AuditMeta {
   // e.g. { warehouseId: 'warehouseId', userId: 'userId' }. `idParam` then
   // only supplies audit_logs.target_id.
   lookup?: Record<string, string>;
+  // A `POST …/bulk-delete` route: the targets are body.ids instead of a
+  // route param, and one entry is written per id the handler reports in
+  // `deleted` (see common/bulk/bulk-delete.ts) — the same entry the single
+  // DELETE writes, so the log reads the same whichever route was used.
+  bulk?: boolean;
   // Optional override picked from the snapshots, e.g. "user.role_change"
   // when a user update actually changed `role`. Return undefined to keep
   // `action`.

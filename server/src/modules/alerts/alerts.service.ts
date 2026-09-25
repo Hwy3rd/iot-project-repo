@@ -23,6 +23,9 @@ import {
   resolvePagination,
 } from '../../common/pagination/paginated';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
+import { REALTIME_EVENTS } from '../../libs/constants/realtime.constant';
+import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { QueryAlertDto } from './dto/query-alert.dto';
 import { Alert } from './entities/alert.entity';
 import { buildActiveKey } from './alerts.util';
@@ -41,6 +44,10 @@ export interface AutoResolveCriteria {
   type: AlertType;
   deviceId?: string | null;
   batchId?: string | null;
+  // Where the incident is, so a resolve can be announced over the realtime
+  // socket without an extra lookup. Omit and nothing is announced.
+  coldRoomId?: string;
+  warehouseId?: string;
 }
 
 const isMysqlDuplicateKeyError = (error: unknown): boolean =>
@@ -58,6 +65,9 @@ export class AlertsService {
   constructor(
     @InjectRepository(Alert)
     private readonly alertsRepository: Repository<Alert>,
+    @InjectRepository(ColdRoom)
+    private readonly coldRoomsRepository: Repository<ColdRoom>,
+    private readonly realtime: RealtimeGateway,
     @InjectQueue(QUEUE_NAMES.ALERT_NOTIFICATIONS)
     private readonly notificationsQueue: Queue,
   ) {}
@@ -96,6 +106,7 @@ export class AlertsService {
       // Only for a genuinely new incident — a refresh (the catch branch
       // below) means recipients were already notified once for this one.
       await this.enqueueNotification(saved.id);
+      await this.announceChange(saved.coldRoomId);
       return saved;
     } catch (error) {
       if (!isMysqlDuplicateKeyError(error)) {
@@ -118,7 +129,7 @@ export class AlertsService {
     if (!subjectId) {
       throw new Error('resolveAuto() requires deviceId or batchId');
     }
-    await this.alertsRepository.update(
+    const result = await this.alertsRepository.update(
       { activeKey: buildActiveKey(criteria.type, subjectId) },
       {
         status: AlertStatus.RESOLVED,
@@ -127,6 +138,9 @@ export class AlertsService {
         activeKey: null,
       },
     );
+    if (result.affected && criteria.coldRoomId) {
+      await this.announceChange(criteria.coldRoomId, criteria.warehouseId);
+    }
   }
 
   // Atomic conditional update (not find-then-save) so two people
@@ -151,7 +165,9 @@ export class AlertsService {
         `Alert ${id} cannot be acknowledged from status ${alert.status}`,
       );
     }
-    return this.findOne(id);
+    const alert = await this.findOne(id);
+    await this.announceChange(alert.coldRoomId);
+    return alert;
   }
 
   // TODO(alerts): for types with an auto-close condition (temperature, door,
@@ -180,7 +196,9 @@ export class AlertsService {
         `Alert ${id} cannot be resolved from status ${alert.status}`,
       );
     }
-    return this.findOne(id);
+    const alert = await this.findOne(id);
+    await this.announceChange(alert.coldRoomId);
+    return alert;
   }
 
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
@@ -244,6 +262,32 @@ export class AlertsService {
     } catch (error) {
       this.logger.warn(
         `Failed to enqueue notification for alert ${alertId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  // Tells sockets in the room's warehouse that its alerts changed, so open
+  // grids/lists refetch. Best effort: a realtime hiccup must never fail the
+  // alert write it follows (the grids also poll as a fallback).
+  private async announceChange(coldRoomId: string, warehouseId?: string) {
+    try {
+      const target =
+        warehouseId ??
+        (
+          await this.coldRoomsRepository.findOne({
+            where: { id: coldRoomId },
+            select: { id: true, warehouseId: true },
+            withDeleted: true,
+          })
+        )?.warehouseId;
+      if (!target) return;
+      this.realtime.emitToWarehouse(target, REALTIME_EVENTS.ALERTS_CHANGED, {
+        warehouseId: target,
+        coldRoomId,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Could not announce alert change for cold room ${coldRoomId}: ${String(error)}`,
       );
     }
   }

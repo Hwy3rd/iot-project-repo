@@ -23,6 +23,11 @@ import { ProductType } from '../product-types/entities/product-type.entity';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
 import { Batch } from './entities/batch.entity';
+import {
+  assertInScope,
+  bulkDelete,
+  BulkDeleteResult,
+} from '../../common/bulk/bulk-delete';
 
 @Injectable()
 export class BatchesService {
@@ -181,5 +186,25 @@ export class BatchesService {
     batch.removedAt = new Date().toISOString().slice(0, 10);
     batch.status = BatchStatus.REMOVED;
     await this.batchesRepository.save(batch);
+  }
+
+  // `access` comes from @WarehouseListScope({ requireShift: true }) with the
+  // same roles as DELETE /batches/:id, so each row is judged exactly like
+  // that route's @WarehouseScope would judge it.
+  async bulkRemove(
+    ids: string[],
+    access: WarehouseAccess,
+  ): Promise<BulkDeleteResult> {
+    const batches = await this.batchesRepository.find({
+      where: { id: In(ids) },
+      relations: { coldRoom: true },
+    });
+    const warehouseOf = new Map(
+      batches.map((b) => [b.id, b.coldRoom?.warehouseId ?? null]),
+    );
+    return bulkDelete(ids, (id) => {
+      assertInScope(id, warehouseOf, access.warehouseIds);
+      return this.remove(id);
+    });
   }
 }

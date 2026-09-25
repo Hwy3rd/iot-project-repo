@@ -7,6 +7,8 @@ import {
   Patch,
   Post,
   Query,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ScopedWarehouses,
@@ -24,11 +26,17 @@ import { ColdRoomResponseDto } from './dto/cold-room-response.dto';
 import { CreateColdRoomDto } from './dto/create-cold-room.dto';
 import { UpdateColdRoomDto } from './dto/update-cold-room.dto';
 import { QueryColdRoomDto } from './dto/query-cold-room.dto';
+import { ColdRoomStatusService } from './cold-room-status.service';
 import { ColdRoomsService } from './cold-rooms.service';
+import { QueryColdRoomStatusDto } from './dto/query-cold-room-status.dto';
+import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 @Controller('cold-rooms')
 export class ColdRoomsController {
-  constructor(private readonly coldRoomsService: ColdRoomsService) {}
+  constructor(
+    private readonly coldRoomsService: ColdRoomsService,
+    private readonly coldRoomStatusService: ColdRoomStatusService,
+  ) {}
 
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @WarehouseScope(WarehouseScopeSource.WAREHOUSE_BODY, {
@@ -53,6 +61,21 @@ export class ColdRoomsController {
     @Query() query: QueryColdRoomDto,
   ) {
     return this.coldRoomsService.findAll(access, query);
+  }
+
+  // Live overview for the grid views. Declared before GET :id so "status"
+  // isn't taken for an id. Anyone assigned to the warehouse may watch it —
+  // Staff included, on shift or not (same audience as the realtime
+  // `warehouse:{id}` room that pushes updates to these grids); rooms
+  // outside the caller's scope are silently left out.
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TECHNICIAN, UserRole.STAFF)
+  @WarehouseListScope()
+  @Get('status')
+  findStatuses(
+    @Query() query: QueryColdRoomStatusDto,
+    @ScopedWarehouses() access: WarehouseAccess,
+  ) {
+    return this.coldRoomStatusService.findStatuses(query, access);
   }
 
   @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)
@@ -87,5 +110,18 @@ export class ColdRoomsController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.coldRoomsService.remove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'cold_room.delete',
+    targetType: 'cold_room',
+    entity: ColdRoom,
+    bulk: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk-delete')
+  bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.coldRoomsService.bulkRemove(dto.ids);
   }
 }

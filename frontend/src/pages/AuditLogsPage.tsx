@@ -170,11 +170,11 @@ export function AuditLogsPage() {
                       {formatRelative(l.createdAt)}
                     </time>
                   </TableCell>
-                  <TableCell className="font-mono text-xs" translate="no">
+                  <TableCell className="font-mono text-sm" translate="no">
                     {l.action}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">{actor(l.userId)}</TableCell>
-                  <TableCell className="hidden font-mono text-xs md:table-cell" translate="no">
+                  <TableCell className="hidden font-mono text-sm md:table-cell" translate="no">
                     {l.targetType ?? '—'}
                     {l.targetId && (
                       <span className="text-muted-foreground" title={l.targetId}>

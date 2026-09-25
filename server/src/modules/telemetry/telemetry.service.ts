@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -24,6 +25,11 @@ import {
   QueryRawTelemetryDto,
   QueryTelemetryDto,
 } from './dto/query-telemetry.dto';
+import {
+  REALTIME_EVENTS,
+  type ColdRoomReadingEvent,
+} from '../../libs/constants/realtime.constant';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { TelemetryHourly } from './schemas/telemetry-hourly.schema';
 import { TelemetryRaw } from './schemas/telemetry-raw.schema';
 import { floorToHour } from './telemetry.util';
@@ -45,6 +51,8 @@ const isDuplicateKeyError = (error: unknown): boolean =>
 
 @Injectable()
 export class TelemetryService {
+  private readonly logger = new Logger(TelemetryService.name);
+
   constructor(
     @InjectModel(TelemetryRaw.name)
     private readonly rawModel: Model<TelemetryRaw>,
@@ -53,6 +61,7 @@ export class TelemetryService {
     @InjectRepository(Device)
     private readonly devicesRepository: Repository<Device>,
     private readonly alertsService: AlertsService,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   // Not exposed over HTTP on purpose: it is meant to be called by the MQTT
@@ -120,6 +129,18 @@ export class TelemetryService {
         doorOpen: sample.doorOpen,
       });
     }
+    this.announceReading({
+      warehouseId: device.coldRoom.warehouseId,
+      coldRoomId: device.coldRoom.id,
+      deviceId: device.id,
+      latest: {
+        ts: sample.ts,
+        temperature,
+        doorOpen: sample.doorOpen,
+        sensorFault: !hasValidReading,
+        outOfRange,
+      },
+    });
     return { stored: true };
   }
 
@@ -163,7 +184,26 @@ export class TelemetryService {
       await this.alertsService.resolveAuto({
         type: AlertType.TEMPERATURE_OUT_OF_RANGE,
         deviceId,
+        coldRoomId: coldRoom.id,
+        warehouseId: coldRoom.warehouseId,
       });
+    }
+  }
+
+  // Live update for open cold-room/warehouse grids. Best effort: the sample
+  // is already stored, and the grids also poll, so a failed push is only
+  // logged.
+  private announceReading(event: ColdRoomReadingEvent) {
+    try {
+      this.realtime.emitToWarehouse(
+        event.warehouseId,
+        REALTIME_EVENTS.COLD_ROOM_READING,
+        event,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not announce reading for cold room ${event.coldRoomId}: ${String(error)}`,
+      );
     }
   }
 

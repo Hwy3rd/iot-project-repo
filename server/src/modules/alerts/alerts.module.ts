@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
+import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { User } from '../users/entities/user.entity';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
@@ -9,7 +11,9 @@ import { Alert } from './entities/alert.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Alert, User]),
+    TypeOrmModule.forFeature([Alert, User, ColdRoom]),
+    // alerts:changed pushes to the warehouse room (see REALTIME_EVENTS).
+    RealtimeModule,
     // Producer only — this module never processes the queue. The consumer
     // (AlertNotificationProcessor) lives in the worker process and
     // registers the same queue name there; both share the connection

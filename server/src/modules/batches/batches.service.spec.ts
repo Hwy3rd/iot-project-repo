@@ -9,6 +9,7 @@ import { QueryFailedError, Repository } from 'typeorm';
 import { BatchStatus } from '../../libs/constants/batch.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { ProductType } from '../product-types/entities/product-type.entity';
+import { UserRole } from '../../libs/constants/user.constant';
 import { BatchesService } from './batches.service';
 import { Batch } from './entities/batch.entity';
 
@@ -128,6 +129,47 @@ describe('BatchesService', () => {
       await expect(service.findOne('missing-id')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('bulkRemove', () => {
+    const scoped = (warehouseIds: string[] | null) => ({
+      userId: 'u1',
+      role: UserRole.MANAGER,
+      warehouseIds,
+      staffWarehouseIds: [],
+    });
+
+    it('removes in-scope batches and rejects the rest per row', async () => {
+      batchesRepository.find!.mockResolvedValue([
+        { id: 'b1', coldRoom: { warehouseId: 'w1' } },
+        { id: 'b2', coldRoom: { warehouseId: 'w2' } },
+      ]);
+      const remove = jest.spyOn(service, 'remove').mockResolvedValue(undefined);
+
+      const result = await service.bulkRemove(
+        ['b1', 'b2', 'b3'],
+        scoped(['w1']),
+      );
+
+      expect(result.deleted).toEqual(['b1']);
+      expect(result.failed.map((f) => [f.id, f.statusCode])).toEqual([
+        ['b2', 403],
+        ['b3', 404],
+      ]);
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(remove).toHaveBeenCalledWith('b1');
+    });
+
+    it('lets an Admin act on any existing batch', async () => {
+      batchesRepository.find!.mockResolvedValue([
+        { id: 'b2', coldRoom: { warehouseId: 'w2' } },
+      ]);
+      jest.spyOn(service, 'remove').mockResolvedValue(undefined);
+
+      const result = await service.bulkRemove(['b2'], scoped(null));
+
+      expect(result).toEqual({ deleted: ['b2'], failed: [] });
     });
   });
 

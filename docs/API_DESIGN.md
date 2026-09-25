@@ -46,6 +46,17 @@ Kết quả sắp xếp mới nhất trước. Riêng `shifts` xếp theo `start
 - `warehouseId` ngoài phạm vi của caller không bị lỗi 403 mà chỉ trả về danh sách rỗng, giống như khi caller không có kho nào.
 - Enum (`status`, `type`, `unit`, `role`, `action`…): sai giá trị trả về 400.
 
+**Xoá hàng loạt**: `POST /<resource>/bulk-delete` với body `{ "ids": ["…"] }` (1–100 id, không trùng), có ở `warehouses`, `cold-rooms`, `product-types`, `devices`, `users`, `batches`, `work-shifts`. Vai trò được phép giống hệt `DELETE /<resource>/:id` tương ứng. Trả về `200` với:
+
+```json
+{ "deleted": ["…"], "failed": [{ "id": "…", "statusCode": 404, "message": "…" }] }
+```
+
+- **Best effort, không phải all-or-nothing**: mỗi id đi qua đúng logic của `DELETE /:id` (transaction riêng, quy tắc nghiệp vụ riêng). Một id lỗi không ảnh hưởng các id khác. `statusCode` là mã mà `DELETE /:id` sẽ trả cho id đó (404 không tồn tại, 403 ngoài phạm vi, 409 sai trạng thái…).
+- **Phạm vi kho** (`batches`, `work-shifts`): kiểm tra từng id như `@WarehouseScope` của route đơn. Staff thao tác trên lô hàng vẫn phải đang trong ca trực tại kho của lô đó.
+- **`users`**: id của chính người gọi bị từ chối (400), để Admin không tự khoá mình.
+- **Nhật ký**: mỗi id xoá thành công có một bản ghi `audit_logs` riêng, cùng `action` với route đơn (ví dụ `warehouse.delete`, `batch.remove`). Id thất bại không được ghi.
+
 **Định dạng lỗi**: mọi lỗi (kể cả lỗi không lường trước, không phải `HttpException`) đi qua `GlobalExceptionFilter` (đăng ký toàn cục qua `APP_FILTER`), trả về dạng thống nhất:
 
 ```json
@@ -123,6 +134,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 |---|---|---|---|
 | `POST /cold-rooms` | A, M (**P** theo `warehouseId` trong body) | `{ warehouseId, name, tempMin, tempMax, hysteresis?, doorOpenMaxSeconds?, capacityPallets?, capacityWeightKg?, capacityVolumeM3? }` | `ColdRoomResponseDto` |
 | `GET /cold-rooms` | mọi role | `search?` (`name`), `warehouseId?`, `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<ColdRoomResponseDto>` |
+| `GET /cold-rooms/status` | A, M, T, S | `coldRoomIds?` hoặc `warehouseIds?` (danh sách id cách nhau bằng dấu phẩy, ≤ 100, bắt buộc có một trong hai) | `ColdRoomStatus[]`: mỗi phòng có `latest` (mẫu telemetry mới nhất: `ts`, `temperature`, `doorOpen`, `sensorFault`, `outOfRange`; `null` nếu chưa có), `devices` (`total` + số thiết bị theo từng trạng thái), `activeAlerts` (cảnh báo `open`/`acknowledged`). Phòng ngoài phạm vi của caller bị bỏ qua, không báo lỗi. Staff xem được **kể cả khi không trong ca**. Cập nhật trực tiếp qua WebSocket: sự kiện `coldroom:reading` và `alerts:changed` trong room `warehouse:{id}` |
 | `GET /cold-rooms/:id` | mọi role, **P** | — | `ColdRoomResponseDto` |
 | `PATCH /cold-rooms/:id` | A, M, **P** | các field như create (trừ `warehouseId`) | `ColdRoomResponseDto` |
 | `DELETE /cold-rooms/:id` | A | — | `null` (soft delete) |

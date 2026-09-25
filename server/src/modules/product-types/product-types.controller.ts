@@ -9,6 +9,8 @@ import {
   Query,
   UploadedFiles,
   UseInterceptors,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { ProductType } from './entities/product-type.entity';
@@ -23,6 +25,7 @@ import { ProductTypeResponseDto } from './dto/product-type-response.dto';
 import { UpdateProductTypeDto } from './dto/update-product-type.dto';
 import { QueryProductTypeDto } from './dto/query-product-type.dto';
 import { ProductTypesService } from './product-types.service';
+import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 @Controller('product-types')
 export class ProductTypesController {
@@ -76,6 +79,19 @@ export class ProductTypesController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.productTypesService.remove(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Audit({
+    action: 'product_type.delete',
+    targetType: 'product_type',
+    entity: ProductType,
+    bulk: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('bulk-delete')
+  bulkRemove(@Body() dto: BulkDeleteDto) {
+    return this.productTypesService.bulkRemove(dto.ids);
   }
 
   @Roles(UserRole.ADMIN)
