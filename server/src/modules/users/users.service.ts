@@ -10,11 +10,17 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import { withSearch } from '../../common/query/find-filters';
+import { QueryUserDto } from './dto/query-user.dto';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import Redis from 'ioredis';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
+import {
+  DataSource,
+  FindOptionsWhere,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import {
   blockedUserKey,
@@ -106,9 +112,18 @@ export class UsersService {
     return this.sanitize(saved);
   }
 
-  async findAll(query: PaginationQueryDto = {}) {
+  async findAll(query: QueryUserDto = {}) {
+    const where: FindOptionsWhere<User> = {};
+    if (query.role) where.role = query.role;
+    if (query.status) where.status = query.status;
     const pagination = resolvePagination(query);
     const [users, total] = await this.usersRepository.findAndCount({
+      where: withSearch(where, query.search, [
+        'username',
+        'fullName',
+        'email',
+        'phone',
+      ]),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

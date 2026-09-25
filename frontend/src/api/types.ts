@@ -103,21 +103,7 @@ export interface ColdRoom {
   doorOpenMaxSeconds: number
   capacityPallets: number | null
   capacityWeightKg: number | null
-  createdAt: string
-  updatedAt: string
-}
-
-export interface ColdRoom {
-  id: string
-  warehouseId: string
-  name: string
-  tempMin: number
-  tempMax: number
-  hysteresis: number
-  doorOpenMaxSeconds: number
-  capacityPallets: number | null
-  capacityWeightKg: number | null
-  capacityVolumeM3?: number | null
+  capacityVolumeM3: number | null
   createdAt: string
   updatedAt: string
 }
@@ -165,4 +151,103 @@ export interface AppNotification {
   createdAt: string
   sentAt: string | null
   readAt: string | null
+}
+
+export interface ProductType {
+  id: string
+  name: string
+  category: string | null
+  unit: ProductUnit
+  storageTempMin: number | null
+  storageTempMax: number | null
+  imageUrls: string[] | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Batch {
+  id: string
+  coldRoomId: string
+  productTypeId: string
+  batchCode: string
+  quantity: number
+  supplier: string | null
+  /** YYYY-MM-DD */
+  receivedAt: string
+  /** YYYY-MM-DD */
+  expiryDate: string
+  removedAt: string | null
+  status: BatchStatus
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Shift {
+  id: string
+  shiftType: ShiftType
+  /** HH:mm:ss */
+  startTime: string
+  endTime: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WorkShift {
+  id: string
+  shiftId: string
+  staffId: string
+  warehouseId: string
+  /** YYYY-MM-DD */
+  workDate: string
+  scheduledStartAt: string
+  scheduledEndAt: string
+  status: WorkShiftStatus
+  checkInAt: string | null
+  checkOutAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Command {
+  id: string
+  channelId: string
+  issuedBy: string | null
+  action: CommandAction
+  payload: Record<string, unknown> | null
+  status: CommandStatus
+  createdAt: string
+  ackAt: string | null
+}
+
+export interface AuditLog {
+  id: string
+  userId: string | null
+  warehouseId: string | null
+  action: string
+  targetType: string | null
+  targetId: string | null
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
+export type ChannelRole = 'sensor' | 'actuator'
+
+export interface DeviceChannel {
+  id: string
+  deviceId: string
+  channelType: ChannelType
+  channelRole: ChannelRole
+  label: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface WarehouseStaff {
+  userId: string
+  warehouseId: string
+  /** The user's role inside this warehouse. */
+  role: UserRole
+  createdAt: string
+  user?: { id: string; username: string; fullName: string | null }
 }

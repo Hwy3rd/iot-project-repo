@@ -10,7 +10,6 @@ import {
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { ProductType } from './entities/product-type.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -22,6 +21,7 @@ import { imageUploadOptions } from '../upload-files/multer-image.options';
 import { CreateProductTypeDto } from './dto/create-product-type.dto';
 import { ProductTypeResponseDto } from './dto/product-type-response.dto';
 import { UpdateProductTypeDto } from './dto/update-product-type.dto';
+import { QueryProductTypeDto } from './dto/query-product-type.dto';
 import { ProductTypesService } from './product-types.service';
 
 @Controller('product-types')
@@ -42,7 +42,7 @@ export class ProductTypesController {
 
   @Serialize(ProductTypeResponseDto)
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: QueryProductTypeDto) {
     return this.productTypesService.findAll(query);
   }
 

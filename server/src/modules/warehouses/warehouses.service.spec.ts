@@ -1,18 +1,31 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import {
+  And,
+  Equal,
+  In,
+  IsNull,
+  Like,
+  MoreThanOrEqual,
+  Not,
+  Or,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
+import { UserRole } from '../../libs/constants/user.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
 import { Warehouse } from './entities/warehouse.entity';
-import { WarehousesService } from './warehouses.service';
+import { buildWarehouseWhere, WarehousesService } from './warehouses.service';
 
 type MockRepository = Partial<Record<keyof Repository<Warehouse>, jest.Mock>>;
 
 const createMockRepository = (): MockRepository => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
 });
@@ -90,6 +103,37 @@ describe('WarehousesService', () => {
     });
   });
 
+  describe('findAll', () => {
+    it('returns an empty page without querying when access has no warehouses', async () => {
+      const result = await service.findAll(
+        {
+          userId: 'u1',
+          role: UserRole.MANAGER,
+          warehouseIds: [],
+          staffWarehouseIds: [],
+        },
+        {},
+      );
+
+      expect(repository.findAndCount).not.toHaveBeenCalled();
+      expect(result.items).toEqual([]);
+    });
+
+    it('passes the built filters to the repository', async () => {
+      repository.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll(undefined, { search: 'kho', page: 2, limit: 10 });
+
+      expect(repository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: buildWarehouseWhere({ search: 'kho' }),
+          skip: 10,
+          take: 10,
+        }),
+      );
+    });
+  });
+
   describe('findOne', () => {
     it('throws NotFoundException when the warehouse does not exist', async () => {
       repository.findOne!.mockResolvedValue(null);
@@ -135,5 +179,36 @@ describe('WarehousesService', () => {
         warehouseId: '1',
       });
     });
+  });
+});
+
+describe('buildWarehouseWhere', () => {
+  it('is unfiltered with no query and no scope', () => {
+    expect(buildWarehouseWhere({})).toEqual({});
+  });
+
+  it('restricts to the scoped warehouse ids', () => {
+    expect(buildWarehouseWhere({}, ['a', 'b'])).toEqual({ id: In(['a', 'b']) });
+  });
+
+  it('treats null and empty-string addresses as missing', () => {
+    expect(buildWarehouseWhere({ hasAddress: 'true' })).toEqual({
+      address: And(Not(IsNull()), Not(Equal(''))),
+    });
+    expect(buildWarehouseWhere({ hasAddress: 'false' })).toEqual({
+      address: Or(IsNull(), Equal('')),
+    });
+  });
+
+  it('ORs search across name, code and address, keeping other filters', () => {
+    const pattern = Like('%kho%');
+    const createdAt = MoreThanOrEqual(new Date('2026-09-01T00:00:00Z'));
+    expect(
+      buildWarehouseWhere({ search: 'kho', createdFrom: '2026-09-01' }, ['a']),
+    ).toEqual([
+      { id: In(['a']), createdAt, name: pattern },
+      { id: In(['a']), createdAt, code: pattern },
+      { id: In(['a']), createdAt, address: pattern },
+    ]);
   });
 });

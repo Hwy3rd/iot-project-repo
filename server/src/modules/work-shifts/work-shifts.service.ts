@@ -8,7 +8,8 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import { dayBetween } from '../../common/query/find-filters';
+import { QueryWorkShiftDto } from './dto/query-work-shift.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
@@ -140,22 +141,48 @@ export class WorkShiftsService {
   // shifts (docs/RBAC.md: "Phạm vi (chỉ ca của mình)").
   async findAll(
     access?: WarehouseAccess,
-    query: PaginationQueryDto = {},
+    query: QueryWorkShiftDto = {},
   ): Promise<Paginated<WorkShift>> {
+    const filters: FindOptionsWhere<WorkShift> = {};
+    if (query.status) filters.status = query.status;
+    if (query.shiftId) filters.shiftId = query.shiftId;
+    if (query.staffId) filters.staffId = query.staffId;
+    const workDate = dayBetween(query.workDateFrom, query.workDateTo);
+    if (workDate) filters.workDate = workDate;
+
+    let where: FindOptionsWhere<WorkShift> | FindOptionsWhere<WorkShift>[];
     const ids = access?.warehouseIds;
-    const where: FindOptionsWhere<WorkShift>[] = [];
     if (ids && access) {
+      const inWarehouse = (id: string) =>
+        !query.warehouseId || id === query.warehouseId;
       const staffIds = new Set(access.staffWarehouseIds);
-      const otherIds = ids.filter((id) => !staffIds.has(id));
-      if (otherIds.length > 0) where.push({ warehouseId: In(otherIds) });
-      if (staffIds.size > 0) {
-        where.push({ warehouseId: In([...staffIds]), staffId: access.userId });
+      const otherIds = ids.filter((id) => !staffIds.has(id) && inWarehouse(id));
+      const ownIds = [...staffIds].filter(inWarehouse);
+      const branches: FindOptionsWhere<WorkShift>[] = [];
+      if (otherIds.length > 0) {
+        branches.push({ ...filters, warehouseId: In(otherIds) });
       }
-      if (where.length === 0) return Paginated.empty(query);
+      // Asking for someone else's shifts can't match the Staff branch.
+      if (
+        ownIds.length > 0 &&
+        (!query.staffId || query.staffId === access.userId)
+      ) {
+        branches.push({
+          ...filters,
+          warehouseId: In(ownIds),
+          staffId: access.userId,
+        });
+      }
+      if (branches.length === 0) return Paginated.empty(query);
+      where = branches;
+    } else {
+      where = query.warehouseId
+        ? { ...filters, warehouseId: query.warehouseId }
+        : filters;
     }
     const pagination = resolvePagination(query);
     const [items, total] = await this.workShiftsRepository.findAndCount({
-      where: where.length > 0 ? where : {},
+      where,
       order: { scheduledStartAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

@@ -8,9 +8,10 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import { withSearch } from '../../common/query/find-filters';
+import { QueryProductTypeDto } from './dto/query-product-type.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { FindOptionsWhere, QueryFailedError, Repository } from 'typeorm';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { CreateProductTypeDto } from './dto/create-product-type.dto';
 import { UpdateProductTypeDto } from './dto/update-product-type.dto';
@@ -72,10 +73,13 @@ export class ProductTypesService {
   }
 
   async findAll(
-    query: PaginationQueryDto = {},
+    query: QueryProductTypeDto = {},
   ): Promise<Paginated<ProductType>> {
+    const where: FindOptionsWhere<ProductType> = {};
+    if (query.unit) where.unit = query.unit;
     const pagination = resolvePagination(query);
     const [items, total] = await this.productTypesRepository.findAndCount({
+      where: withSearch(where, query.search, ['name', 'category']),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

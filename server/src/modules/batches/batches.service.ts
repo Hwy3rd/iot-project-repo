@@ -8,10 +8,15 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import {
+  dayBetween,
+  narrowWarehouseIds,
+  withSearch,
+} from '../../common/query/find-filters';
+import { QueryBatchDto } from './dto/query-batch.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, QueryFailedError, Repository } from 'typeorm';
+import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
 import { BatchStatus } from '../../libs/constants/batch.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { ProductType } from '../product-types/entities/product-type.entity';
@@ -115,13 +120,22 @@ export class BatchesService {
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
   async findAll(
     access?: WarehouseAccess,
-    query: PaginationQueryDto = {},
+    query: QueryBatchDto = {},
   ): Promise<Paginated<Batch>> {
-    const ids = access?.warehouseIds;
+    const ids = narrowWarehouseIds(access?.warehouseIds, query.warehouseId);
     if (ids?.length === 0) return Paginated.empty(query);
+    const where: FindOptionsWhere<Batch> = {};
+    if (ids) where.coldRoom = { warehouseId: In(ids) };
+    if (query.status) where.status = query.status;
+    if (query.coldRoomId) where.coldRoomId = query.coldRoomId;
+    if (query.productTypeId) where.productTypeId = query.productTypeId;
+    const expiryDate = dayBetween(query.expiryFrom, query.expiryTo);
+    if (expiryDate) where.expiryDate = expiryDate;
+    const receivedAt = dayBetween(query.receivedFrom, query.receivedTo);
+    if (receivedAt) where.receivedAt = receivedAt;
     const pagination = resolvePagination(query);
     const [items, total] = await this.batchesRepository.findAndCount({
-      where: ids ? { coldRoom: { warehouseId: In(ids) } } : {},
+      where: withSearch(where, query.search, ['batchCode', 'supplier']),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

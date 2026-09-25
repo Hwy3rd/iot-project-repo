@@ -38,6 +38,14 @@
 
 Kết quả sắp xếp mới nhất trước. Riêng `shifts` xếp theo `startTime` tăng dần, `work-shifts` theo `scheduledStartAt` giảm dần, staff của warehouse theo thời điểm gán. Chỉ `GET /devices/:deviceId/channels` vẫn trả mảng (mỗi thiết bị chỉ có vài kênh). Dropdown cần toàn bộ danh sách thì gọi `limit=100` và lấy tiếp các trang theo `meta.totalPages`.
 
+**Tìm kiếm và lọc** (dùng chung `common/query/`): các bộ lọc ghép với nhau bằng AND, và luôn nằm trong phạm vi warehouse của caller.
+
+- `search`: tìm chuỗi con, không phân biệt hoa thường, khớp **một trong** các trường ghi ở từng endpoint. Tự trim, tối đa 100 ký tự; `%`/`_` được hiểu theo nghĩa đen.
+- `…From`/`…To`: `YYYY-MM-DD`, tính cả hai đầu, có thể bỏ một đầu. Với cột thời điểm (`createdFrom`/`createdTo`) thì tính theo **ngày UTC**; với cột ngày (`expiry…`, `received…`, `workDate…`) thì so thẳng ngày.
+- Cờ boolean (`hasAddress`, `unassigned`, `unreadOnly`): chuỗi `"true"`/`"false"`.
+- `warehouseId` ngoài phạm vi của caller không bị lỗi 403 mà chỉ trả về danh sách rỗng, giống như khi caller không có kho nào.
+- Enum (`status`, `type`, `unit`, `role`, `action`…): sai giá trị trả về 400.
+
 **Định dạng lỗi**: mọi lỗi (kể cả lỗi không lường trước, không phải `HttpException`) đi qua `GlobalExceptionFilter` (đăng ký toàn cục qua `APP_FILTER`), trả về dạng thống nhất:
 
 ```json
@@ -79,7 +87,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /users` | A | `{ username, email?, phone?, password, fullName?, role, imageUrls? }` | `UserResponseDto` |
-| `GET /users` | A | `page?`, `limit?` | `Paginated<UserResponseDto>` (toàn bộ hệ thống) |
+| `GET /users` | A | `search?` (`username`/`fullName`/`email`/`phone`), `role?`, `status?`, `page?`, `limit?` | `Paginated<UserResponseDto>` (toàn bộ hệ thống) |
 | `GET /users/:id` | TT | — | `UserResponseDto` |
 | `PATCH /users/:id` | TT | như create, trừ `password` | `UserResponseDto` — chỉ Admin được đổi `role` (người khác gửi `role` khác role hiện tại → `403`) |
 | `DELETE /users/:id` | A | — | `null` (soft delete) |
@@ -95,7 +103,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /warehouses` | A | `{ name, code, address?, imageUrls? }` | `WarehouseResponseDto` |
-| `GET /warehouses` | mọi role | `page?`, `limit?` | `Paginated<WarehouseResponseDto>` (chưa lọc theo phạm vi — xem ghi chú bên dưới) |
+| `GET /warehouses` | mọi role | `search?` (`name`/`code`/`address`), `createdFrom?`/`createdTo?`, `hasAddress?` (địa chỉ rỗng tính là không có), `page?`, `limit?` | `Paginated<WarehouseResponseDto>` (chưa lọc theo phạm vi — xem ghi chú bên dưới) |
 | `GET /warehouses/:id` | mọi role, **P** | — | `WarehouseResponseDto` |
 | `PATCH /warehouses/:id` | A | | `WarehouseResponseDto` |
 | `DELETE /warehouses/:id` | A | — | `null` (soft delete) |
@@ -114,7 +122,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /cold-rooms` | A, M (**P** theo `warehouseId` trong body) | `{ warehouseId, name, tempMin, tempMax, hysteresis?, doorOpenMaxSeconds?, capacityPallets?, capacityWeightKg?, capacityVolumeM3? }` | `ColdRoomResponseDto` |
-| `GET /cold-rooms` | mọi role | `page?`, `limit?` | `Paginated<ColdRoomResponseDto>` |
+| `GET /cold-rooms` | mọi role | `search?` (`name`), `warehouseId?`, `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<ColdRoomResponseDto>` |
 | `GET /cold-rooms/:id` | mọi role, **P** | — | `ColdRoomResponseDto` |
 | `PATCH /cold-rooms/:id` | A, M, **P** | các field như create (trừ `warehouseId`) | `ColdRoomResponseDto` |
 | `DELETE /cold-rooms/:id` | A | — | `null` (soft delete) |
@@ -128,7 +136,7 @@ Master data, chỉ Admin thao tác ghi; các role khác chỉ xem.
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /product-types` | A | `{ name, category?, unit, storageTempMin?, storageTempMax?, imageUrls? }` | `ProductTypeResponseDto` |
-| `GET /product-types` | mọi role | `page?`, `limit?` | `Paginated<ProductTypeResponseDto>` |
+| `GET /product-types` | mọi role | `search?` (`name`/`category`), `unit?`, `page?`, `limit?` | `Paginated<ProductTypeResponseDto>` |
 | `GET /product-types/:id` | mọi role | — | `ProductTypeResponseDto` |
 | `PATCH /product-types/:id` | A | | `ProductTypeResponseDto` |
 | `DELETE /product-types/:id` | A | — | `null` (soft delete) |
@@ -158,7 +166,7 @@ Gán 1 mẫu ca cho 1 nhân viên vào 1 ngày, tại 1 warehouse.
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /work-shifts` | A, M (**P** theo `warehouseId` trong body) | `{ shiftId, staffId, warehouseId, workDate }` | `WorkShiftResponseDto` |
-| `GET /work-shifts` | A, M, S | `page?`, `limit?` | `Paginated<WorkShiftResponseDto>` |
+| `GET /work-shifts` | A, M, S | `status?`, `warehouseId?`, `shiftId?`, `staffId?`, `workDateFrom?`/`workDateTo?`, `page?`, `limit?` | `Paginated<WorkShiftResponseDto>` |
 | `GET /work-shifts/:id` | A, M, S, **P** | — | `WorkShiftResponseDto` |
 | `PATCH /work-shifts/:id` | A, M, **P** | các field như create (trừ `warehouseId` — ca ở kho khác phải tạo mới; `staffId` mới phải thuộc cùng kho) | `WorkShiftResponseDto` |
 | `POST /work-shifts/:id/check-in` | S, **P** + chỉ đúng ca của chính mình | — | `WorkShiftResponseDto` |
@@ -172,7 +180,7 @@ Gán 1 mẫu ca cho 1 nhân viên vào 1 ngày, tại 1 warehouse.
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /batches` | A, M, S (**C** cho Staff, phạm vi theo `coldRoomId` trong body) | `{ coldRoomId, productTypeId, batchCode, quantity, supplier?, receivedAt, expiryDate, notes? }` | `BatchResponseDto` |
-| `GET /batches` | A, M, S | `page?`, `limit?` | `Paginated<BatchResponseDto>` |
+| `GET /batches` | A, M, S | `search?` (`batchCode`/`supplier`), `status?`, `warehouseId?`, `coldRoomId?`, `productTypeId?`, `expiryFrom?`/`expiryTo?`, `receivedFrom?`/`receivedTo?`, `page?`, `limit?` | `Paginated<BatchResponseDto>` |
 | `GET /batches/:id` | A, M, S, **P** | — | `BatchResponseDto` |
 | `PATCH /batches/:id` | A, M, S (**C** cho Staff) | các field như create (trừ `coldRoomId` — không có luồng chuyển hàng; chuyển hàng = xuất lô cũ + nhập lô mới) | `BatchResponseDto` |
 | `DELETE /batches/:id` | A, M, S (**C** cho Staff) | — | `null` (hard delete — không có `deleted_at`, dùng `status=removed` làm vòng đời riêng) |
@@ -186,7 +194,7 @@ Backend validate: khoảng nhiệt độ khuyến nghị của `product_type` (`
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /devices` | A | `{ uniqueId, firmwareVersion? }` | `DeviceResponseDto` — thiết bị mới ở trạng thái `registered`, `coldRoomId = null` |
-| `GET /devices` | A, M, T, S | `page?`, `limit?` | `Paginated<DeviceResponseDto>` |
+| `GET /devices` | A, M, T, S | `search?` (`uniqueId`/`firmwareVersion`), `status?`, `warehouseId?`, `coldRoomId?`, `unassigned?` (`"true"` = chưa claim, chỉ Admin thấy), `page?`, `limit?` | `Paginated<DeviceResponseDto>` |
 | `GET /devices/:id` | A, M, T, S (**C** cho Staff) | — | `DeviceResponseDto` |
 | `PATCH /devices/:id` | A, T, **P** | `{ firmwareVersion? }` | `DeviceResponseDto` |
 | `POST /devices/:id/claim-code` | A, T, **P** | — | `ClaimCodeResponseDto { claimCode, claimCodeExpiresAt }` — **mã gốc chỉ trả về đúng lần này**, sau đó chỉ còn hash trong DB |
@@ -237,7 +245,7 @@ Không có `POST /` — alert được hệ thống tự phát sinh nội bộ, 
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
-| `GET /alerts` | A, M, T, S | Query: `status?`, `type?`, `coldRoomId?`, `deviceId?`, `batchId?`, `page?`, `limit?` | `Paginated<AlertResponseDto>` |
+| `GET /alerts` | A, M, T, S | Query: `status?`, `type?`, `warehouseId?`, `coldRoomId?`, `deviceId?`, `batchId?`, `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<AlertResponseDto>` |
 | `GET /alerts/:id` | A, M, T, S, **P** | — | `AlertResponseDto` |
 | `POST /alerts/:id/acknowledge` | A, M, T, S (**C** cho Staff) | — (`acknowledgedBy` = user đang đăng nhập, không nhận từ body) | `AlertResponseDto` — `status → acknowledged` |
 | `POST /alerts/:id/resolve` | A, M, T, **P** | — (`resolvedBy` = user đang đăng nhập) | `AlertResponseDto` — `status → resolved`, `resolution = manual` |
@@ -251,7 +259,7 @@ Không có `DELETE /:id` — lịch sử lệnh là vĩnh viễn, cùng nguyên 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /commands` | A, T, S (**C** cho Staff, phạm vi theo `channelId` trong body) | `{ channelId, action, payload? }` | `CommandResponseDto` — `status = pending`; `issuedBy` = user đang đăng nhập, không nhận từ body (lệnh do hệ thống tự phát có `issuedBy = null`) |
-| `GET /commands` | A, M, T, S | `page?`, `limit?` | `Paginated<CommandResponseDto>` |
+| `GET /commands` | A, M, T, S | `status?`, `action?`, `warehouseId?`, `deviceId?`, `channelId?`, `issuedBy?`, `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<CommandResponseDto>` |
 | `GET /commands/:id` | A, M, T, S, **P** | — | `CommandResponseDto` |
 | `POST /commands/:id/sent` | A (nội bộ — do cầu nối thiết bị/broker gọi, chưa có cơ chế service-account riêng) | — | `CommandResponseDto` — `status → sent` |
 | `POST /commands/:id/ack` | A (nội bộ) | `{ status: "done" \| "failed" }` | `CommandResponseDto` — set `ackAt` |
@@ -267,7 +275,7 @@ Web Push. Mọi endpoint (trừ `vapid-public-key`) chỉ thao tác trên dữ l
 | `GET /notifications/vapid-public-key` | công khai | — | `{ publicKey: string \| null }` (không qua `@Serialize`, không phải entity) |
 | `POST /notifications/subscriptions` | mọi role | `{ endpoint, keys: { p256dh, auth }, userAgent? }` | `PushSubscriptionResponseDto` — endpoint đã tồn tại (cùng trình duyệt) được chuyển sang user hiện tại |
 | `DELETE /notifications/subscriptions` | mọi role | `{ endpoint }` | `null` — chỉ xoá subscription của chính mình |
-| `GET /notifications` | mọi role | `unreadOnly?` (`"true"`/`"false"` dạng chuỗi), `page?`, `limit?` | `Paginated<NotificationResponseDto>` của chính mình |
+| `GET /notifications` | mọi role | `unreadOnly?`, `search?` (`title`/`body`), `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<NotificationResponseDto>` của chính mình |
 | `POST /notifications/:id/read` | mọi role | — | `NotificationResponseDto` (`404` nếu thông báo không thuộc về mình) |
 
 ---
@@ -278,7 +286,7 @@ Append-only và **chỉ đọc qua API** — không có `POST`/`PATCH`/`DELETE`,
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
-| `GET /audit-logs` | A, M (**P**) | Query lọc (xem `QueryAuditLogDto`), `page?`, `limit?` | `Paginated<AuditLogResponseDto>` |
+| `GET /audit-logs` | A, M (**P**) | `userId?`, `warehouseId?`, `targetType?`, `targetId?`, `action?` (khớp chính xác), `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<AuditLogResponseDto>` |
 | `GET /audit-logs/:id` | A, M (**P**) | — | `AuditLogResponseDto` |
 
 ---

@@ -10,7 +10,6 @@ import {
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -27,6 +26,7 @@ import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.const
 import { DeleteImageDto } from '../upload-files/dto/delete-image.dto';
 import { imageUploadOptions } from '../upload-files/multer-image.options';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
+import { QueryWarehouseDto } from './dto/query-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { WarehouseResponseDto } from './dto/warehouse-response.dto';
 import { WarehousesService } from './warehouses.service';
@@ -52,7 +52,7 @@ export class WarehousesController {
   @Get()
   findAll(
     @ScopedWarehouses() access: WarehouseAccess,
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryWarehouseDto,
   ) {
     return this.warehousesService.findAll(access, query);
   }

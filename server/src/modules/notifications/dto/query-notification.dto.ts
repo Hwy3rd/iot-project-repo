@@ -1,5 +1,9 @@
 import { IsIn, IsOptional } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/pagination/pagination-query.dto';
+import {
+  DateParam,
+  SearchParam,
+} from '../../../common/query/query-params.decorator';
 
 export class QueryNotificationDto extends PaginationQueryDto {
   // A plain string rather than @IsBoolean() + @Type(() => Boolean): the
@@ -8,4 +12,15 @@ export class QueryNotificationDto extends PaginationQueryDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   unreadOnly?: string;
+
+  // Matches title or body.
+  @SearchParam()
+  search?: string;
+
+  // YYYY-MM-DD, both ends inclusive (UTC days).
+  @DateParam()
+  createdFrom?: string;
+
+  @DateParam()
+  createdTo?: string;
 }

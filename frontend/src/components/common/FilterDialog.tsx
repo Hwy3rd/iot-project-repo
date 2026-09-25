@@ -36,7 +36,11 @@ export function FilterDialog<T extends Record<string, string>>({
   validate?: (draft: T) => string | null
   title?: string
   description?: ReactNode
-  children: (draft: T, set: <K extends keyof T>(key: K, v: T[K]) => void) => ReactNode
+  children: (
+    draft: T,
+    set: <K extends keyof T>(key: K, v: T[K]) => void,
+    patch: (next: Partial<T>) => void,
+  ) => ReactNode
 }) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(value)
@@ -74,7 +78,11 @@ export function FilterDialog<T extends Record<string, string>>({
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
           <FieldGroup>
-            {children(draft, (key, v) => setDraft((d) => ({ ...d, [key]: v })))}
+            {children(
+              draft,
+              (key, v) => setDraft((d) => ({ ...d, [key]: v })),
+              (next) => setDraft((d) => ({ ...d, ...next })),
+            )}
           </FieldGroup>
           {error && (
             <p role="alert" className="text-sm text-destructive">

@@ -11,7 +11,6 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { User } from './entities/user.entity';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -26,6 +25,7 @@ import { imageUploadOptions } from '../upload-files/multer-image.options';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
+import { QueryUserDto } from './dto/query-user.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -43,7 +43,7 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   @Serialize(UserResponseDto)
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: QueryUserDto) {
     return this.usersService.findAll(query);
   }
 

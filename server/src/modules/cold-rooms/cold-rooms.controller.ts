@@ -8,7 +8,6 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -24,6 +23,7 @@ import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.const
 import { ColdRoomResponseDto } from './dto/cold-room-response.dto';
 import { CreateColdRoomDto } from './dto/create-cold-room.dto';
 import { UpdateColdRoomDto } from './dto/update-cold-room.dto';
+import { QueryColdRoomDto } from './dto/query-cold-room.dto';
 import { ColdRoomsService } from './cold-rooms.service';
 
 @Controller('cold-rooms')
@@ -50,7 +50,7 @@ export class ColdRoomsController {
   @Get()
   findAll(
     @ScopedWarehouses() access: WarehouseAccess,
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryColdRoomDto,
   ) {
     return this.coldRoomsService.findAll(access, query);
   }

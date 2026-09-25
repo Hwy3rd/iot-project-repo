@@ -1,11 +1,21 @@
 import { createBrowserRouter } from 'react-router'
 import { RequireAuth, RequireRole } from './auth/guards'
 import { AppShell } from './components/layout/AppShell'
+import { AlertsPage } from './pages/AlertsPage'
+import { AuditLogsPage } from './pages/AuditLogsPage'
+import { BatchesPage } from './pages/BatchesPage'
+import { ColdRoomsPage } from './pages/ColdRoomsPage'
+import { CommandsPage } from './pages/CommandsPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { DevicesPage } from './pages/DevicesPage'
 import { LoginPage } from './pages/LoginPage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { ProductTypesPage } from './pages/ProductTypesPage'
 import { NotFoundPage, RouteErrorPage } from './pages/StatusPages'
+import { UsersPage } from './pages/UsersPage'
 import { WarehousesPage } from './pages/WarehousesPage'
+import { WorkShiftsPage } from './pages/WorkShiftsPage'
 
 const placeholder = (title: string, description: string) => ({
   element: <PlaceholderPage title={title} description={description} />,
@@ -21,32 +31,32 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <DashboardPage /> },
-          { path: 'alerts', ...placeholder('Cảnh báo', 'Theo dõi, tiếp nhận và xử lý cảnh báo.') },
-          { path: 'devices', ...placeholder('Thiết bị', 'Thiết bị IoT và vòng đời kỹ thuật.') },
-          { path: 'commands', ...placeholder('Lệnh điều khiển', 'Lịch sử và gửi lệnh bật/tắt kênh thiết bị.') },
+          { path: 'alerts', element: <AlertsPage /> },
+          { path: 'devices', element: <DevicesPage /> },
+          { path: 'commands', element: <CommandsPage /> },
           { path: 'warehouses', element: <WarehousesPage /> },
-          { path: 'cold-rooms', ...placeholder('Phòng lạnh', 'Phòng lạnh và cấu hình ngưỡng nhiệt độ.') },
-          { path: 'product-types', ...placeholder('Loại sản phẩm', 'Danh mục loại sản phẩm dùng chung.') },
+          { path: 'cold-rooms', element: <ColdRoomsPage /> },
+          { path: 'product-types', element: <ProductTypesPage /> },
           { path: 'shifts', ...placeholder('Mẫu ca', 'Mẫu ca sáng/chiều/tối dùng chung.') },
-          { path: 'notifications', ...placeholder('Thông báo', 'Thông báo của bạn.') },
+          { path: 'notifications', element: <NotificationsPage /> },
           { path: 'chatbot', ...placeholder('Trợ lý AI', 'Hỏi đáp về dữ liệu kho trong phạm vi của bạn.') },
           {
             element: <RequireRole roles={['admin', 'manager', 'staff']} />,
             children: [
-              { path: 'batches', ...placeholder('Lô hàng', 'Nhập/xuất và theo dõi hạn sử dụng lô hàng.') },
-              { path: 'work-shifts', ...placeholder('Ca trực', 'Lịch ca trực và check-in/check-out.') },
+              { path: 'batches', element: <BatchesPage /> },
+              { path: 'work-shifts', element: <WorkShiftsPage /> },
             ],
           },
           {
             element: <RequireRole roles={['admin', 'manager']} />,
             children: [
-              { path: 'audit-logs', ...placeholder('Nhật ký hệ thống', 'Nhật ký thao tác (chỉ xem).') },
+              { path: 'audit-logs', element: <AuditLogsPage /> },
             ],
           },
           {
             element: <RequireRole roles={['admin']} />,
             children: [
-              { path: 'users', ...placeholder('Người dùng', 'Tài khoản, vai trò và khoá/mở khoá.') },
+              { path: 'users', element: <UsersPage /> },
             ],
           },
           { path: '*', element: <NotFoundPage /> },

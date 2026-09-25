@@ -6,7 +6,7 @@ import {
 import { Paginated } from '../../common/pagination/paginated';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { In, QueryFailedError, Repository } from 'typeorm';
+import { In, MoreThanOrEqual, QueryFailedError, Repository } from 'typeorm';
 import { WorkShiftStatus } from '../../libs/constants/work-shift.constant';
 import { Shift } from '../shifts/entities/shift.entity';
 import { User } from '../users/entities/user.entity';
@@ -121,6 +121,67 @@ describe('WorkShiftsService', () => {
         skip: 0,
         take: 20,
       });
+    });
+
+    it('applies filters to every scope branch and narrows by warehouseId', async () => {
+      workShiftsRepository.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll(
+        {
+          userId: 'u1',
+          role: UserRole.MANAGER,
+          warehouseIds: ['w1', 'w2', 'w3'],
+          staffWarehouseIds: ['w2', 'w3'],
+        },
+        { warehouseId: 'w2', status: WorkShiftStatus.SCHEDULED },
+      );
+
+      expect(workShiftsRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: [
+            {
+              status: WorkShiftStatus.SCHEDULED,
+              warehouseId: In(['w2']),
+              staffId: 'u1',
+            },
+          ],
+        }),
+      );
+    });
+
+    it("finds nothing when Staff asks for someone else's shifts", async () => {
+      await expect(
+        service.findAll(
+          {
+            userId: 'u1',
+            role: UserRole.STAFF,
+            warehouseIds: ['w1'],
+            staffWarehouseIds: ['w1'],
+          },
+          { staffId: 'u2' },
+        ),
+      ).resolves.toEqual(Paginated.empty());
+      expect(workShiftsRepository.findAndCount).not.toHaveBeenCalled();
+    });
+
+    it('filters an admin by warehouse and work date range', async () => {
+      workShiftsRepository.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll(
+        {
+          userId: 'a1',
+          role: UserRole.ADMIN,
+          warehouseIds: null,
+          staffWarehouseIds: [],
+        },
+        { warehouseId: 'w1', workDateFrom: '2026-09-01' },
+      );
+
+      expect(workShiftsRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { warehouseId: 'w1', workDate: MoreThanOrEqual('2026-09-01') },
+        }),
+      );
     });
 
     it('returns nothing without any readable warehouse', async () => {

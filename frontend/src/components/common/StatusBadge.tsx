@@ -1,6 +1,20 @@
-import type { AlertStatus, DeviceStatus } from '@/api/types'
+import type {
+  AlertStatus,
+  BatchStatus,
+  CommandStatus,
+  DeviceStatus,
+  UserStatus,
+  WorkShiftStatus,
+} from '@/api/types'
 import { Badge } from '@/components/ui/badge'
-import { ALERT_STATUS_LABEL, DEVICE_STATUS_LABEL } from '@/lib/labels'
+import {
+  ALERT_STATUS_LABEL,
+  BATCH_STATUS_LABEL,
+  COMMAND_STATUS_LABEL,
+  DEVICE_STATUS_LABEL,
+  USER_STATUS_LABEL,
+  WORK_SHIFT_STATUS_LABEL,
+} from '@/lib/labels'
 import { cn } from '@/lib/utils'
 import type { ReactNode } from 'react'
 
@@ -44,4 +58,44 @@ const ALERT_STATUS_TONE: Record<AlertStatus, Tone> = {
 
 export function AlertStatusBadge({ status }: { status: AlertStatus }) {
   return <ToneBadge tone={ALERT_STATUS_TONE[status]}>{ALERT_STATUS_LABEL[status]}</ToneBadge>
+}
+
+const BATCH_TONE: Record<BatchStatus, Tone> = {
+  in_stock: 'success',
+  expired: 'danger',
+  removed: 'neutral',
+}
+
+export function BatchStatusBadge({ status }: { status: BatchStatus }) {
+  return <ToneBadge tone={BATCH_TONE[status]}>{BATCH_STATUS_LABEL[status]}</ToneBadge>
+}
+
+const COMMAND_TONE: Record<CommandStatus, Tone> = {
+  pending: 'neutral',
+  sent: 'info',
+  done: 'success',
+  failed: 'danger',
+}
+
+export function CommandStatusBadge({ status }: { status: CommandStatus }) {
+  return <ToneBadge tone={COMMAND_TONE[status]}>{COMMAND_STATUS_LABEL[status]}</ToneBadge>
+}
+
+const WORK_SHIFT_TONE: Record<WorkShiftStatus, Tone> = {
+  scheduled: 'neutral',
+  checked_in: 'info',
+  completed: 'success',
+  absent: 'warning',
+}
+
+export function WorkShiftStatusBadge({ status }: { status: WorkShiftStatus }) {
+  return <ToneBadge tone={WORK_SHIFT_TONE[status]}>{WORK_SHIFT_STATUS_LABEL[status]}</ToneBadge>
+}
+
+export function UserStatusBadge({ status }: { status: UserStatus }) {
+  return (
+    <ToneBadge tone={status === 'active' ? 'success' : 'danger'}>
+      {USER_STATUS_LABEL[status]}
+    </ToneBadge>
+  )
 }
