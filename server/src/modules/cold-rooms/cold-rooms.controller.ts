@@ -29,6 +29,7 @@ import { QueryColdRoomDto } from './dto/query-cold-room.dto';
 import { ColdRoomStatusService } from './cold-room-status.service';
 import { ColdRoomsService } from './cold-rooms.service';
 import { QueryColdRoomStatusDto } from './dto/query-cold-room-status.dto';
+import { QueryColdRoomTelemetryDto } from './dto/query-cold-room-telemetry.dto';
 import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
 @Controller('cold-rooms')
@@ -76,6 +77,20 @@ export class ColdRoomsController {
     @ScopedWarehouses() access: WarehouseAccess,
   ) {
     return this.coldRoomStatusService.findStatuses(query, access);
+  }
+
+  // Chart data for the monitoring screen. Same audience as GET status —
+  // anyone assigned to the room's warehouse, Staff on shift or not — which
+  // is why it's served here, room-level, rather than via the per-device
+  // telemetry routes (Staff: raw not allowed, hourly shift-only).
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TECHNICIAN, UserRole.STAFF)
+  @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)
+  @Get(':id/telemetry')
+  findSeries(
+    @Param('id') id: string,
+    @Query() query: QueryColdRoomTelemetryDto,
+  ) {
+    return this.coldRoomStatusService.findSeries(id, query.range);
   }
 
   @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)

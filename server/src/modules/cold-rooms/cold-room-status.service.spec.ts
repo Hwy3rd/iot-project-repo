@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -29,7 +29,7 @@ const rawQuery = (rows: unknown[]) => {
 
 describe('ColdRoomStatusService', () => {
   let service: ColdRoomStatusService;
-  const coldRooms = { find: jest.fn() };
+  const coldRooms = { find: jest.fn(), findOne: jest.fn() };
   const devices = { createQueryBuilder: jest.fn() };
   const alerts = { createQueryBuilder: jest.fn() };
   const raw = { aggregate: jest.fn() };
@@ -131,5 +131,66 @@ describe('ColdRoomStatusService', () => {
       service.findStatuses({ warehouseIds: ['w1'] }, access(['w9'])),
     ).resolves.toEqual([]);
     expect(coldRooms.find).not.toHaveBeenCalled();
+  });
+
+  describe('findSeries', () => {
+    it('throws NotFoundException for an unknown room', async () => {
+      coldRooms.findOne.mockResolvedValue(null);
+      await expect(service.findSeries('ghost')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('buckets the room samples by the range bucket size and rounds averages', async () => {
+      coldRooms.findOne.mockResolvedValue({
+        id: 'r1',
+        tempMin: -22,
+        tempMax: -18,
+      });
+      const t = new Date('2026-09-25T04:00:00Z');
+      raw.aggregate.mockResolvedValue([
+        {
+          _id: t,
+          avg: -19.456,
+          min: -20,
+          max: -19,
+          samples: 12,
+          outOfRange: 0,
+          doorOpen: 1,
+          sensorFault: 0,
+        },
+        {
+          _id: new Date('2026-09-25T04:05:00Z'),
+          avg: null,
+          min: null,
+          max: null,
+          samples: 3,
+          outOfRange: 0,
+          doorOpen: 0,
+          sensorFault: 3,
+        },
+      ]);
+
+      const series = await service.findSeries('r1', '6h');
+
+      const [pipeline] = raw.aggregate.mock.calls[0] as [
+        Record<string, Record<string, unknown>>[],
+      ];
+      expect(pipeline[0].$match.coldRoomId).toBe('r1');
+      expect(pipeline[1].$group._id).toEqual({
+        $dateTrunc: { date: '$ts', unit: 'minute', binSize: 5 },
+      });
+      expect(series.to.getTime() - series.from.getTime()).toBe(6 * 60 * 60_000);
+      expect(series).toMatchObject({
+        coldRoomId: 'r1',
+        bucketMinutes: 5,
+        tempMin: -22,
+        tempMax: -18,
+        points: [
+          { t, avg: -19.46, min: -20, max: -19, samples: 12, doorOpen: 1 },
+          { avg: null, samples: 3, sensorFault: 3 },
+        ],
+      });
+    });
   });
 });

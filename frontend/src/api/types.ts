@@ -276,3 +276,26 @@ export interface ColdRoomStatus {
   /** Alerts still open or acknowledged. */
   activeAlerts: number
 }
+
+export type TelemetryRange = '1h' | '6h' | '24h'
+
+/** GET /cold-rooms/:id/telemetry — one room's temperature, bucketed. */
+export interface ColdRoomSeries {
+  coldRoomId: string
+  from: string
+  to: string
+  bucketMinutes: number
+  tempMin: number
+  tempMax: number
+  /** Only buckets that had samples; gaps are missing buckets. */
+  points: {
+    t: string
+    avg: number | null
+    min: number | null
+    max: number | null
+    samples: number
+    outOfRange: number
+    doorOpen: number
+    sensorFault: number
+  }[]
+}

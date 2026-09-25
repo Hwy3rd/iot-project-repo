@@ -4,6 +4,9 @@ import { createContext, useContext } from 'react'
 export interface AuthContextValue {
   user: User | null
   isLoading: boolean
+  /** Couldn't tell whether anyone is logged in (network/server error), and no user was known before. */
+  error: unknown
+  retry: () => void
   login: (username: string, password: string) => Promise<User>
   logout: () => Promise<void>
 }

@@ -9,6 +9,7 @@ import { CommandsPage } from './pages/CommandsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DevicesPage } from './pages/DevicesPage'
 import { LoginPage } from './pages/LoginPage'
+import { MonitoringPage } from './pages/MonitoringPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { ProductTypesPage } from './pages/ProductTypesPage'
@@ -31,6 +32,7 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <DashboardPage /> },
+          { path: 'monitoring', element: <MonitoringPage /> },
           { path: 'alerts', element: <AlertsPage /> },
           { path: 'devices', element: <DevicesPage /> },
           { path: 'commands', element: <CommandsPage /> },

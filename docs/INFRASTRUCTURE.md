@@ -253,17 +253,20 @@ Yêu cầu: Docker + Docker Compose v2. Máy chủ **không cần** cài Node/pn
 | `./run.sh status`            | `compose ps -a`                                                                 |
 | `./run.sh logs [svc]`        | Theo dõi log (200 dòng cuối)                                                     |
 | `./run.sh down`              | Xoá container, **giữ volume**                                                   |
+| `./run.sh rebuild [svc]`     | Build lại image backend từ `./server` rồi thay `app` + `worker`, hoặc chỉ một trong hai. Chờ container mới healthy (tối đa 300 giây) |
 
-`run.sh` **không build lại image**. Mỗi lần `app` khởi động nó vẫn chạy `migration:run` (không có gì mới thì bỏ qua).
+Chỉ `rebuild` mới build lại image; các lệnh khác dùng image có sẵn. Mỗi lần `app` khởi động nó chạy `migration:run` (không có gì mới thì bỏ qua).
 
 ### Deploy phiên bản mới
 
 ```bash
 git pull
-docker compose -f docker-compose.production.yml up -d --build
+./run.sh rebuild
 ```
 
-Lệnh này build lại image `app`/`worker` và chỉ recreate container có thay đổi. `app` tự chạy migration mới trước khi nhận request. Trong lúc `app` được recreate, API sẽ gián đoạn ngắn vì chỉ có một replica.
+Lệnh này build lại image `app`/`worker` từ `./server` và chỉ thay hai container đó (`--no-deps`). `app` tự chạy migration mới trước khi được coi là healthy. Trong lúc `app` được thay, API và WebSocket sẽ gián đoạn ngắn vì chỉ có một replica.
+
+`rebuild` **không đụng** datastore hay `cloudflared`, kể cả khi định nghĩa của chúng trong compose đã đổi (ví dụ đổi image MinIO). Những thay đổi đó phải làm riêng và có chủ đích (`docker compose -f docker-compose.production.yml up -d <svc>`), sau khi đã làm các bước chuẩn bị cần thiết, như chown `minio_data` ở mục 7.
 
 ### Truy cập datastore ở production
 

@@ -33,14 +33,27 @@ export function onSessionExpired(fn: () => void) {
   }
 }
 
+/**
+ * - `refreshed`: new cookies are set, retry what failed.
+ * - `expired`: the server rejected the refresh token (4xx: missing, expired,
+ *   rotated away by a login elsewhere) — the session is really over.
+ * - `unavailable`: no verdict (offline, timeout, 5xx) — the session may
+ *   well still be valid, so nobody gets logged out over a network blip.
+ */
+export type RefreshOutcome = 'refreshed' | 'expired' | 'unavailable'
+
 // Single-flight: concurrent 401s share one POST /auth/refresh, because the
 // backend rotates the refresh token and a second refresh would be rejected.
-let refreshing: Promise<boolean> | null = null
-export function refreshSession(): Promise<boolean> {
+let refreshing: Promise<RefreshOutcome> | null = null
+export function refreshSession(): Promise<RefreshOutcome> {
   refreshing ??= http
     .post('/auth/refresh', undefined, { skipRefresh: true })
-    .then(() => true)
-    .catch(() => false)
+    .then((): RefreshOutcome => 'refreshed')
+    .catch((err: unknown): RefreshOutcome =>
+      // The call went through the interceptor below, so errors are ApiErrors
+      // (status 0 = no response).
+      err instanceof ApiError && err.status >= 400 && err.status < 500 ? 'expired' : 'unavailable',
+    )
     .finally(() => {
       refreshing = null
     })
@@ -66,10 +79,18 @@ http.interceptors.response.use(
     const config = err.config as InternalAxiosRequestConfig | undefined
 
     if (err.response?.status === 401 && config && !config.skipRefresh) {
-      if (await refreshSession()) {
+      const outcome = await refreshSession()
+      if (outcome === 'refreshed') {
         return http.request({ ...config, skipRefresh: true })
       }
-      sessionExpiredListeners.forEach((fn) => fn())
+      if (outcome === 'expired') {
+        sessionExpiredListeners.forEach((fn) => fn())
+      } else {
+        // Report the connection problem, not the 401: a 401 would read as
+        // "logged out" (e.g. to the /auth/me query) while the session may
+        // be fine once the network is back.
+        throw new ApiError(0, 'Không làm mới được phiên đăng nhập do lỗi kết nối. Kiểm tra mạng rồi thử lại.')
+      }
     }
     throw toApiError(err)
   },

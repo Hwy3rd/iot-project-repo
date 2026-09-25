@@ -70,9 +70,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [qc, resetCache])
 
+  // A failed /auth/me keeps the last known user (refetch errors don't clear
+  // data), so this is only set when the session state is truly unknown.
+  const error = me.isError && me.data === undefined ? me.error : null
+  const { refetch } = me
   const value = useMemo<AuthContextValue>(
-    () => ({ user: me.data ?? null, isLoading: me.isPending, login, logout }),
-    [me.data, me.isPending, login, logout],
+    () => ({
+      user: me.data ?? null,
+      isLoading: me.isPending,
+      error,
+      retry: () => void refetch(),
+      login,
+      logout,
+    }),
+    [me.data, me.isPending, error, refetch, login, logout],
   )
 
   return <AuthContext value={value}>{children}</AuthContext>
