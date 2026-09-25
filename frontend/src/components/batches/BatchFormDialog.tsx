@@ -1,7 +1,7 @@
 import { batchesApi } from '@/api/endpoints'
 import type { Batch, ColdRoom, ProductType } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
-import { SelectField, TextField } from '@/components/common/form-fields'
+import { DateField, SelectField, TextField } from '@/components/common/form-fields'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 import { dayjs, formatTemp } from '@/lib/format'
@@ -216,24 +216,24 @@ function BatchFormDialog({
             validate: numberRule({ required: true, min: 0, label: 'số lượng' }),
           })}
         />
-        <TextField
+        <DateField
+          control={control}
+          name="receivedAt"
+          rules={{ required: 'Chọn ngày nhập.' }}
           id="batch-received"
           label="Ngày nhập"
-          type="date"
-          error={errors.receivedAt}
-          {...register('receivedAt', { required: 'Chọn ngày nhập.' })}
         />
-        <TextField
-          id="batch-expiry"
-          label="Hạn sử dụng"
-          type="date"
-          error={errors.expiryDate}
-          {...register('expiryDate', {
+        <DateField
+          control={control}
+          name="expiryDate"
+          rules={{
             required: 'Chọn hạn sử dụng.',
             validate: (v, all) =>
               !all.receivedAt || v > all.receivedAt || 'Hạn sử dụng phải sau ngày nhập.',
             deps: ['receivedAt'],
-          })}
+          }}
+          id="batch-expiry"
+          label="Hạn sử dụng"
         />
       </div>
       <TextField
