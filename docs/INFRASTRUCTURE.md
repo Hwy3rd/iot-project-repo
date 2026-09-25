@@ -56,7 +56,7 @@ Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng *
 | `mysql`       | `mysql:8.0`                      | `mysql_db`         | 3306                | `mysql_data`        | Dữ liệu nghiệp vụ                                                    |
 | `mongo`       | `mongo:7`                        | `mongo_db`         | 27017               | `mongo_data`        | Telemetry (`telemetry_raw`, `telemetry_hourly`)                      |
 | `redis`       | `redis:7-alpine`                 | `redis_db`         | 6379                | `redisdata`         | Session refresh token + queue BullMQ                                 |
-| `minio`       | `quay.io/minio/minio:latest`     | `minio_bucket`     | 9000 (S3), 9001 (console) | `minio_data`  | Ảnh upload; bucket được `app` tự tạo và mở quyền đọc public          |
+| `minio`       | `cgr.dev/chainguard/minio:latest` | `minio_bucket`    | 9000 (S3), 9001 (console) | `minio_data`  | Ảnh upload; bucket được `app` tự tạo và mở quyền đọc public. Bản build MinIO miễn phí của Chainguard (xem mục 7) |
 | `mosquitto`   | `eclipse-mosquitto:2`            | `mosquitto_broker` | 1883                | `mosquitto_data` + mount `mosquitto/mosquitto.conf` (read-only) | Broker MQTT cho thiết bị |
 | `cloudflared` | `cloudflare/cloudflared:latest`  | `cloudflared`      | —                   | —                   | **Chỉ có ở production**                                              |
 
@@ -194,6 +194,21 @@ Dữ liệu bền vững nằm trong **named volume** của Docker (tên thật 
 | `minio_data`     | `minio`     | File ảnh upload                                |
 | `redisdata`      | `redis`     | Session refresh token, trạng thái queue BullMQ |
 | `mosquitto_data` | `mosquitto` | Message/subscription được persist của broker   |
+
+### Image MinIO và quyền của `minio_data`
+
+Từ 2025–2026 MinIO ngừng phát hành image miễn phí: `quay.io/minio/minio` và `minio/minio` trên Docker Hub đều trả **401** khi pull. Vì vậy compose dùng `cgr.dev/chainguard/minio:latest`, bản MinIO do Chainguard build lại từ mã nguồn và phát hành miễn phí. Cấu hình (biến môi trường, `command`, healthcheck `mc ready local`) giữ nguyên. Có hai điểm khác với image cũ:
+
+- Bản miễn phí chỉ có tag `latest`, nên mỗi lần pull có thể nhận một phiên bản MinIO mới hơn.
+- Container chạy bằng **uid 65532** thay vì root. Volume mới tạo không bị ảnh hưởng. Nhưng một `minio_data` **đã có dữ liệu từ image cũ** thì thuộc root, và MinIO sẽ không ghi được vào đó. Trước khi chạy image mới lần đầu, hãy dừng `minio`, backup volume (xem mục Backup bên dưới), rồi đổi chủ sở hữu **một lần**:
+
+  ```bash
+  docker compose stop minio app worker
+  docker run --rm -v <project>_minio_data:/data alpine chown -R 65532:65532 /data
+  docker compose up -d
+  ```
+
+  Tên volume thật có tiền tố project, xem bằng `docker volume ls | grep minio_data`.
 
 Các thao tác **giữ nguyên** volume: `./run.sh stop`, `./run.sh down`, `docker compose down`, build lại image, khởi động lại máy.
 

@@ -129,7 +129,12 @@ services:
     restart: unless-stopped
 
   minio:
-    image: quay.io/minio/minio:latest
+    # MinIO no longer publishes free images (quay.io/minio/minio and Docker
+    # Hub minio/minio now return 401), so this is Chainguard's free build of
+    # the same server. Its free tier only offers `latest`. It runs as uid
+    # 65532, not root: a minio_data volume created by the old root image
+    # needs a one-off chown (docs/INFRASTRUCTURE.md §7).
+    image: cgr.dev/chainguard/minio:latest
     container_name: minio_bucket
     command: server /data --console-address ":9001"
     ports:
