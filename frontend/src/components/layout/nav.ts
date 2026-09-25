@@ -1,5 +1,6 @@
 import type { UserRole } from '@/api/types'
 import {
+  Activity,
   Bell,
   Bot,
   Boxes,
@@ -35,6 +36,7 @@ export const NAV: NavGroup[] = [
     label: 'Giám sát',
     items: [
       { to: '/', label: 'Tổng quan', icon: LayoutDashboard },
+      { to: '/monitoring', label: 'Giám sát trực tiếp', icon: Activity },
       { to: '/alerts', label: 'Cảnh báo', icon: Siren },
       { to: '/devices', label: 'Thiết bị', icon: Cpu },
       { to: '/commands', label: 'Lệnh điều khiển', icon: SlidersHorizontal },

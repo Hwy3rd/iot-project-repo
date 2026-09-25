@@ -9,6 +9,7 @@ import type {
   BulkDeleteResult,
   BatchStatus,
   ColdRoom,
+  ColdRoomSeries,
   ColdRoomStatus,
   Command,
   CommandAction,
@@ -21,6 +22,7 @@ import type {
   ProductType,
   ProductUnit,
   Shift,
+  TelemetryRange,
   User,
   UserRole,
   UserStatus,
@@ -104,6 +106,9 @@ export const coldRoomsApi = {
    * room of the given warehouses (≤ 100 ids each). Rooms outside the
    * caller's scope — or, for Staff, without an active shift — are left out.
    */
+  /** Temperature history for the monitoring chart; anyone assigned to the warehouse. */
+  telemetry: (id: string, range: TelemetryRange) =>
+    api.get<ColdRoomSeries>(`/cold-rooms/${id}/telemetry`, { range }),
   status: (q: { coldRoomIds?: string[]; warehouseIds?: string[] }) =>
     api.get<ColdRoomStatus[]>('/cold-rooms/status', {
       coldRoomIds: q.coldRoomIds?.join(','),

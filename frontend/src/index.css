@@ -30,6 +30,10 @@
   --accent: oklch(0.95 0.02 247);
   --accent-foreground: oklch(0.21 0.02 257);
   --destructive: oklch(0.577 0.245 27.325);
+  /* Chart marks (temperature line, threshold lines). Validated with the
+     dataviz palette checker against --card in each mode. */
+  --chart-temp: var(--primary);
+  --chart-limit: var(--destructive);
   --success: oklch(0.55 0.15 150);
   --warning: oklch(0.62 0.15 70);
   --info: oklch(0.55 0.19 254);
@@ -68,6 +72,9 @@
   --accent: oklch(0.28 0.03 257);
   --accent-foreground: oklch(0.96 0.005 247);
   --destructive: oklch(0.704 0.191 22.216);
+  /* The dark UI tokens sit above the dark chart lightness band (0.48-0.67). */
+  --chart-temp: oklch(0.64 0.16 252);
+  --chart-limit: oklch(0.64 0.2 24);
   --success: oklch(0.72 0.15 150);
   --warning: oklch(0.8 0.14 80);
   --info: oklch(0.68 0.16 252);

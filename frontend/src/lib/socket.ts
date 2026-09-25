@@ -11,6 +11,7 @@ let socket: Socket | undefined
 // re-joined after a reconnect (the server forgets rooms on disconnect).
 const wanted = new Map<string, number>()
 let authRetries = 0
+const RETRY_AFTER_MS = 5_000
 
 export function getSocket(): Socket {
   if (socket) return socket
@@ -24,12 +25,19 @@ export function getSocket(): Socket {
   // The handshake is refused once the access token has expired, and
   // socket.io doesn't retry a refused handshake by itself. Refresh through
   // REST (which rotates the cookie) and try again — once, so a dead session
-  // doesn't loop; the REST side announces that separately.
+  // doesn't loop; the REST side announces that separately. If the refresh
+  // itself couldn't get through, try the whole thing again a bit later.
   s.on('connect_error', (error) => {
     if (error.message !== 'Unauthorized' || authRetries > 0) return
     authRetries++
-    void refreshSession().then((ok) => {
-      if (ok && wanted.size > 0) s.connect()
+    void refreshSession().then((outcome) => {
+      if (outcome === 'refreshed' && wanted.size > 0) s.connect()
+      if (outcome === 'unavailable') {
+        setTimeout(() => {
+          authRetries = 0
+          if (wanted.size > 0 && !s.connected) s.connect()
+        }, RETRY_AFTER_MS)
+      }
     })
   })
 

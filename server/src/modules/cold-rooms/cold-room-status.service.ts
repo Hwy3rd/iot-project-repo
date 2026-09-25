@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
@@ -10,6 +14,7 @@ import { Alert } from '../alerts/entities/alert.entity';
 import { Device } from '../devices/entities/device.entity';
 import { TelemetryRaw } from '../telemetry/schemas/telemetry-raw.schema';
 import { QueryColdRoomStatusDto } from './dto/query-cold-room-status.dto';
+import type { TelemetryRange } from './dto/query-cold-room-telemetry.dto';
 import { ColdRoom } from './entities/cold-room.entity';
 
 // A room's rows can span many warehouses when asked by warehouseIds; this
@@ -22,6 +27,38 @@ export interface ColdRoomLatestReading {
   doorOpen: boolean;
   sensorFault: boolean;
   outOfRange: boolean;
+}
+
+// Window length and bucket size per range: ~60-100 points each.
+const RANGE_BUCKETS: Record<TelemetryRange, { ms: number; minutes: number }> = {
+  '1h': { ms: 60 * 60_000, minutes: 1 },
+  '6h': { ms: 6 * 60 * 60_000, minutes: 5 },
+  '24h': { ms: 24 * 60 * 60_000, minutes: 15 },
+};
+
+export interface ColdRoomSeriesPoint {
+  /** Bucket start. */
+  t: Date;
+  /** Over the bucket's valid readings; null when every sample was faulty. */
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  samples: number;
+  /** How many samples in the bucket were out of range / had the door open / a sensor fault. */
+  outOfRange: number;
+  doorOpen: number;
+  sensorFault: number;
+}
+
+export interface ColdRoomSeries {
+  coldRoomId: string;
+  from: Date;
+  to: Date;
+  bucketMinutes: number;
+  /** Current thresholds, for reference lines (samples were judged at ingest). */
+  tempMin: number;
+  tempMax: number;
+  points: ColdRoomSeriesPoint[];
 }
 
 export interface ColdRoomStatus {
@@ -93,6 +130,60 @@ export class ColdRoomStatusService {
       devices: devices.get(room.id) ?? { total: 0 },
       activeAlerts: alerts.get(room.id) ?? 0,
     }));
+  }
+
+  // Temperature history of one room, bucketed for a chart: every device's
+  // samples in the room pooled together (like `latest` above). Uses the
+  // { coldRoomId, ts } index for the range scan. Empty buckets are simply
+  // absent — the chart shows a gap rather than inventing values.
+  async findSeries(
+    coldRoomId: string,
+    range: TelemetryRange = '6h',
+  ): Promise<ColdRoomSeries> {
+    const room = await this.coldRoomsRepository.findOne({
+      where: { id: coldRoomId },
+      select: { id: true, tempMin: true, tempMax: true },
+    });
+    if (!room) throw new NotFoundException(`Cold room ${coldRoomId} not found`);
+
+    const { ms, minutes } = RANGE_BUCKETS[range];
+    const to = new Date();
+    const from = new Date(to.getTime() - ms);
+    const rows = await this.rawModel.aggregate<
+      Omit<ColdRoomSeriesPoint, 't'> & { _id: Date }
+    >([
+      { $match: { coldRoomId, ts: { $gte: from, $lte: to } } },
+      {
+        $group: {
+          _id: {
+            $dateTrunc: { date: '$ts', unit: 'minute', binSize: minutes },
+          },
+          // $avg/$min/$max skip nulls, i.e. sensor-fault samples.
+          avg: { $avg: '$temperature' },
+          min: { $min: '$temperature' },
+          max: { $max: '$temperature' },
+          samples: { $sum: 1 },
+          outOfRange: { $sum: { $cond: ['$outOfRange', 1, 0] } },
+          doorOpen: { $sum: { $cond: ['$doorOpen', 1, 0] } },
+          sensorFault: { $sum: { $cond: ['$sensorFault', 1, 0] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    return {
+      coldRoomId,
+      from,
+      to,
+      bucketMinutes: minutes,
+      tempMin: room.tempMin,
+      tempMax: room.tempMax,
+      points: rows.map(({ _id, avg, ...rest }) => ({
+        t: _id,
+        avg: avg === null ? null : Math.round(avg * 100) / 100,
+        ...rest,
+      })),
+    };
   }
 
   // $sort on the { coldRoomId, ts } index then $group/$first lets Mongo
