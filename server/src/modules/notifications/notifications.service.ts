@@ -10,6 +10,7 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
+import { createdBetween, withSearch } from '../../common/query/find-filters';
 import { AlertType } from '../../libs/constants/alert.constant';
 import { NotificationStatus } from '../../libs/constants/notification.constant';
 import { Alert } from '../alerts/entities/alert.entity';
@@ -136,9 +137,11 @@ export class NotificationsService {
     if (query.unreadOnly === 'true') {
       where.readAt = IsNull();
     }
+    const createdAt = createdBetween(query.createdFrom, query.createdTo);
+    if (createdAt) where.createdAt = createdAt;
     const pagination = resolvePagination(query);
     const [items, total] = await this.notificationsRepository.findAndCount({
-      where,
+      where: withSearch(where, query.search, ['title', 'body']),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

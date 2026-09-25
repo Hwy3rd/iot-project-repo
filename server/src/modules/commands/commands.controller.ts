@@ -1,5 +1,4 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { GetUserId } from '../../common/decorators/get-user-id.decorator';
 import {
   ScopedWarehouses,
@@ -11,6 +10,7 @@ import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
 import { UserRole } from '../../libs/constants/user.constant';
 import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.constant';
+import { QueryCommandDto } from './dto/query-command.dto';
 import { CommandsService } from './commands.service';
 import { AcknowledgeCommandDto } from './dto/acknowledge-command.dto';
 import { CommandResponseDto } from './dto/command-response.dto';
@@ -53,7 +53,7 @@ export class CommandsController {
   @Get()
   findAll(
     @ScopedWarehouses() access: WarehouseAccess,
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryCommandDto,
   ) {
     return this.commandsService.findAll(access, query);
   }

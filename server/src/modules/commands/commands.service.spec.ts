@@ -1,11 +1,12 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   CommandAction,
   CommandStatus,
 } from '../../libs/constants/command.constant';
+import { UserRole } from '../../libs/constants/user.constant';
 import { ChannelRole } from '../../libs/constants/device-channel.constant';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { CommandsService } from './commands.service';
@@ -18,6 +19,7 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   delete: jest.fn(),
@@ -149,6 +151,33 @@ describe('CommandsService', () => {
 
       expect(result.status).toBe(CommandStatus.DONE);
       expect(result.ackAt).not.toBeNull();
+    });
+  });
+
+  describe('findAll', () => {
+    it('merges deviceId and warehouse scope into one channel condition', async () => {
+      commandsRepository.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll(
+        {
+          userId: 'u1',
+          role: UserRole.MANAGER,
+          warehouseIds: ['w1', 'w2'],
+          staffWarehouseIds: [],
+        },
+        { deviceId: 'd1', warehouseId: 'w2' },
+      );
+
+      expect(commandsRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            channel: {
+              deviceId: 'd1',
+              device: { coldRoom: { warehouseId: In(['w2']) } },
+            },
+          },
+        }),
+      );
     });
   });
 });

@@ -7,10 +7,14 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import {
+  createdBetween,
+  narrowWarehouseIds,
+} from '../../common/query/find-filters';
+import { QueryCommandDto } from './dto/query-command.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { CommandStatus } from '../../libs/constants/command.constant';
 import { ChannelRole } from '../../libs/constants/device-channel.constant';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
@@ -58,15 +62,26 @@ export class CommandsService {
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
   async findAll(
     access?: WarehouseAccess,
-    query: PaginationQueryDto = {},
+    query: QueryCommandDto = {},
   ): Promise<Paginated<Command>> {
-    const ids = access?.warehouseIds;
+    const ids = narrowWarehouseIds(access?.warehouseIds, query.warehouseId);
     if (ids?.length === 0) return Paginated.empty(query);
+    const where: FindOptionsWhere<Command> = {};
+    if (ids || query.deviceId) {
+      where.channel = {
+        ...(query.deviceId && { deviceId: query.deviceId }),
+        ...(ids && { device: { coldRoom: { warehouseId: In(ids) } } }),
+      };
+    }
+    if (query.status) where.status = query.status;
+    if (query.action) where.action = query.action;
+    if (query.channelId) where.channelId = query.channelId;
+    if (query.issuedBy) where.issuedBy = query.issuedBy;
+    const createdAt = createdBetween(query.createdFrom, query.createdTo);
+    if (createdAt) where.createdAt = createdAt;
     const pagination = resolvePagination(query);
     const [items, total] = await this.commandsRepository.findAndCount({
-      where: ids
-        ? { channel: { device: { coldRoom: { warehouseId: In(ids) } } } }
-        : {},
+      where,
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

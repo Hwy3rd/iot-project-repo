@@ -8,7 +8,6 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -24,6 +23,7 @@ import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.const
 import { CreateWorkShiftDto } from './dto/create-work-shift.dto';
 import { UpdateWorkShiftDto } from './dto/update-work-shift.dto';
 import { WorkShiftResponseDto } from './dto/work-shift-response.dto';
+import { QueryWorkShiftDto } from './dto/query-work-shift.dto';
 import { WorkShiftsService } from './work-shifts.service';
 
 @Controller('work-shifts')
@@ -51,7 +51,7 @@ export class WorkShiftsController {
   @Get()
   findAll(
     @ScopedWarehouses() access: WarehouseAccess,
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryWorkShiftDto,
   ) {
     return this.workShiftsService.findAll(access, query);
   }

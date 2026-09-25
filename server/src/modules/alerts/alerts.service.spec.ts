@@ -2,9 +2,11 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, LessThan, QueryFailedError, Repository } from 'typeorm';
+import { Paginated } from '../../common/pagination/paginated';
 import { AlertStatus, AlertType } from '../../libs/constants/alert.constant';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
+import { UserRole } from '../../libs/constants/user.constant';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
 
@@ -289,6 +291,40 @@ describe('AlertsService', () => {
         skip: 0,
         take: 20,
       });
+    });
+  });
+
+  describe('findAll with warehouse scope', () => {
+    const access = {
+      userId: 'u1',
+      role: UserRole.MANAGER,
+      warehouseIds: ['w1'],
+      staffWarehouseIds: [],
+    };
+
+    it('returns nothing for a warehouseId outside the scope', async () => {
+      await expect(
+        service.findAll({ warehouseId: 'w2' }, access),
+      ).resolves.toEqual(Paginated.empty());
+      expect(alertsRepository.findAndCount).not.toHaveBeenCalled();
+    });
+
+    it('narrows to the warehouse and created date range', async () => {
+      alertsRepository.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll(
+        { warehouseId: 'w1', createdTo: '2026-09-30' },
+        access,
+      );
+
+      expect(alertsRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            coldRoom: { warehouseId: In(['w1']) },
+            createdAt: LessThan(new Date('2026-10-01T00:00:00Z')),
+          },
+        }),
+      );
     });
   });
 

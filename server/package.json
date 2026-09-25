@@ -23,7 +23,8 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
-    "seed:admin": "ts-node src/seeds/account.seed.ts"
+    "seed:admin": "ts-node src/seeds/account.seed.ts",
+    "seed:master": "ts-node src/seeds/master-data.seed.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",

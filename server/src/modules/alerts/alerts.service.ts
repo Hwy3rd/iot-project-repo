@@ -4,6 +4,10 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  createdBetween,
+  narrowWarehouseIds,
+} from '../../common/query/find-filters';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -185,7 +189,7 @@ export class AlertsService {
     access?: WarehouseAccess,
   ): Promise<Paginated<Alert>> {
     const where: FindOptionsWhere<Alert> = {};
-    const ids = access?.warehouseIds;
+    const ids = narrowWarehouseIds(access?.warehouseIds, query.warehouseId);
     if (ids) {
       if (ids.length === 0) return Paginated.empty(query);
       where.coldRoom = { warehouseId: In(ids) };
@@ -195,6 +199,8 @@ export class AlertsService {
     if (query.coldRoomId) where.coldRoomId = query.coldRoomId;
     if (query.deviceId) where.deviceId = query.deviceId;
     if (query.batchId) where.batchId = query.batchId;
+    const createdAt = createdBetween(query.createdFrom, query.createdTo);
+    if (createdAt) where.createdAt = createdAt;
 
     const pagination = resolvePagination(query);
     const [items, total] = await this.alertsRepository.findAndCount({

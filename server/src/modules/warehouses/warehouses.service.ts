@@ -7,13 +7,25 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import { createdBetween, withSearch } from '../../common/query/find-filters';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, QueryFailedError, Repository } from 'typeorm';
+import {
+  And,
+  DataSource,
+  Equal,
+  FindOptionsWhere,
+  In,
+  IsNull,
+  Not,
+  Or,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { UploadFilesService } from '../upload-files/upload-files.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
+import { QueryWarehouseDto } from './dto/query-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { Warehouse } from './entities/warehouse.entity';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
@@ -55,13 +67,13 @@ export class WarehousesService {
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
   async findAll(
     access?: WarehouseAccess,
-    query: PaginationQueryDto = {},
+    query: QueryWarehouseDto = {},
   ): Promise<Paginated<Warehouse>> {
     const ids = access?.warehouseIds;
     if (ids?.length === 0) return Paginated.empty(query);
     const pagination = resolvePagination(query);
     const [items, total] = await this.warehousesRepository.findAndCount({
-      where: ids ? { id: In(ids) } : {},
+      where: buildWarehouseWhere(query, ids),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,
@@ -132,3 +144,19 @@ export class WarehousesService {
     });
   }
 }
+
+export const buildWarehouseWhere = (
+  query: QueryWarehouseDto,
+  ids?: string[] | null,
+) => {
+  const base: FindOptionsWhere<Warehouse> = {};
+  if (ids) base.id = In(ids);
+  const createdAt = createdBetween(query.createdFrom, query.createdTo);
+  if (createdAt) base.createdAt = createdAt;
+  if (query.hasAddress === 'true') {
+    base.address = And(Not(IsNull()), Not(Equal('')));
+  } else if (query.hasAddress === 'false') {
+    base.address = Or(IsNull(), Equal(''));
+  }
+  return withSearch(base, query.search, ['name', 'code', 'address']);
+};

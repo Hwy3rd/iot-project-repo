@@ -8,7 +8,6 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -24,6 +23,7 @@ import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.const
 import { BatchResponseDto } from './dto/batch-response.dto';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
+import { QueryBatchDto } from './dto/query-batch.dto';
 import { BatchesService } from './batches.service';
 
 const BATCH_ROLES = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
@@ -50,7 +50,7 @@ export class BatchesController {
   @Get()
   findAll(
     @ScopedWarehouses() access: WarehouseAccess,
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryBatchDto,
   ) {
     return this.batchesService.findAll(access, query);
   }

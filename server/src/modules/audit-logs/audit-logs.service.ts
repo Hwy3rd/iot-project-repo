@@ -9,6 +9,7 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
+import { createdBetween } from '../../common/query/find-filters';
 import { UserRole } from '../../libs/constants/user.constant';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateAuditLogDto } from './dto/create-audit-log.dto';
@@ -67,6 +68,14 @@ export class AuditLogsService {
     if (queryAuditLogDto.targetId) {
       where.targetId = queryAuditLogDto.targetId;
     }
+    if (queryAuditLogDto.action) {
+      where.action = queryAuditLogDto.action;
+    }
+    const createdAt = createdBetween(
+      queryAuditLogDto.createdFrom,
+      queryAuditLogDto.createdTo,
+    );
+    if (createdAt) where.createdAt = createdAt;
 
     const managedIds = await this.managedWarehouseIds(viewer);
     if (managedIds) {

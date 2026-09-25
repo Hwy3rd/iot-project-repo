@@ -88,3 +88,6 @@ export function useListParams<K extends string>(filterKeys: readonly K[] = []) {
     clearAll,
   }
 }
+
+/** A URL filter value as an API param: blank = not filtered. */
+export const param = (value: string) => value.trim() || undefined

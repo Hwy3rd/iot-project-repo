@@ -8,10 +8,15 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import {
+  createdBetween,
+  narrowWarehouseIds,
+  withSearch,
+} from '../../common/query/find-filters';
+import { QueryColdRoomDto } from './dto/query-cold-room.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, QueryFailedError, Repository } from 'typeorm';
+import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { CreateColdRoomDto } from './dto/create-cold-room.dto';
 import { UpdateColdRoomDto } from './dto/update-cold-room.dto';
@@ -81,13 +86,17 @@ export class ColdRoomsService {
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
   async findAll(
     access?: WarehouseAccess,
-    query: PaginationQueryDto = {},
+    query: QueryColdRoomDto = {},
   ): Promise<Paginated<ColdRoom>> {
-    const ids = access?.warehouseIds;
+    const ids = narrowWarehouseIds(access?.warehouseIds, query.warehouseId);
     if (ids?.length === 0) return Paginated.empty(query);
+    const where: FindOptionsWhere<ColdRoom> = {};
+    if (ids) where.warehouseId = In(ids);
+    const createdAt = createdBetween(query.createdFrom, query.createdTo);
+    if (createdAt) where.createdAt = createdAt;
     const pagination = resolvePagination(query);
     const [items, total] = await this.coldRoomsRepository.findAndCount({
-      where: ids ? { warehouseId: In(ids) } : {},
+      where: withSearch(where, query.search, ['name']),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

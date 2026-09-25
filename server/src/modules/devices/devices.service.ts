@@ -8,12 +8,22 @@ import {
   Paginated,
   resolvePagination,
 } from '../../common/pagination/paginated';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
+import {
+  narrowWarehouseIds,
+  withSearch,
+} from '../../common/query/find-filters';
+import { QueryDeviceDto } from './dto/query-device.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
-import { In, QueryFailedError, Repository } from 'typeorm';
+import {
+  FindOptionsWhere,
+  In,
+  IsNull,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { DeviceStatus } from '../../libs/constants/device.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { ClaimDeviceDto } from './dto/claim-device.dto';
@@ -60,13 +70,20 @@ export class DevicesService {
   // unrestricted caller (Admin) sees them.
   async findAll(
     access?: WarehouseAccess,
-    query: PaginationQueryDto = {},
+    query: QueryDeviceDto = {},
   ): Promise<Paginated<Device>> {
-    const ids = access?.warehouseIds;
+    const ids = narrowWarehouseIds(access?.warehouseIds, query.warehouseId);
     if (ids?.length === 0) return Paginated.empty(query);
+    const where: FindOptionsWhere<Device> = {};
+    if (ids) where.coldRoom = { warehouseId: In(ids) };
+    if (query.status) where.status = query.status;
+    if (query.coldRoomId) where.coldRoomId = query.coldRoomId;
+    // Unclaimed devices have no warehouse, so this finds none for a scoped
+    // caller or alongside warehouseId/coldRoomId — same as visibility rules.
+    if (query.unassigned === 'true') where.coldRoomId = IsNull();
     const pagination = resolvePagination(query);
     const [items, total] = await this.devicesRepository.findAndCount({
-      where: ids ? { coldRoom: { warehouseId: In(ids) } } : {},
+      where: withSearch(where, query.search, ['uniqueId', 'firmwareVersion']),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,

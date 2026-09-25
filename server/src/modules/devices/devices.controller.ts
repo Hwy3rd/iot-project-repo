@@ -8,7 +8,6 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import {
   ScopedWarehouses,
   WarehouseListScope,
@@ -26,6 +25,7 @@ import { ClaimDeviceDto } from './dto/claim-device.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { DeviceResponseDto } from './dto/device-response.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
+import { QueryDeviceDto } from './dto/query-device.dto';
 import { DevicesService } from './devices.service';
 
 const DEVICE_VIEW_ROLES = [
@@ -56,7 +56,7 @@ export class DevicesController {
   @Get()
   findAll(
     @ScopedWarehouses() access: WarehouseAccess,
-    @Query() query: PaginationQueryDto,
+    @Query() query: QueryDeviceDto,
   ) {
     return this.devicesService.findAll(access, query);
   }

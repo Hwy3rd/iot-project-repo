@@ -6,7 +6,7 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
-import { QueryFailedError, Repository } from 'typeorm';
+import { IsNull, Like, QueryFailedError, Repository } from 'typeorm';
 import { DeviceStatus } from '../../libs/constants/device.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { DevicesService } from './devices.service';
@@ -21,6 +21,7 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   softDelete: jest.fn(),
@@ -240,6 +241,23 @@ describe('DevicesService', () => {
       devicesRepository.softDelete!.mockResolvedValue({ affected: 1 });
 
       await expect(service.remove('d1')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('findAll', () => {
+    it('finds unclaimed devices matching a search term', async () => {
+      devicesRepository.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll(undefined, { unassigned: 'true', search: 'esp' });
+
+      expect(devicesRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: [
+            { coldRoomId: IsNull(), uniqueId: Like('%esp%') },
+            { coldRoomId: IsNull(), firmwareVersion: Like('%esp%') },
+          ],
+        }),
+      );
     });
   });
 });
