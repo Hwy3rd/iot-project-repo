@@ -251,3 +251,28 @@ export interface WarehouseStaff {
   createdAt: string
   user?: { id: string; username: string; fullName: string | null }
 }
+
+/** Response of every `POST /<resource>/bulk-delete` (best effort, per row). */
+export interface BulkDeleteResult {
+  deleted: string[]
+  failed: { id: string; statusCode: number; message: string }[]
+}
+
+/** GET /cold-rooms/status — live overview of one room. */
+export interface ColdRoomStatus {
+  coldRoomId: string
+  warehouseId: string
+  /** Newest sample from any device in the room; null if none is kept. */
+  latest: {
+    ts: string
+    temperature: number | null
+    doorOpen: boolean
+    sensorFault: boolean
+    /** Judged against the room's thresholds when the sample arrived. */
+    outOfRange: boolean
+  } | null
+  /** Installed devices, by status. */
+  devices: { total: number } & Partial<Record<DeviceStatus, number>>
+  /** Alerts still open or acknowledged. */
+  activeAlerts: number
+}

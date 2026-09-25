@@ -1,4 +1,5 @@
 import { ApiError, onSessionExpired } from '@/api/client'
+import { disconnectSocket } from '@/lib/socket'
 import { authApi } from '@/api/endpoints'
 import type { User } from '@/api/types'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -36,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             description: 'Đăng nhập lại để tiếp tục. Tài khoản có thể vừa đăng nhập ở nơi khác.',
           })
         }
+        disconnectSocket()
         qc.setQueryData(ME_KEY, null)
       }),
     [qc],
@@ -43,10 +45,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Drop every cached query from the previous session except `me` itself —
   // qc.clear() would also detach the observer below from the me query.
-  const resetCache = useCallback(
-    () => qc.removeQueries({ predicate: (q) => q.queryKey[0] !== ME_KEY[0] }),
-    [qc],
-  )
+  // The realtime socket was authenticated as the previous user too.
+  const resetCache = useCallback(() => {
+    disconnectSocket()
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== ME_KEY[0] })
+  }, [qc])
 
   const login = useCallback(
     async (username: string, password: string) => {

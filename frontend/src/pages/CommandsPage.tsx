@@ -183,7 +183,7 @@ export function CommandsPage() {
                     <CommandStatusBadge status={c.status} />
                   </TableCell>
                   <TableCell
-                    className="hidden font-mono text-xs text-muted-foreground md:table-cell"
+                    className="hidden font-mono text-sm text-muted-foreground md:table-cell"
                     title={c.channelId}
                     translate="no"
                   >

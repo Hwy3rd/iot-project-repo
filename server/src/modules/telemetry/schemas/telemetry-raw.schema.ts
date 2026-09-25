@@ -43,6 +43,9 @@ export type TelemetryRawDocument = HydratedDocument<TelemetryRaw>;
 export const TelemetryRawSchema = SchemaFactory.createForClass(TelemetryRaw);
 
 TelemetryRawSchema.index({ deviceId: 1, ts: 1 }, { unique: true });
+// Latest sample per room (ColdRoomStatusService): lets $sort + $group/$first
+// jump straight to each room's newest document.
+TelemetryRawSchema.index({ coldRoomId: 1, ts: -1 });
 // Also serves the rollup's `ts` range scan across all devices.
 TelemetryRawSchema.index(
   { ts: 1 },

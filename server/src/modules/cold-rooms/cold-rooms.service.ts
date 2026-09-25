@@ -21,6 +21,7 @@ import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { CreateColdRoomDto } from './dto/create-cold-room.dto';
 import { UpdateColdRoomDto } from './dto/update-cold-room.dto';
 import { ColdRoom } from './entities/cold-room.entity';
+import { bulkDelete, BulkDeleteResult } from '../../common/bulk/bulk-delete';
 
 @Injectable()
 export class ColdRoomsService {
@@ -136,5 +137,9 @@ export class ColdRoomsService {
     if (!result.affected) {
       throw new NotFoundException(`Cold room ${id} not found`);
     }
+  }
+
+  bulkRemove(ids: string[]): Promise<BulkDeleteResult> {
+    return bulkDelete(ids, (id) => this.remove(id));
   }
 }

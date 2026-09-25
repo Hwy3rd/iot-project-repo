@@ -3,10 +3,12 @@ import type { WorkShiftStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { CreateWorkShiftDialog } from '@/components/work-shifts/CreateWorkShiftDialog'
+import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { WorkShiftStatusBadge } from '@/components/common/StatusBadge'
 import {
   Table,
@@ -21,6 +23,7 @@ import { dayjs, formatDate } from '@/lib/format'
 import { WORK_SHIFT_STATUS_LABEL } from '@/lib/labels'
 import { useShiftLookup, useUserLookup, useWarehouseLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = [
@@ -114,6 +117,7 @@ export function WorkShiftsPage() {
   const { user } = useAuth()
   const canCreate = hasRole(user?.role, ['admin', 'manager'])
   const isAdmin = hasRole(user?.role, ['admin'])
+  const canDelete = hasRole(user?.role, ['admin', 'manager'])
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const warehouses = useWarehouseLookup()
@@ -135,18 +139,42 @@ export function WorkShiftsPage() {
     queryFn: () => workShiftsApi.list(params),
     placeholderData: keepPreviousData,
   })
+  const selection = useRowSelection(
+    canDelete
+      ? (query.data?.items ?? []).map((w) => ({ id: w.id, name: `${shifts.label(w.shiftId)} ${formatDate(w.workDate)}` }))
+      : [],
+    // Paging or resizing pages keeps the selection; a new search/filter starts over.
+    JSON.stringify({ ...params, page: undefined, limit: undefined }),
+  )
 
   const staffName = (id: string) => (id === user?.id ? 'Bạn' : users.label(id))
 
   return (
     <>
-      <PageHeader title="Ca trực" description="Lịch ca trực và check-in/check-out."
+      <PageHeader
+        title="Ca trực"
+        description="Lịch ca trực và check-in/check-out."
         actions={canCreate && <CreateWorkShiftDialog />}
       />
       <ListCard
         list={list}
         query={query}
         noun="ca trực"
+        selection={{
+          count: selection.count,
+          offPageCount: selection.offPageCount,
+          onClear: selection.clear,
+          actions: (
+            <BulkDeleteDialog
+              ids={selection.ids}
+              noun="ca trực"
+              bulkRemove={workShiftsApi.bulkRemove}
+              invalidate={[['work-shifts']]}
+              onDone={selection.clear}
+              describe={selection.nameOf}
+            />
+          ),
+        }}
         filters={
           <WorkShiftFilterDialog
             value={list.filters}
@@ -165,6 +193,9 @@ export function WorkShiftsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {canDelete && (
+                  <SelectAllHead selection={selection} label="Chọn tất cả ca trực trên trang" />
+                )}
                 <TableHead className="pl-4">Ngày trực</TableHead>
                 <TableHead>Ca</TableHead>
                 <TableHead className="hidden md:table-cell">Nhân viên</TableHead>
@@ -176,6 +207,9 @@ export function WorkShiftsPage() {
             <TableBody>
               {items.map((w) => (
                 <TableRow key={w.id}>
+                  {canDelete && (
+                    <SelectRowCell selection={selection} id={w.id} label={`Chọn ca trực ${w.workDate}`} />
+                  )}
                   <TableCell className="pl-4 tabular-nums">
                     <time dateTime={w.workDate}>{formatDate(w.workDate)}</time>
                   </TableCell>

@@ -33,6 +33,7 @@ import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User } from './entities/user.entity';
+import { bulkDelete, BulkDeleteResult } from '../../common/bulk/bulk-delete';
 
 const SALT_ROUNDS = 10;
 
@@ -234,5 +235,17 @@ export class UsersService {
       await manager.delete(WarehouseStaff, { userId: id });
     });
     await this.revokeAccess(id);
+  }
+
+  // Unlike the single DELETE (whose UI never offers it), a bulk selection
+  // could include the caller — refuse that row rather than let an Admin
+  // lock themselves out mid-batch.
+  bulkRemove(ids: string[], callerId: string): Promise<BulkDeleteResult> {
+    return bulkDelete(ids, (id) => {
+      if (id === callerId) {
+        throw new BadRequestException('You cannot delete your own account');
+      }
+      return this.remove(id);
+    });
   }
 }

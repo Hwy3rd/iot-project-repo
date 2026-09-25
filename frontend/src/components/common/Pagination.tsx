@@ -145,7 +145,7 @@ export function Pagination({ meta }: { meta: PageMeta }) {
   return (
     <nav
       aria-label="Phân trang"
-      className="flex flex-col gap-3 border-t px-4 py-3 text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 border-t-2 bg-muted px-4 py-3 text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
     >
       <div className="flex items-center justify-between gap-4 sm:justify-start">
         <p className="tabular-nums">

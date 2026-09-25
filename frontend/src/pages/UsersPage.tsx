@@ -1,10 +1,14 @@
 import { usersApi, type UserQuery } from '@/api/endpoints'
 import type { UserRole, UserStatus } from '@/api/types'
 import { CreateUserDialog } from '@/components/users/CreateUserDialog'
+import { useAuth } from '@/auth/auth-context'
+import { hasRole } from '@/auth/permissions'
+import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { UserStatusBadge } from '@/components/common/StatusBadge'
 import {
   Table,
@@ -18,12 +22,15 @@ import { emptyFilters, labelOptions } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { ROLE_LABEL, USER_STATUS_LABEL } from '@/lib/labels'
 import { param, useListParams } from '@/lib/useListParams'
+import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = ['role', 'status'] as const
 const NO_FILTERS = emptyFilters(FILTER_KEYS)
 
 export function UsersPage() {
+  const { user } = useAuth()
+  const canDelete = hasRole(user?.role, ['admin'])
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
 
@@ -39,6 +46,13 @@ export function UsersPage() {
     queryFn: () => usersApi.list(params),
     placeholderData: keepPreviousData,
   })
+  const selection = useRowSelection(
+    canDelete
+      ? (query.data?.items ?? []).filter((u) => u.id !== user?.id).map((u) => ({ id: u.id, name: u.username }))
+      : [],
+    // Paging or resizing pages keeps the selection; a new search/filter starts over.
+    JSON.stringify({ ...params, page: undefined, limit: undefined }),
+  )
 
   return (
     <>
@@ -52,6 +66,25 @@ export function UsersPage() {
         list={list}
         query={query}
         noun="người dùng"
+        selection={{
+          count: selection.count,
+          offPageCount: selection.offPageCount,
+          onClear: selection.clear,
+          actions: (
+            <BulkDeleteDialog
+              ids={selection.ids}
+              noun="người dùng"
+              bulkRemove={usersApi.bulkRemove}
+              invalidate={[['users']]}
+              onDone={selection.clear}
+              failureText={{ 400: 'không thể xoá tài khoản của chính bạn' }}
+              warning={
+                <>Tài khoản bị xoá sẽ không đăng nhập được nữa và bị gỡ khỏi mọi kho. Tài khoản của chính bạn không chọn được.</>
+              }
+              describe={selection.nameOf}
+            />
+          ),
+        }}
         search={{
           label: 'Tìm người dùng',
           placeholder: 'Tìm theo tài khoản, họ tên, email hoặc số điện thoại…',
@@ -90,6 +123,9 @@ export function UsersPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {canDelete && (
+                  <SelectAllHead selection={selection} label="Chọn tất cả người dùng trên trang" />
+                )}
                 <TableHead className="pl-4">Tài khoản</TableHead>
                 <TableHead className="hidden md:table-cell">Liên hệ</TableHead>
                 <TableHead className="hidden sm:table-cell">Vai trò</TableHead>
@@ -100,6 +136,9 @@ export function UsersPage() {
             <TableBody>
               {items.map((u) => (
                 <TableRow key={u.id}>
+                  {canDelete && (
+                    <SelectRowCell selection={selection} id={u.id} label={`Chọn người dùng ${u.username}`} />
+                  )}
                   <TableCell className="pl-4 whitespace-normal">
                     <span className="font-medium">{u.fullName || u.username}</span>
                     <span className="block text-muted-foreground" translate="no">

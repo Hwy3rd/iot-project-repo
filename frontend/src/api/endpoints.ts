@@ -6,8 +6,10 @@ import type {
   AppNotification,
   AuditLog,
   Batch,
+  BulkDeleteResult,
   BatchStatus,
   ColdRoom,
+  ColdRoomStatus,
   Command,
   CommandAction,
   CommandStatus,
@@ -68,6 +70,10 @@ export const warehousesApi = {
     api.get<Paginated<Warehouse>>('/warehouses', { ...q, hasAddress: flag(q.hasAddress) }),
   get: (id: string) => api.get<Warehouse>(`/warehouses/${id}`),
   create: (body: CreateWarehouseBody) => api.post<Warehouse>('/warehouses', body),
+  /** Soft delete; also removes its cold rooms and staff assignments. */
+  remove: (id: string) => api.delete<null>(`/warehouses/${id}`),
+  /** Up to 100 ids; see docs/API_DESIGN.md. */
+  bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/warehouses/bulk-delete', { ids }),
   /** Admin, or Manager of that warehouse. */
   staff: (warehouseId: string, q: PageQuery = {}) =>
     api.get<Paginated<WarehouseStaff>>(`/warehouses/${warehouseId}/staff`, { ...q }),
@@ -92,6 +98,19 @@ export interface CreateColdRoomBody {
 export const coldRoomsApi = {
   list: (q: ColdRoomQuery = {}) => api.get<Paginated<ColdRoom>>('/cold-rooms', { ...q }),
   create: (body: CreateColdRoomBody) => api.post<ColdRoom>('/cold-rooms', body),
+  remove: (id: string) => api.delete<null>(`/cold-rooms/${id}`),
+  /**
+   * Latest reading + device/alert counts for the given rooms, or for every
+   * room of the given warehouses (≤ 100 ids each). Rooms outside the
+   * caller's scope — or, for Staff, without an active shift — are left out.
+   */
+  status: (q: { coldRoomIds?: string[]; warehouseIds?: string[] }) =>
+    api.get<ColdRoomStatus[]>('/cold-rooms/status', {
+      coldRoomIds: q.coldRoomIds?.join(','),
+      warehouseIds: q.warehouseIds?.join(','),
+    }),
+  /** Up to 100 ids; see docs/API_DESIGN.md. */
+  bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/cold-rooms/bulk-delete', { ids }),
 }
 
 export interface DeviceQuery extends SearchQuery {
@@ -111,6 +130,9 @@ export const devicesApi = {
   list: (q: DeviceQuery = {}) =>
     api.get<Paginated<Device>>('/devices', { ...q, unassigned: flag(q.unassigned) }),
   create: (body: CreateDeviceBody) => api.post<Device>('/devices', body),
+  remove: (id: string) => api.delete<null>(`/devices/${id}`),
+  /** Up to 100 ids; see docs/API_DESIGN.md. */
+  bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/devices/bulk-delete', { ids }),
   /** Not paginated — a device has a handful of channels. Staff may not call it. */
   channels: (deviceId: string) => api.get<DeviceChannel[]>(`/devices/${deviceId}/channels`),
 }
@@ -151,6 +173,9 @@ export const productTypesApi = {
   list: (q: ProductTypeQuery = {}) =>
     api.get<Paginated<ProductType>>('/product-types', { ...q }),
   create: (body: CreateProductTypeBody) => api.post<ProductType>('/product-types', body),
+  remove: (id: string) => api.delete<null>(`/product-types/${id}`),
+  /** Up to 100 ids; see docs/API_DESIGN.md. */
+  bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/product-types/bulk-delete', { ids }),
 }
 
 export const shiftsApi = {
@@ -184,6 +209,10 @@ export interface CreateBatchBody {
 export const batchesApi = {
   list: (q: BatchQuery = {}) => api.get<Paginated<Batch>>('/batches', { ...q }),
   create: (body: CreateBatchBody) => api.post<Batch>('/batches', body),
+  /** Not a delete: marks the batch `removed` (taken out of storage); 409 if it already is. */
+  remove: (id: string) => api.delete<unknown>(`/batches/${id}`),
+  /** Up to 100 ids; see docs/API_DESIGN.md. */
+  bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/batches/bulk-delete', { ids }),
 }
 
 export interface WorkShiftQuery extends PageQuery {
@@ -206,6 +235,9 @@ export interface CreateWorkShiftBody {
 export const workShiftsApi = {
   list: (q: WorkShiftQuery = {}) => api.get<Paginated<WorkShift>>('/work-shifts', { ...q }),
   create: (body: CreateWorkShiftBody) => api.post<WorkShift>('/work-shifts', body),
+  remove: (id: string) => api.delete<null>(`/work-shifts/${id}`),
+  /** Up to 100 ids; see docs/API_DESIGN.md. */
+  bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/work-shifts/bulk-delete', { ids }),
 }
 
 export interface AlertQuery extends PageQuery, CreatedRangeQuery {
@@ -266,4 +298,8 @@ export interface CreateUserBody {
 export const usersApi = {
   list: (q: UserQuery = {}) => api.get<Paginated<User>>('/users', { ...q }),
   create: (body: CreateUserBody) => api.post<User>('/users', body),
+  /** Soft delete; also drops the user's warehouse assignments. */
+  remove: (id: string) => api.delete<null>(`/users/${id}`),
+  /** Up to 100 ids; see docs/API_DESIGN.md. */
+  bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/users/bulk-delete', { ids }),
 }

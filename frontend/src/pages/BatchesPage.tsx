@@ -3,10 +3,12 @@ import type { BatchStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { CreateBatchDialog } from '@/components/batches/CreateBatchDialog'
+import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, LocationFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import { PageHeader } from '@/components/common/PageHeader'
+import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { BatchStatusBadge } from '@/components/common/StatusBadge'
 import {
   Table,
@@ -21,6 +23,7 @@ import { formatDate, formatNumber } from '@/lib/format'
 import { BATCH_STATUS_LABEL, PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { useColdRoomLookup, useProductTypeLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = [
@@ -108,6 +111,7 @@ function BatchFilterDialog({
 export function BatchesPage() {
   const { user } = useAuth()
   const canCreate = hasRole(user?.role, ['admin', 'manager', 'staff'])
+  const canDelete = hasRole(user?.role, ['admin', 'manager', 'staff'])
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const coldRooms = useColdRoomLookup()
@@ -131,16 +135,45 @@ export function BatchesPage() {
     queryFn: () => batchesApi.list(params),
     placeholderData: keepPreviousData,
   })
+  const selection = useRowSelection(
+    canDelete
+      ? (query.data?.items ?? []).filter((b) => b.status !== 'removed').map((b) => ({ id: b.id, name: b.batchCode }))
+      : [],
+    // Paging or resizing pages keeps the selection; a new search/filter starts over.
+    JSON.stringify({ ...params, page: undefined, limit: undefined }),
+  )
 
   return (
     <>
-      <PageHeader title="Lô hàng" description="Nhập/xuất và theo dõi hạn sử dụng lô hàng."
+      <PageHeader
+        title="Lô hàng"
+        description="Nhập/xuất và theo dõi hạn sử dụng lô hàng."
         actions={canCreate && <CreateBatchDialog />}
       />
       <ListCard
         list={list}
         query={query}
         noun="lô hàng"
+        selection={{
+          count: selection.count,
+          offPageCount: selection.offPageCount,
+          onClear: selection.clear,
+          actions: (
+            <BulkDeleteDialog
+              ids={selection.ids}
+              noun="lô hàng"
+              bulkRemove={batchesApi.bulkRemove}
+              invalidate={[['batches']]}
+              onDone={selection.clear}
+              verb="Xuất kho"
+              failureText={{ 409: 'lô đã được xuất trước đó' }}
+              warning={
+                <>Lô hàng không bị xoá khỏi hệ thống mà chuyển sang trạng thái <strong>Đã xuất</strong>. Lô đã xuất không chọn được. Nhân viên chỉ thao tác được khi đang trong ca trực tại kho.</>
+              }
+              describe={selection.nameOf}
+            />
+          ),
+        }}
         search={{ label: 'Tìm lô hàng', placeholder: 'Tìm theo mã lô hoặc nhà cung cấp…' }}
         filters={
           <BatchFilterDialog
@@ -159,6 +192,9 @@ export function BatchesPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {canDelete && (
+                  <SelectAllHead selection={selection} label="Chọn tất cả lô hàng trên trang" />
+                )}
                 <TableHead className="pl-4">Mã lô</TableHead>
                 <TableHead className="hidden md:table-cell">Loại sản phẩm</TableHead>
                 <TableHead className="hidden lg:table-cell">Phòng lạnh</TableHead>
@@ -172,8 +208,11 @@ export function BatchesPage() {
                 const product = productTypes.get(b.productTypeId)
                 return (
                   <TableRow key={b.id}>
+                    {canDelete && (
+                      <SelectRowCell selection={selection} id={b.id} label={`Chọn lô hàng ${b.batchCode}`} />
+                    )}
                     <TableCell className="pl-4 whitespace-normal">
-                      <span className="font-mono text-xs" translate="no">
+                      <span className="font-mono text-sm" translate="no">
                         {b.batchCode}
                       </span>
                       <span className="mt-0.5 block text-muted-foreground md:hidden">

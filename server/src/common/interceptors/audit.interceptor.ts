@@ -18,6 +18,7 @@ import type { AuditMeta, AuditSnapshot } from '../decorators/audit.decorator';
 interface AuditRequest {
   user?: { id: string };
   params?: Record<string, string>;
+  body?: unknown;
   ip?: string;
   headers?: Record<string, string | string[] | undefined>;
 }
@@ -60,6 +61,8 @@ export class AuditInterceptor implements NestInterceptor {
     if (!meta) return next.handle();
 
     const request = context.switchToHttp().getRequest<AuditRequest>();
+    if (meta.bulk) return this.interceptBulk(meta, request, next);
+
     const paramId = request.params?.[meta.idParam];
     const paramWhere = buildWhere(meta, request.params ?? {}, paramId);
 
@@ -87,6 +90,44 @@ export class AuditInterceptor implements NestInterceptor {
           }),
         ),
       ),
+    );
+  }
+
+  // One "before" per requested id, then one entry per id that was actually
+  // deleted — failed ids changed nothing and get no entry.
+  private interceptBulk(
+    meta: AuditMeta,
+    request: AuditRequest,
+    next: CallHandler,
+  ): Observable<unknown> {
+    const ids = bodyIds(request.body);
+    const before$ = from(
+      Promise.all(
+        ids.map(
+          async (id) =>
+            [id, await this.loadSnapshot(meta.entity, { id })] as const,
+        ),
+      ),
+    );
+    return before$.pipe(
+      concatMap((befores) => {
+        const before = new Map(befores);
+        return next.handle().pipe(
+          concatMap(async (result: unknown) => {
+            for (const id of deletedIds(result)) {
+              await this.record(
+                meta,
+                request,
+                id,
+                { id },
+                before.get(id) ?? null,
+                result,
+              );
+            }
+            return result;
+          }),
+        );
+      }),
     );
   }
 
@@ -215,6 +256,24 @@ function buildWhere(
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null;
+}
+
+function bodyIds(body: unknown): string[] {
+  const ids = (body as { ids?: unknown } | undefined)?.ids;
+  return Array.isArray(ids)
+    ? ids.filter((id): id is string => typeof id === 'string')
+    : [];
+}
+
+// `deleted` of a BulkDeleteResult, unwrapping the response envelope like
+// extractId does.
+function deletedIds(result: unknown): string[] {
+  if (!result || typeof result !== 'object') return [];
+  const record = result as Record<string, unknown>;
+  if ('success' in record && 'data' in record) return deletedIds(record.data);
+  return Array.isArray(record.deleted)
+    ? record.deleted.filter((id): id is string => typeof id === 'string')
+    : [];
 }
 
 // The handler's own return value — or, if this interceptor happens to run

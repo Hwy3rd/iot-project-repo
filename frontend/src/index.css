@@ -142,6 +142,10 @@
   }
 
   html {
+    /* 17px root instead of 16px: everything in rem (text, controls,
+       spacing) scales up together, and a user's browser font setting still
+       applies since it's a percentage. */
+    font-size: 106.25%;
     color-scheme: light;
     -webkit-tap-highlight-color: transparent;
     -webkit-font-smoothing: antialiased;

@@ -89,7 +89,10 @@ Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `dock
 
 - **Điều khiển thiết bị (chiều ngược lại) chưa nối MQTT** — `CommandsService.create()` mới chỉ ghi `Command` vào MySQL, chưa publish gì lên broker để ESP32 nhận lệnh bật/tắt actuator; `POST /commands/:id/sent`/`:id/ack` vẫn tạm giới hạn Admin vì chưa có cơ chế service-account cho broker bridge gọi 2 route này thay ESP32 (xem `docs/RBAC.md`).
 - **Không cập nhật `devices.last_heartbeat_at`/`status` khi nhận được telemetry** — `MqttIngestService` chỉ gọi `TelemetryService.ingest()` (lưu mẫu đo + đánh giá cảnh báo nhiệt độ) đúng như hợp đồng có sẵn của hàm này; việc coi "vừa nhận được message" là tín hiệu thiết bị đang `active`/còn sống chưa được cài đặt ở đâu — cột `last_heartbeat_at` tồn tại trên entity nhưng chưa có chỗ nào ghi vào nó.
-- `RealtimeGateway` (WebSocket) đã có sẵn hạ tầng phòng theo warehouse (`join:warehouse`/`leave:warehouse`, `emitToWarehouse()`) nhưng **chưa có service nào gọi `emitToWarehouse()`** — alert mới hiện chỉ tạo Web Push job, không broadcast realtime qua WebSocket cho client đang mở app.
+- `RealtimeGateway` (WebSocket) có phòng theo warehouse (`join:warehouse`/`leave:warehouse`, `emitToWarehouse()`). Ai được phân công vào kho thì join được, kể cả Staff không trong ca. Tên sự kiện nằm ở `libs/constants/realtime.constant.ts`:
+  - `coldroom:reading`: `TelemetryService.ingest()` phát sau mỗi mẫu telemetry được lưu (mẫu gửi lại trùng thì không phát).
+  - `alerts:changed`: `AlertsService` phát khi cảnh báo được tạo mới, tự đóng, tiếp nhận hoặc xử lý thủ công. Client nhận sự kiện này rồi tự tải lại dữ liệu.
+  - Việc phát là best effort: lỗi socket chỉ được ghi log, không làm hỏng thao tác chính, và giao diện vẫn polling để dự phòng. Hiện chỉ tiến trình `app` phát sự kiện. Nếu sau này `worker` cần phát (ví dụ job lô hết hạn tạo cảnh báo), phải thêm `@socket.io/redis-emitter`.
 
 ---
 

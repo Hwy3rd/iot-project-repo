@@ -7,6 +7,8 @@ import { Paginated } from '../../common/pagination/paginated';
 import { AlertStatus, AlertType } from '../../libs/constants/alert.constant';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
 import { UserRole } from '../../libs/constants/user.constant';
+import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
 
@@ -34,6 +36,7 @@ describe('AlertsService', () => {
   let service: AlertsService;
   let alertsRepository: MockRepository<Alert>;
   let notificationsQueue: { add: jest.Mock };
+  let realtime: { emitToWarehouse: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -47,10 +50,20 @@ describe('AlertsService', () => {
           provide: getQueueToken(QUEUE_NAMES.ALERT_NOTIFICATIONS),
           useValue: { add: jest.fn().mockResolvedValue(undefined) },
         },
+        {
+          provide: getRepositoryToken(ColdRoom),
+          useValue: {
+            findOne: jest
+              .fn()
+              .mockResolvedValue({ id: 'c1', warehouseId: 'w1' }),
+          },
+        },
+        { provide: RealtimeGateway, useValue: { emitToWarehouse: jest.fn() } },
       ],
     }).compile();
 
     service = module.get(AlertsService);
+    realtime = module.get(RealtimeGateway);
     alertsRepository = module.get(getRepositoryToken(Alert));
     notificationsQueue = module.get(
       getQueueToken(QUEUE_NAMES.ALERT_NOTIFICATIONS),
@@ -168,6 +181,36 @@ describe('AlertsService', () => {
       await expect(
         service.resolveAuto({ type: AlertType.OFFLINE, deviceId: 'd1' }),
       ).resolves.toBeUndefined();
+    });
+
+    it('announces a resolve to the warehouse room when told where it is', async () => {
+      alertsRepository.update!.mockResolvedValue({ affected: 1 });
+
+      await service.resolveAuto({
+        type: AlertType.TEMPERATURE_OUT_OF_RANGE,
+        deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
+      });
+
+      expect(realtime.emitToWarehouse).toHaveBeenCalledWith(
+        'w1',
+        'alerts:changed',
+        { warehouseId: 'w1', coldRoomId: 'c1' },
+      );
+    });
+
+    it('announces nothing when no alert was open', async () => {
+      alertsRepository.update!.mockResolvedValue({ affected: 0 });
+
+      await service.resolveAuto({
+        type: AlertType.TEMPERATURE_OUT_OF_RANGE,
+        deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
+      });
+
+      expect(realtime.emitToWarehouse).not.toHaveBeenCalled();
     });
 
     it('resolves the open alert and clears active_key', async () => {

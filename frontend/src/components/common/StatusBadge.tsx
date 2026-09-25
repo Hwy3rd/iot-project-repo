@@ -30,7 +30,7 @@ const TONE: Record<Tone, string> = {
 
 export function ToneBadge({ tone = 'neutral', children }: { tone?: Tone; children: ReactNode }) {
   return (
-    <Badge variant="outline" className={cn('border-transparent', TONE[tone])}>
+    <Badge variant="outline" className={cn('h-6 border-transparent px-2.5 text-sm', TONE[tone])}>
       {children}
     </Badge>
   )
