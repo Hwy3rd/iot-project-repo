@@ -1,7 +1,7 @@
 import { shiftsApi } from '@/api/endpoints'
 import type { Shift } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
-import { TextField } from '@/components/common/form-fields'
+import { TextField, TimeField } from '@/components/common/form-fields'
 import { mutationErrorText, requiredText } from '@/lib/forms'
 import { hoursOverlap, minuteOfDay, shiftHours } from '@/lib/shift-hours'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -17,7 +17,7 @@ interface FormValues {
 
 const EMPTY: FormValues = { name: '', startTime: '', endTime: '' }
 
-/** <input type="time"> wants HH:mm; the API returns HH:mm:ss. */
+/** The form keeps HH:mm; the API returns HH:mm:ss. */
 const toValues = (s: Shift): FormValues => ({
   name: s.name,
   startTime: s.startTime.slice(0, 5),
@@ -69,6 +69,7 @@ function ShiftFormDialog({
   const initial = shift ? toValues(shift) : EMPTY
   const {
     register,
+    control,
     handleSubmit,
     reset,
     setError,
@@ -127,20 +128,21 @@ function ShiftFormDialog({
         })}
       />
       <div className="grid gap-4 sm:grid-cols-2">
-        <TextField
+        <TimeField
+          control={control}
+          name="startTime"
+          rules={{ required: 'Chọn giờ bắt đầu.' }}
           id="shift-start"
           label="Giờ bắt đầu"
-          type="time"
-          error={errors.startTime}
-          {...register('startTime', { required: 'Chọn giờ bắt đầu.' })}
         />
-        <TextField
+        <TimeField
+          control={control}
+          name="endTime"
           id="shift-end"
           label="Giờ kết thúc"
-          type="time"
-          error={errors.endTime}
-          {...register('endTime', {
+          rules={{
             required: 'Chọn giờ kết thúc.',
+            deps: ['startTime'],
             validate: (endTime, { startTime }) => {
               if (!startTime) return true
               if (minuteOfDay(endTime) === minuteOfDay(startTime)) {
@@ -149,7 +151,7 @@ function ShiftFormDialog({
               const clash = others.find((s) => hoursOverlap(s, { startTime, endTime }))
               return !clash || `Chồng giờ với ${clash.name} (${shiftHours(clash)}).`
             },
-          })}
+          }}
         />
       </div>
     </FormDialog>

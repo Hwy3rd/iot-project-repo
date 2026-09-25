@@ -2,6 +2,7 @@ import { warehousesApi, workShiftsApi } from '@/api/endpoints'
 import type { Shift, WorkShift } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
+import { DatePicker } from '@/components/common/date-time-pickers'
 import { PageHeader } from '@/components/common/PageHeader'
 import { DetailDialog, DetailList, RowActions } from '@/components/common/RowDetail'
 import { EmptyState, ErrorState } from '@/components/common/States'
@@ -9,7 +10,6 @@ import { ToneBadge, WorkShiftStatusBadge } from '@/components/common/StatusBadge
 import { ReviewActions } from '@/components/work-shifts/ReviewActions'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -156,12 +156,11 @@ export function WorkShiftsPage() {
               <Button variant="outline" size="icon-lg" onClick={() => shiftDay(-1)} aria-label="Ngày trước">
                 <ChevronLeft aria-hidden="true" />
               </Button>
-              <Input
-                type="date"
-                aria-label="Ngày trực"
-                className="h-9 w-40"
+              <DatePicker
                 value={date}
-                onChange={(e) => e.target.value && selectDate(e.target.value)}
+                onChange={(next) => next && selectDate(next)}
+                ariaLabel="Ngày trực"
+                className="h-9 w-40"
               />
               <Button variant="outline" size="icon-lg" onClick={() => shiftDay(1)} aria-label="Ngày sau">
                 <ChevronRight aria-hidden="true" />

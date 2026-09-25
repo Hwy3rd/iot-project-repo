@@ -1,3 +1,4 @@
+import { DatePicker } from '@/components/common/date-time-pickers'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
@@ -77,7 +78,7 @@ export function TextFilter({
   )
 }
 
-/** Two date inputs (YYYY-MM-DD, both inclusive) that keep from ≤ to. */
+/** Two date pickers (YYYY-MM-DD, both inclusive) that keep from ≤ to. */
 export function DateRangeFilter({
   id,
   fromLabel,
@@ -99,22 +100,24 @@ export function DateRangeFilter({
     <div className="grid gap-4 sm:grid-cols-2">
       <Field>
         <FieldLabel htmlFor={`${id}-from`}>{fromLabel}</FieldLabel>
-        <Input
+        <DatePicker
           id={`${id}-from`}
-          type="date"
           value={from}
           max={to || undefined}
-          onChange={(e) => onFromChange(e.target.value)}
+          onChange={onFromChange}
+          placeholder="Không giới hạn"
+          clearable
         />
       </Field>
       <Field>
         <FieldLabel htmlFor={`${id}-to`}>{toLabel}</FieldLabel>
-        <Input
+        <DatePicker
           id={`${id}-to`}
-          type="date"
           value={to}
           min={from || undefined}
-          onChange={(e) => onToChange(e.target.value)}
+          onChange={onToChange}
+          placeholder="Không giới hạn"
+          clearable
         />
       </Field>
     </div>
