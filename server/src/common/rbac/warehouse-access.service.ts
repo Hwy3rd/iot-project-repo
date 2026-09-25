@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { In, IsNull, MoreThan, Repository } from 'typeorm';
 import { UserRole } from '../../libs/constants/user.constant';
+import { WorkShiftStatus } from '../../libs/constants/work-shift.constant';
 import { WarehouseStaff } from '../../modules/warehouses/entities/warehouse-staff.entity';
 import { WorkShift } from '../../modules/work-shifts/entities/work-shift.entity';
+import { activeShiftCutoff } from '../../modules/work-shifts/work-shift-schedule';
 import { UNRESTRICTED_ACCESS, WarehouseAccess } from './warehouse-access';
 
 // Single source of truth for "which warehouses may this caller read, for an
@@ -67,19 +69,22 @@ export class WarehouseAccessService {
     return [...new Set(assignments.map((a) => a.role))];
   }
 
-  // Warehouses (among `warehouseIds`) where the user is checked into a
-  // shift right now — checked in and not yet checked out.
+  // Warehouses (among `warehouseIds`) where the user is working a shift
+  // right now: check-in approved by a Manager, not checked out, and the
+  // shift not over (plus the grace period after it — activeShiftCutoff).
   async warehousesWithActiveShift(
     userId: string,
     warehouseIds: string[],
+    now = new Date(),
   ): Promise<string[]> {
     if (warehouseIds.length === 0) return [];
     const shifts = await this.workShiftRepo.find({
       where: {
         staffId: userId,
         warehouseId: In(warehouseIds),
-        checkInAt: Not(IsNull()),
+        status: WorkShiftStatus.APPROVED,
         checkOutAt: IsNull(),
+        scheduledEndAt: MoreThan(activeShiftCutoff(now)),
       },
     });
     return [...new Set(shifts.map((shift) => shift.warehouseId))];

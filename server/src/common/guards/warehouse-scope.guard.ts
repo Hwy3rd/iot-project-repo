@@ -132,7 +132,7 @@ export class WarehouseScopeGuard implements CanActivate {
       );
       if (activeIds.length === 0) {
         throw new ForbiddenException(
-          'Requires an active checked-in work shift for this warehouse',
+          'Requires an approved work shift in progress for this warehouse',
         );
       }
     }

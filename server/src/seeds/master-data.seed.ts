@@ -8,7 +8,6 @@ import {
 } from '../libs/constants/device-channel.constant';
 import { DeviceStatus } from '../libs/constants/device.constant';
 import { ProductUnit } from '../libs/constants/product-unit.constant';
-import { ShiftType } from '../libs/constants/shift.constant';
 import { UserRole, UserStatus } from '../libs/constants/user.constant';
 import { ColdRoom } from '../modules/cold-rooms/entities/cold-room.entity';
 import { DeviceChannel } from '../modules/device-channels/entities/device-channel.entity';
@@ -24,7 +23,7 @@ import { Warehouse } from '../modules/warehouses/entities/warehouse.entity';
 // (batches, work shifts, commands, alerts…) are left alone.
 //
 // Idempotent: every row is looked up by its natural key (username, warehouse
-// code, product type name, warehouse+room name, shift type, device unique id)
+// code, product type name, warehouse+room name, shift name, device unique id)
 // and only created when missing — existing rows are never modified, so it's
 // safe to re-run and won't clobber edits made through the app.
 //
@@ -395,14 +394,11 @@ const USERS: {
   },
 ];
 
+// Back to back, never overlapping (ShiftsService refuses overlaps).
 const SHIFTS = [
-  { shiftType: ShiftType.MORNING, startTime: '06:00:00', endTime: '14:00:00' },
-  {
-    shiftType: ShiftType.AFTERNOON,
-    startTime: '14:00:00',
-    endTime: '22:00:00',
-  },
-  { shiftType: ShiftType.NIGHT, startTime: '22:00:00', endTime: '06:00:00' },
+  { name: 'Ca sáng', startTime: '06:00:00', endTime: '14:00:00' },
+  { name: 'Ca chiều', startTime: '14:00:00', endTime: '22:00:00' },
+  { name: 'Ca tối', startTime: '22:00:00', endTime: '06:00:00' },
 ];
 
 // The peripherals wired to one installed ESP32.
@@ -514,7 +510,7 @@ async function seedMasterData(): Promise<void> {
         await findOrCreate(
           m,
           Shift,
-          { shiftType: s.shiftType },
+          { name: s.name },
           () => ({
             startTime: s.startTime,
             endTime: s.endTime,

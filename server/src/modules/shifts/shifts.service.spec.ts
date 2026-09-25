@@ -1,8 +1,11 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
-import { ShiftType } from '../../libs/constants/shift.constant';
+import { Repository } from 'typeorm';
 import { Shift } from './entities/shift.entity';
 import { ShiftsService } from './shifts.service';
 
@@ -13,20 +16,27 @@ type MockRepository<T extends object> = Partial<
 const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   softDelete: jest.fn(),
 });
 
+const template = (
+  id: string,
+  name: string,
+  startTime: string,
+  endTime: string,
+) => ({ id, name, startTime, endTime }) as Shift;
+
 describe('ShiftsService', () => {
   let service: ShiftsService;
   let shiftsRepository: MockRepository<Shift>;
 
-  const dto = {
-    shiftType: ShiftType.MORNING,
-    startTime: '06:00',
-    endTime: '14:00',
-  };
+  const existing = [
+    template('m', 'Ca sáng', '06:00:00', '14:00:00'),
+    template('n', 'Ca tối', '22:00:00', '06:00:00'),
+  ];
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -41,6 +51,13 @@ describe('ShiftsService', () => {
 
     service = module.get<ShiftsService>(ShiftsService);
     shiftsRepository = module.get(getRepositoryToken(Shift));
+    shiftsRepository.create!.mockImplementation((v: Partial<Shift>) => ({
+      ...v,
+    }));
+    shiftsRepository.save!.mockImplementation((v: Partial<Shift>) =>
+      Promise.resolve({ id: 's1', ...v }),
+    );
+    shiftsRepository.find!.mockResolvedValue(existing);
   });
 
   it('should be defined', () => {
@@ -48,29 +65,64 @@ describe('ShiftsService', () => {
   });
 
   describe('create', () => {
-    it('converts a duplicate shift_type into ConflictException', async () => {
-      shiftsRepository.create!.mockReturnValue(dto);
-      shiftsRepository.save!.mockRejectedValue(
-        new QueryFailedError('INSERT ...', [], {
-          name: 'Error',
-          message: 'Duplicate entry',
-          code: 'ER_DUP_ENTRY',
-        } as unknown as Error),
-      );
-
-      await expect(service.create(dto)).rejects.toThrow(ConflictException);
+    it('creates a template filling a free slot, touching its neighbours', async () => {
+      await expect(
+        service.create({
+          name: 'Ca chiều',
+          startTime: '14:00',
+          endTime: '22:00',
+        }),
+      ).resolves.toMatchObject({ id: 's1', name: 'Ca chiều' });
     });
 
-    it('creates the shift template', async () => {
-      shiftsRepository.create!.mockImplementation((v: Partial<Shift>) => v);
-      shiftsRepository.save!.mockImplementation((v: Partial<Shift>) => ({
-        id: 's1',
-        ...v,
-      }));
+    it.each([
+      ['inside another', '08:00', '10:00'],
+      ['across the start of another', '05:00', '07:00'],
+      ['across midnight into the night shift', '23:00', '01:00'],
+      ['containing the night shift', '21:00', '07:00'],
+    ])('refuses hours %s', async (_, startTime, endTime) => {
+      await expect(
+        service.create({ name: 'Ca mới', startTime, endTime }),
+      ).rejects.toThrow(ConflictException);
+      expect(shiftsRepository.save).not.toHaveBeenCalled();
+    });
 
-      const result = await service.create(dto);
+    it('refuses a name already used, ignoring case', async () => {
+      await expect(
+        service.create({
+          name: 'CA SÁNG',
+          startTime: '14:00',
+          endTime: '15:00',
+        }),
+      ).rejects.toThrow('already exists');
+    });
 
-      expect(result).toMatchObject({ id: 's1', shiftType: ShiftType.MORNING });
+    it('refuses equal start and end times', async () => {
+      await expect(
+        service.create({
+          name: 'Ca 0',
+          startTime: '15:00',
+          endTime: '15:00:00',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('update', () => {
+    it('ignores the template itself when checking overlaps and name', async () => {
+      shiftsRepository.findOne!.mockResolvedValue({ ...existing[0] });
+
+      await expect(
+        service.update('m', { name: 'Ca sáng', endTime: '15:00' }),
+      ).resolves.toMatchObject({ endTime: '15:00' });
+    });
+
+    it('refuses new hours that overlap another template', async () => {
+      shiftsRepository.findOne!.mockResolvedValue({ ...existing[0] });
+
+      await expect(service.update('m', { startTime: '05:00' })).rejects.toThrow(
+        'Overlaps shift template "Ca tối" (22:00-06:00)',
+      );
     });
   });
 

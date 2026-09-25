@@ -33,6 +33,15 @@ export class WorkShiftResponseDto {
   checkOutAt!: Date | null;
 
   @Expose()
+  reviewedBy!: string | null;
+
+  @Expose()
+  reviewedAt!: Date | null;
+
+  @Expose()
+  rejectReason!: string | null;
+
+  @Expose()
   createdAt!: Date;
 
   @Expose()

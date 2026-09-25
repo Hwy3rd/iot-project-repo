@@ -1,8 +1,11 @@
+import { AttendanceGate } from '@/components/work-shifts/AttendanceGate'
+import { WorkShiftNotifier } from '@/components/work-shifts/WorkShiftNotifier'
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { useEffect, useRef } from 'react'
 import { Outlet, useLocation } from 'react-router'
 import { AppSidebar } from './AppSidebar'
+import { HeaderClock } from './HeaderClock'
 import { NotificationBell } from './NotificationBell'
 import { UserMenu } from './UserMenu'
 
@@ -31,6 +34,7 @@ export function AppShell() {
           <SidebarTrigger className="-ml-1" aria-label="Bật/tắt thanh điều hướng" />
           <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
           <div className="flex-1" />
+          <HeaderClock />
           <NotificationBell />
           <UserMenu />
         </header>
@@ -40,8 +44,12 @@ export function AppShell() {
           tabIndex={-1}
           className="mx-auto w-full max-w-7xl px-4 py-6 outline-none sm:px-6 [scroll-margin-top:3.5rem]"
         >
-          <Outlet />
+          {/* Staff must be on an approved shift to use anything. */}
+          <AttendanceGate>
+            <Outlet />
+          </AttendanceGate>
         </div>
+        <WorkShiftNotifier />
       </SidebarInset>
     </SidebarProvider>
   )

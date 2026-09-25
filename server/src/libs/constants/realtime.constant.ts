@@ -1,3 +1,5 @@
+import type { WorkShiftStatus } from './work-shift.constant';
+
 // Warehouse-room events pushed by RealtimeGateway.emitToWarehouse(). Every
 // socket in `warehouse:{id}` gets them — i.e. anyone assigned to that
 // warehouse, whatever their role there or whether they're on shift (the
@@ -22,4 +24,20 @@ export interface ColdRoomReadingEvent {
     sensorFault: boolean;
     outOfRange: boolean;
   };
+}
+
+// User-room events pushed by RealtimeGateway.emitToUser() — only to the
+// people concerned, not the whole warehouse room.
+export const USER_EVENTS = {
+  // An attendance request was sent, approved, rejected or checked out.
+  // Goes to the Staff member, the warehouse's Managers and every Admin.
+  // Payload: WorkShiftChangedEvent — clients refetch what they show.
+  WORK_SHIFT_CHANGED: 'workshift:changed',
+} as const;
+
+export interface WorkShiftChangedEvent {
+  workShiftId: string;
+  warehouseId: string;
+  staffId: string;
+  status: WorkShiftStatus;
 }

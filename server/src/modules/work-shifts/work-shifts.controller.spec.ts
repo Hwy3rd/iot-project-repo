@@ -5,11 +5,12 @@ import { WorkShiftsService } from './work-shifts.service';
 describe('WorkShiftsController', () => {
   let controller: WorkShiftsController;
   const workShiftsService = {
-    create: jest.fn(),
+    attendance: jest.fn(),
+    checkIn: jest.fn(),
+    approve: jest.fn(),
+    reject: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
-    update: jest.fn(),
-    checkIn: jest.fn(),
     checkOut: jest.fn(),
     remove: jest.fn(),
   };
@@ -37,10 +38,24 @@ describe('WorkShiftsController', () => {
     expect(workShiftsService.findOne).toHaveBeenCalledWith('1');
   });
 
-  it('delegates checkIn to the service', async () => {
-    await controller.checkIn('1');
+  it("reads the caller's own attendance", async () => {
+    await controller.attendance('u1');
 
-    expect(workShiftsService.checkIn).toHaveBeenCalledWith('1');
+    expect(workShiftsService.attendance).toHaveBeenCalledWith('u1');
+  });
+
+  it('checks the caller in to the warehouse in the body', async () => {
+    await controller.checkIn('u1', { warehouseId: 'w1' });
+
+    expect(workShiftsService.checkIn).toHaveBeenCalledWith('u1', 'w1');
+  });
+
+  it('approves and rejects as the calling reviewer', async () => {
+    await controller.approve('1', 'm1');
+    await controller.reject('1', 'm1', { reason: 'Sai kho' });
+
+    expect(workShiftsService.approve).toHaveBeenCalledWith('1', 'm1');
+    expect(workShiftsService.reject).toHaveBeenCalledWith('1', 'm1', 'Sai kho');
   });
 
   it('delegates checkOut to the service', async () => {

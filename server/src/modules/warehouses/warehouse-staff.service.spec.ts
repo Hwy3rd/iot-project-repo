@@ -1,10 +1,11 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { UserRole } from '../../libs/constants/user.constant';
 import { User } from '../users/entities/user.entity';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
 import { Warehouse } from './entities/warehouse.entity';
+import type { AssignWarehouseStaffDto } from './dto/assign-warehouse-staff.dto';
 import { WarehouseStaffService } from './warehouse-staff.service';
 
 describe('WarehouseStaffService', () => {
@@ -18,7 +19,7 @@ describe('WarehouseStaffService', () => {
     delete: jest.Mock;
   };
   let warehousesRepo: { existsBy: jest.Mock };
-  let usersRepo: { existsBy: jest.Mock };
+  let usersRepo: { findOne: jest.Mock };
 
   beforeEach(async () => {
     staffRepo = {
@@ -30,7 +31,11 @@ describe('WarehouseStaffService', () => {
       delete: jest.fn(),
     };
     warehousesRepo = { existsBy: jest.fn().mockResolvedValue(true) };
-    usersRepo = { existsBy: jest.fn().mockResolvedValue(true) };
+    usersRepo = {
+      findOne: jest
+        .fn()
+        .mockResolvedValue({ id: 'u1', role: UserRole.MANAGER }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -68,12 +73,35 @@ describe('WarehouseStaffService', () => {
 
   describe('assign', () => {
     it('throws NotFoundException for an unknown user', async () => {
-      usersRepo.existsBy.mockResolvedValue(false);
+      usersRepo.findOne.mockResolvedValue(null);
 
       await expect(
         service.assign('w1', 'u9', { role: UserRole.STAFF }),
       ).rejects.toThrow(NotFoundException);
       expect(staffRepo.save).not.toHaveBeenCalled();
+    });
+
+    it.each<[UserRole, AssignWarehouseStaffDto['role']]>([
+      [UserRole.MANAGER, UserRole.STAFF],
+      [UserRole.TECHNICIAN, UserRole.STAFF],
+      [UserRole.STAFF, UserRole.MANAGER],
+      [UserRole.STAFF, UserRole.TECHNICIAN],
+    ])('refuses a %s account as %s', async (accountRole, role) => {
+      usersRepo.findOne.mockResolvedValue({ id: 'u1', role: accountRole });
+
+      await expect(service.assign('w1', 'u1', { role })).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(staffRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('assigns a Staff account as Staff', async () => {
+      usersRepo.findOne.mockResolvedValue({ id: 'u1', role: UserRole.STAFF });
+      staffRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.assign('w1', 'u1', { role: UserRole.STAFF }),
+      ).resolves.toMatchObject({ role: UserRole.STAFF });
     });
 
     it('creates a new assignment', async () => {
@@ -92,7 +120,7 @@ describe('WarehouseStaffService', () => {
       staffRepo.findOne.mockResolvedValue({
         warehouseId: 'w1',
         userId: 'u1',
-        role: UserRole.STAFF,
+        role: UserRole.TECHNICIAN,
       });
 
       const result = await service.assign('w1', 'u1', {

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -12,15 +13,26 @@ import { dayBetween } from '../../common/query/find-filters';
 import { QueryWorkShiftDto } from './dto/query-work-shift.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
+import {
+  FindOptionsWhere,
+  In,
+  IsNull,
+  MoreThan,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
+import {
+  USER_EVENTS,
+  WorkShiftChangedEvent,
+} from '../../libs/constants/realtime.constant';
+import { UserRole } from '../../libs/constants/user.constant';
 import { WorkShiftStatus } from '../../libs/constants/work-shift.constant';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Shift } from '../shifts/entities/shift.entity';
 import { User } from '../users/entities/user.entity';
-import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
-import { CreateWorkShiftDto } from './dto/create-work-shift.dto';
-import { UpdateWorkShiftDto } from './dto/update-work-shift.dto';
 import { WorkShift } from './entities/work-shift.entity';
+import { activeShiftCutoff, openShiftAt } from './work-shift-schedule';
 import {
   assertInScope,
   bulkDelete,
@@ -29,116 +41,172 @@ import {
 
 @Injectable()
 export class WorkShiftsService {
+  private readonly logger = new Logger(WorkShiftsService.name);
+
   constructor(
     @InjectRepository(WorkShift)
     private readonly workShiftsRepository: Repository<WorkShift>,
     @InjectRepository(Shift)
     private readonly shiftsRepository: Repository<Shift>,
-    @InjectRepository(Warehouse)
-    private readonly warehousesRepository: Repository<Warehouse>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
     @InjectRepository(WarehouseStaff)
     private readonly warehouseStaffRepository: Repository<WarehouseStaff>,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
-  private async assertStaffAssignedToWarehouse(
-    staffId: string,
-    warehouseId: string,
-  ) {
+  // What the Staff check-in screen shows: whether they're already working an
+  // approved shift, which shift is open for check-in now, their request for
+  // it, and where they may check in.
+  async attendance(userId: string, now = new Date()) {
+    const [active, shifts, assignments] = await Promise.all([
+      this.workShiftsRepository.findOne({
+        where: {
+          staffId: userId,
+          status: WorkShiftStatus.APPROVED,
+          checkOutAt: IsNull(),
+          scheduledEndAt: MoreThan(activeShiftCutoff(now)),
+        },
+        order: { scheduledStartAt: 'DESC' },
+      }),
+      this.shiftsRepository.find(),
+      this.warehouseStaffRepository.find({
+        where: { userId, role: UserRole.STAFF },
+        relations: { warehouse: true },
+        order: { createdAt: 'ASC' },
+      }),
+    ]);
+
+    const open = openShiftAt(shifts, now);
+    const request = open
+      ? await this.workShiftsRepository.findOne({
+          where: {
+            staffId: userId,
+            shiftId: open.shift.id,
+            workDate: open.workDate,
+          },
+        })
+      : null;
+
+    return {
+      active,
+      open: open && {
+        shiftId: open.shift.id,
+        name: open.shift.name,
+        workDate: open.workDate,
+        scheduledStartAt: open.scheduledStartAt,
+        scheduledEndAt: open.scheduledEndAt,
+      },
+      request,
+      // The relation is null for a soft-deleted warehouse.
+      warehouses: assignments
+        .filter((a) => a.warehouse)
+        .map((a) => ({
+          id: a.warehouse.id,
+          name: a.warehouse.name,
+          code: a.warehouse.code,
+        })),
+    };
+  }
+
+  // A Staff member asks to work the shift open right now at `warehouseId`;
+  // it stays pending until a Manager of that warehouse (or an Admin)
+  // reviews it. WarehouseScopeGuard has already checked the caller's role
+  // there is Staff — except for Admin, who bypasses it and is refused here.
+  async checkIn(userId: string, warehouseId: string, now = new Date()) {
     const assignment = await this.warehouseStaffRepository.findOne({
-      where: { userId: staffId, warehouseId },
+      where: { userId, warehouseId },
     });
-    if (!assignment) {
+    if (assignment?.role !== UserRole.STAFF) {
       throw new BadRequestException(
-        `Staff ${staffId} is not assigned to warehouse ${warehouseId}`,
-      );
-    }
-  }
-
-  private combineDateAndTime(date: string, time: string): Date {
-    const normalizedTime = time.length === 5 ? `${time}:00` : time;
-    return new Date(`${date}T${normalizedTime}Z`);
-  }
-
-  // Snapshots the template's start/end time onto workDate. If endTime <=
-  // startTime the shift crosses midnight (e.g. a 22:00-06:00 night shift),
-  // so the end lands on the following day.
-  private computeSchedule(workDate: string, shift: Shift) {
-    const scheduledStartAt = this.combineDateAndTime(workDate, shift.startTime);
-    let scheduledEndAt = this.combineDateAndTime(workDate, shift.endTime);
-    if (scheduledEndAt <= scheduledStartAt) {
-      scheduledEndAt = new Date(scheduledEndAt.getTime() + 24 * 60 * 60 * 1000);
-    }
-    return { scheduledStartAt, scheduledEndAt };
-  }
-
-  private async findShiftOrThrow(shiftId: string) {
-    const shift = await this.shiftsRepository.findOne({
-      where: { id: shiftId },
-    });
-    if (!shift) {
-      throw new NotFoundException(`Shift ${shiftId} not found`);
-    }
-    return shift;
-  }
-
-  private async saveWorkShift(workShift: WorkShift): Promise<WorkShift> {
-    try {
-      return await this.workShiftsRepository.save(workShift);
-    } catch (error) {
-      if (
-        error instanceof QueryFailedError &&
-        (error as unknown as { code?: string }).code === 'ER_DUP_ENTRY'
-      ) {
-        throw new ConflictException(
-          'This staff already has a work shift for this shift template on this date',
-        );
-      }
-      throw error;
-    }
-  }
-
-  async create(createWorkShiftDto: CreateWorkShiftDto) {
-    const warehouse = await this.warehousesRepository.findOne({
-      where: { id: createWorkShiftDto.warehouseId },
-    });
-    if (!warehouse) {
-      throw new NotFoundException(
-        `Warehouse ${createWorkShiftDto.warehouseId} not found`,
+        `You are not Staff of warehouse ${warehouseId}`,
       );
     }
 
-    const staff = await this.usersRepository.findOne({
-      where: { id: createWorkShiftDto.staffId },
+    const open = openShiftAt(await this.shiftsRepository.find(), now);
+    if (!open) {
+      throw new ConflictException('No shift is open for check-in right now');
+    }
+
+    const existing = await this.workShiftsRepository.findOne({
+      where: {
+        staffId: userId,
+        shiftId: open.shift.id,
+        workDate: open.workDate,
+      },
     });
-    if (!staff) {
-      throw new NotFoundException(
-        `Staff ${createWorkShiftDto.staffId} not found`,
+    if (
+      existing?.status === WorkShiftStatus.PENDING ||
+      existing?.status === WorkShiftStatus.APPROVED
+    ) {
+      throw new ConflictException(
+        `You already have a ${existing.status} request for this shift`,
       );
     }
 
-    await this.assertStaffAssignedToWarehouse(
-      createWorkShiftDto.staffId,
-      createWorkShiftDto.warehouseId,
-    );
-
-    const shift = await this.findShiftOrThrow(createWorkShiftDto.shiftId);
-    const { scheduledStartAt, scheduledEndAt } = this.computeSchedule(
-      createWorkShiftDto.workDate,
-      shift,
-    );
-
-    const workShift = this.workShiftsRepository.create({
-      shiftId: createWorkShiftDto.shiftId,
-      staffId: createWorkShiftDto.staffId,
-      warehouseId: createWorkShiftDto.warehouseId,
-      workDate: createWorkShiftDto.workDate,
-      scheduledStartAt,
-      scheduledEndAt,
-      status: WorkShiftStatus.SCHEDULED,
+    // A rejected (or expired) request is sent again on the same row.
+    const workShift =
+      existing ?? this.workShiftsRepository.create({ staffId: userId });
+    Object.assign(workShift, {
+      shiftId: open.shift.id,
+      warehouseId,
+      workDate: open.workDate,
+      scheduledStartAt: open.scheduledStartAt,
+      scheduledEndAt: open.scheduledEndAt,
+      status: WorkShiftStatus.PENDING,
+      checkInAt: now,
+      checkOutAt: null,
+      reviewedBy: null,
+      reviewedAt: null,
+      rejectReason: null,
     });
-    return this.saveWorkShift(workShift);
+    const saved = await this.saveWorkShift(workShift);
+    await this.announce(saved);
+    return saved;
+  }
+
+  async approve(id: string, reviewerId: string, now = new Date()) {
+    const workShift = await this.findPendingOrThrow(id);
+    if (workShift.scheduledEndAt <= now) {
+      throw new ConflictException(`Work shift ${id} has already ended`);
+    }
+    Object.assign(workShift, {
+      status: WorkShiftStatus.APPROVED,
+      reviewedBy: reviewerId,
+      reviewedAt: now,
+    });
+    const saved = await this.workShiftsRepository.save(workShift);
+    await this.announce(saved);
+    return saved;
+  }
+
+  async reject(id: string, reviewerId: string, reason?: string) {
+    const workShift = await this.findPendingOrThrow(id);
+    Object.assign(workShift, {
+      status: WorkShiftStatus.REJECTED,
+      reviewedBy: reviewerId,
+      reviewedAt: new Date(),
+      rejectReason: reason?.trim() || null,
+    });
+    const saved = await this.workShiftsRepository.save(workShift);
+    await this.announce(saved);
+    return saved;
+  }
+
+  // The Staff member's own approved shift (WarehouseScopeGuard checks
+  // ownership); called when they log out at the end of the shift. Ends
+  // their shift permissions immediately.
+  async checkOut(id: string) {
+    const workShift = await this.findOne(id);
+    if (workShift.status !== WorkShiftStatus.APPROVED || workShift.checkOutAt) {
+      throw new ConflictException(
+        `Work shift ${id} is not an approved shift in progress`,
+      );
+    }
+    workShift.checkOutAt = new Date();
+    const saved = await this.workShiftsRepository.save(workShift);
+    await this.announce(saved);
+    return saved;
   }
 
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
@@ -205,54 +273,6 @@ export class WorkShiftsService {
     return workShift;
   }
 
-  async update(id: string, updateWorkShiftDto: UpdateWorkShiftDto) {
-    const workShift = await this.findOne(id);
-
-    // Reassigning to another staff member: they must work in this shift's
-    // (fixed) warehouse.
-    if (updateWorkShiftDto.staffId) {
-      await this.assertStaffAssignedToWarehouse(
-        updateWorkShiftDto.staffId,
-        workShift.warehouseId,
-      );
-    }
-
-    let scheduleUpdate: Partial<WorkShift> = {};
-    if (updateWorkShiftDto.shiftId || updateWorkShiftDto.workDate) {
-      const shiftId = updateWorkShiftDto.shiftId ?? workShift.shiftId;
-      const shift = await this.findShiftOrThrow(shiftId);
-      const workDate = updateWorkShiftDto.workDate ?? workShift.workDate;
-      scheduleUpdate = this.computeSchedule(workDate, shift);
-    }
-
-    Object.assign(workShift, updateWorkShiftDto, scheduleUpdate);
-    return this.saveWorkShift(workShift);
-  }
-
-  async checkIn(id: string) {
-    const workShift = await this.findOne(id);
-    if (workShift.status !== WorkShiftStatus.SCHEDULED) {
-      throw new ConflictException(
-        `Work shift ${id} cannot be checked in from status ${workShift.status}`,
-      );
-    }
-    workShift.checkInAt = new Date();
-    workShift.status = WorkShiftStatus.CHECKED_IN;
-    return this.workShiftsRepository.save(workShift);
-  }
-
-  async checkOut(id: string) {
-    const workShift = await this.findOne(id);
-    if (workShift.status !== WorkShiftStatus.CHECKED_IN) {
-      throw new ConflictException(
-        `Work shift ${id} cannot be checked out from status ${workShift.status}`,
-      );
-    }
-    workShift.checkOutAt = new Date();
-    workShift.status = WorkShiftStatus.COMPLETED;
-    return this.workShiftsRepository.save(workShift);
-  }
-
   async remove(id: string) {
     const result = await this.workShiftsRepository.delete(id);
     if (!result.affected) {
@@ -275,5 +295,69 @@ export class WorkShiftsService {
       assertInScope(id, warehouseOf, access.warehouseIds);
       return this.remove(id);
     });
+  }
+
+  private async findPendingOrThrow(id: string) {
+    const workShift = await this.findOne(id);
+    if (workShift.status !== WorkShiftStatus.PENDING) {
+      throw new ConflictException(
+        `Work shift ${id} is ${workShift.status}, not pending`,
+      );
+    }
+    return workShift;
+  }
+
+  private async saveWorkShift(workShift: WorkShift): Promise<WorkShift> {
+    try {
+      return await this.workShiftsRepository.save(workShift);
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error as unknown as { code?: string }).code === 'ER_DUP_ENTRY'
+      ) {
+        // Two check-ins for the same shift raced; the other one won.
+        throw new ConflictException(
+          'You already have a request for this shift',
+        );
+      }
+      throw error;
+    }
+  }
+
+  // Tells the Staff member, the warehouse's Managers and every Admin that a
+  // request changed, so check-in screens and review lists update. Best
+  // effort: a realtime hiccup must never fail the write it follows (the
+  // screens also poll as a fallback).
+  private async announce(workShift: WorkShift) {
+    try {
+      const [managers, admins] = await Promise.all([
+        this.warehouseStaffRepository.find({
+          where: { warehouseId: workShift.warehouseId, role: UserRole.MANAGER },
+          select: { userId: true },
+        }),
+        this.usersRepository.find({
+          where: { role: UserRole.ADMIN },
+          select: { id: true },
+        }),
+      ]);
+      const event: WorkShiftChangedEvent = {
+        workShiftId: workShift.id,
+        warehouseId: workShift.warehouseId,
+        staffId: workShift.staffId,
+        status: workShift.status,
+      };
+      const recipients = new Set([
+        workShift.staffId,
+        ...managers.map((m) => m.userId),
+        ...admins.map((a) => a.id),
+      ]);
+      for (const userId of recipients) {
+        this.realtime.emitToUser(userId, USER_EVENTS.WORK_SHIFT_CHANGED, event);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not announce work shift ${workShift.id}: ${String(error)}`,
+      );
+    }
   }
 }

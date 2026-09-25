@@ -54,7 +54,7 @@ Tên queue được khai báo tập trung ở `server/src/libs/constants/queue.c
 | `alert-notifications`    | `notify` | `AlertsService.raise()` (`app`)                   | `AlertNotificationProcessor` | Theo sự kiện                          | Hoạt động  |
 | `telemetry-rollup`       | `rollup` | Scheduler `telemetry-hourly-rollup`               | `TelemetryRollupProcessor`   | Cron `5 * * * *`, múi giờ UTC         | Hoạt động  |
 | `batch-maintenance`      | `sweep`  | Scheduler `batch-expiry-sweep`                    | `BatchExpiryProcessor`       | `every: 1h`                           | **TODO**, chỉ log |
-| `work-shift-maintenance` | `sweep`  | Scheduler `work-shift-absence-sweep`              | `WorkShiftAbsenceProcessor`  | `every: 15m`                          | **TODO**, chỉ log |
+| `work-shift-maintenance` | `sweep`  | Scheduler `work-shift-sweep`                      | `WorkShiftSweepProcessor`    | `every: 5m`                           | Đã có             |
 
 ### 3.1 `alert-notifications`
 
@@ -97,10 +97,8 @@ Giới hạn: raw có TTL 30 ngày (`TELEMETRY_RAW_TTL_DAYS`). Với giờ mà r
 
 ### 3.3 `batch-maintenance` và `work-shift-maintenance`
 
-Lịch chạy và kết nối đã có, nhưng `process()` hiện chỉ log debug:
-
-- `BatchExpiryProcessor` (TODO): chuyển các batch `IN_STOCK` đã quá `expiryDate` sang `EXPIRED`.
-- `WorkShiftAbsenceProcessor` (TODO): chuyển các ca `SCHEDULED` đã quá thời gian ân hạn sang `ABSENT`.
+- `BatchExpiryProcessor` (TODO — lịch chạy đã có, `process()` chỉ log debug): chuyển các batch `IN_STOCK` đã quá `expiryDate` sang `EXPIRED`.
+- `WorkShiftSweepProcessor`: yêu cầu chấm công `PENDING` mà ca đã kết thúc → `EXPIRED`; ca `APPROVED` quá giờ kết thúc + 5 phút mà chưa check-out → `checkOutAt` = giờ kết thúc + 5 phút. Chỉ là dọn dữ liệu — quyền của Staff đã tính theo đồng hồ, nên job chạy trễ không cho ai làm quá ca. Khi khởi động, nó gỡ scheduler cũ `work-shift-absence-sweep`.
 
 Khi viết logic cho hai job này, cần giữ chúng **idempotent**: dùng `UPDATE ... WHERE status = <cũ> AND <điều kiện thời gian>` để chạy trùng hay chạy chồng lần trước cũng không sai.
 
@@ -114,7 +112,7 @@ Hiện **không queue nào đặt job options** (`attempts`, `backoff`, `removeO
 | ------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | Số lần thử               | 1 (không retry)                | Job lỗi thì chuyển thẳng sang `failed` và không tự chạy lại                                               |
 | Concurrency mỗi processor | 1                             | Job trong cùng một queue xử lý lần lượt. Các queue khác nhau vẫn chạy song song                          |
-| Giữ job đã xong/lỗi      | Giữ vĩnh viễn trong Redis      | Redis tăng dần theo thời gian (khoảng 96 job/ngày từ `work-shift-maintenance`, cộng thêm mỗi alert một job) |
+| Giữ job đã xong/lỗi      | Giữ vĩnh viễn trong Redis      | Redis tăng dần theo thời gian (khoảng 288 job/ngày từ `work-shift-maintenance`, cộng thêm mỗi alert một job) |
 | Job bị "stalled"         | Chạy lại tối đa 1 lần          | Xem ghi chú về shutdown bên dưới                                                                          |
 
 **Ai chạy lại được an toàn:**
@@ -256,4 +254,4 @@ docker exec mosquitto_broker mosquitto_pub -t 'devices/<uniqueId>/telemetry' -q 
 | `worker` không có graceful shutdown                      | Job đang chạy bị cắt ngang khi deploy                                           | `app.enableShutdownHooks()` trong `workers/main.ts`                                          |
 | MQTT `clean: true`, không có dead-letter                 | Mất telemetry được gửi khi `app` offline; message lỗi chỉ nằm trong log          | Session bền (`clean: false` với clientId cố định), hoặc thiết bị tự buffer và gửi lại        |
 | Chưa có dashboard hay cảnh báo cho queue                 | Không phát hiện được khi job fail hàng loạt                                     | Bull Board (chỉ cho Admin) hoặc metric số job failed                                         |
-| Hai sweep job chưa có logic                              | Batch hết hạn và ca vắng mặt không được tự cập nhật trạng thái                  | Hoàn thiện `BatchExpiryProcessor`, `WorkShiftAbsenceProcessor`                               |
+| Sweep batch hết hạn chưa có logic                        | Batch hết hạn không được tự cập nhật trạng thái                                 | Hoàn thiện `BatchExpiryProcessor`                                                            |

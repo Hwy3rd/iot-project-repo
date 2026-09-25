@@ -21,9 +21,9 @@ Bốn vai trò; ma trận quyền chi tiết theo từng chức năng xem [RBAC.
 | Vai trò | Nhu cầu chính |
 |---|---|
 | Admin | Quản trị toàn hệ thống: tài khoản, kho, danh mục dùng chung, giám sát toàn cục, tra soát nhật ký hệ thống |
-| Quản lý kho (Manager) | Vận hành nghiệp vụ tại (các) kho được giao: lô hàng, xếp lịch ca trực, theo dõi tình trạng kho |
+| Quản lý kho (Manager) | Vận hành nghiệp vụ tại (các) kho được giao: lô hàng, duyệt chấm công ca trực, theo dõi tình trạng kho |
 | Kỹ thuật viên (Technician) | Lắp đặt, bảo trì, điều khiển thiết bị IoT tại (các) kho được giao |
-| Nhân viên (Staff) | Thực hiện công việc vận hành hằng ngày (nhập/xuất hàng, xử lý cảnh báo cơ bản) trong ca trực đã check-in |
+| Nhân viên (Staff) | Thực hiện công việc vận hành hằng ngày (nhập/xuất hàng, xử lý cảnh báo cơ bản) trong ca trực đã được duyệt chấm công |
 
 ## 3. Yêu cầu chức năng
 
@@ -38,7 +38,7 @@ Bốn vai trò; ma trận quyền chi tiết theo từng chức năng xem [RBAC.
 ### 3.2 Quản lý kho, phòng lạnh & danh mục sản phẩm
 
 - Quản lý danh sách kho (warehouse) và các phòng lạnh (cold room) bên trong từng kho; mỗi phòng có ngưỡng nhiệt độ an toàn riêng, biên trễ chống bật/tắt liên tục thiết bị làm mát, ngưỡng thời gian mở cửa tối đa và sức chứa.
-- Gán nhân sự (Manager/Technician/Staff) vào một hoặc nhiều kho — cùng một người có thể giữ vai trò khác nhau ở mỗi kho.
+- Gán nhân sự (Manager/Technician/Staff) vào một hoặc nhiều kho — cùng một người có thể giữ vai trò khác nhau ở mỗi kho, trừ Nhân viên: tài khoản Nhân viên chỉ làm Nhân viên, và chỉ tài khoản Nhân viên mới được gán vai trò Nhân viên.
 - Quản lý danh mục loại sản phẩm dùng chung toàn hệ thống, kèm khoảng nhiệt độ bảo quản khuyến nghị, dùng để đối chiếu khi xếp một lô hàng vào một phòng lạnh cụ thể.
 
 ### 3.3 Quản lý lô hàng
@@ -50,11 +50,11 @@ Bốn vai trò; ma trận quyền chi tiết theo từng chức năng xem [RBAC.
 
 ### 3.4 Quản lý ca trực nhân viên
 
-- Định nghĩa các mẫu ca làm việc cố định (sáng/chiều/tối) dùng chung toàn hệ thống.
-- Xếp lịch ca trực cho từng nhân viên tại từng kho theo ngày cụ thể; không xếp trùng một nhân viên vào cùng một loại ca trong cùng một ngày.
-- Nhân viên tự check-in khi bắt đầu ca và check-out khi kết thúc.
-- Các quyền vận hành hằng ngày của Nhân viên (nhập/xuất hàng, điều khiển thiết bị mức cơ bản) chỉ có hiệu lực trong lúc đang check-in tại đúng kho.
-- Tự động đánh dấu vắng mặt cho ca trực đã quá giờ bắt đầu mà nhân viên chưa check-in.
+- Quản trị viên định nghĩa các mẫu ca làm việc (tên, giờ bắt đầu, giờ kết thúc, có thể qua đêm) dùng chung toàn hệ thống; số lượng tự do nhưng khung giờ các mẫu ca không được chồng nhau trong ngày.
+- Chỉ Nhân viên cần chấm công. Khi đăng nhập, Nhân viên phải chấm công trước khi dùng hệ thống: chọn kho được phân công, ca và giờ do hệ thống tự điền theo thời điểm gửi (từ 15 phút trước giờ bắt đầu ca tới khi ca kết thúc); mỗi nhân viên chỉ có một lượt chấm công cho một ca trong ngày.
+- Yêu cầu chấm công được gửi tới Quản lý kho duyệt hoặc từ chối (kèm lý do); bị từ chối thì gửi lại được. Chưa được duyệt thì chưa dùng được hệ thống.
+- Các quyền vận hành hằng ngày của Nhân viên (nhập/xuất hàng, điều khiển thiết bị mức cơ bản) chỉ có hiệu lực trong ca đã được duyệt tại đúng kho.
+- Hết ca, Nhân viên được nhắc đăng xuất, có thể thao tác thêm tối đa 5 phút, sau đó hệ thống tự đăng xuất và ghi nhận giờ ra ca. Yêu cầu không được duyệt trước khi ca kết thúc được tự đánh dấu quá hạn.
 
 ### 3.5 Quản lý thiết bị IoT
 
@@ -101,7 +101,7 @@ Mỗi loại sự cố tại một đối tượng chỉ giữ đúng một cả
 ### 3.11 Phân quyền theo vai trò & phạm vi
 
 - Mọi chức năng nghiệp vụ, trừ quản trị toàn hệ thống, chỉ áp dụng trong phạm vi (các) kho mà người dùng được phân công — người phụ trách kho A không thấy và không thao tác được dữ liệu của kho B.
-- Với vai trò Nhân viên, quyền thao tác nghiệp vụ hằng ngày chỉ có hiệu lực khi đang trong ca trực đã check-in tại đúng kho đó.
+- Với vai trò Nhân viên, quyền thao tác nghiệp vụ hằng ngày chỉ có hiệu lực khi đang trong ca trực đã được duyệt chấm công tại đúng kho đó.
 - Ma trận quyền đầy đủ theo từng chức năng: xem [RBAC.md](RBAC.md).
 
 ## 4. Yêu cầu phi chức năng

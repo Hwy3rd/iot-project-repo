@@ -5,11 +5,11 @@ import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.const
 export interface WarehouseScopeMeta {
   source: WarehouseScopeSource;
   paramName: string;
-  // Staff only: also requires an active (checked-in, not checked-out)
-  // WorkShift for the caller in the resolved warehouse. Ignored for other roles.
+  // Staff only: also requires an active WorkShift (approved, in progress) for
+  // the caller in the resolved warehouse. Ignored for other roles.
   requireShift: boolean;
   // Staff only, WORK_SHIFT_PARAM sources: also requires the target WorkShift's
-  // staffId to equal the caller (e.g. check-in/check-out your own shift).
+  // staffId to equal the caller (e.g. check out of your own shift).
   ownStaffOnly: boolean;
 }
 

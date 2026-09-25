@@ -7,7 +7,6 @@ import type {
   CommandStatus,
   DeviceStatus,
   ProductUnit,
-  ShiftType,
   UserRole,
   UserStatus,
   WorkShiftStatus,
@@ -64,17 +63,11 @@ export const PRODUCT_UNIT_LABEL: Record<ProductUnit, string> = {
   box: 'thùng',
 }
 
-export const SHIFT_TYPE_LABEL: Record<ShiftType, string> = {
-  morning: 'Ca sáng',
-  afternoon: 'Ca chiều',
-  night: 'Ca tối',
-}
-
 export const WORK_SHIFT_STATUS_LABEL: Record<WorkShiftStatus, string> = {
-  scheduled: 'Đã lên lịch',
-  checked_in: 'Đang trực',
-  completed: 'Hoàn thành',
-  absent: 'Vắng mặt',
+  pending: 'Chờ duyệt',
+  approved: 'Đã duyệt',
+  rejected: 'Từ chối',
+  expired: 'Quá hạn',
 }
 
 export const COMMAND_ACTION_LABEL: Record<CommandAction, string> = {

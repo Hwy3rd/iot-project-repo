@@ -6,7 +6,6 @@ import {
   warehousesApi,
 } from '@/api/endpoints'
 import type { Paginated } from '@/api/types'
-import { SHIFT_TYPE_LABEL } from '@/lib/labels'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
@@ -56,8 +55,6 @@ function useLookup<T extends { id: string }>(
 
 const warehouseLabel = (w: { name: string; code: string }) => `${w.name} (${w.code})`
 const nameLabel = (x: { name: string }) => x.name
-const shiftLabel = (s: { shiftType: keyof typeof SHIFT_TYPE_LABEL }) =>
-  SHIFT_TYPE_LABEL[s.shiftType]
 const userLabel = (u: { username: string; fullName: string | null }) =>
   u.fullName ? `${u.fullName} (${u.username})` : u.username
 
@@ -66,7 +63,7 @@ export const useWarehouseLookup = () =>
 export const useColdRoomLookup = () => useLookup('cold-rooms', coldRoomsApi.list, nameLabel)
 export const useProductTypeLookup = () =>
   useLookup('product-types', productTypesApi.list, nameLabel)
-export const useShiftLookup = () => useLookup('shifts', shiftsApi.list, shiftLabel)
+export const useShiftLookup = () => useLookup('shifts', shiftsApi.list, nameLabel)
 /** GET /users is Admin-only; pass enabled=false for other roles (names fall back to ids). */
 export const useUserLookup = (enabled: boolean) =>
   useLookup('users', usersApi.list, userLabel, enabled)

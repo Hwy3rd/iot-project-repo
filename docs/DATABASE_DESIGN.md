@@ -111,7 +111,7 @@ erDiagram
   }
   SHIFTS {
     varchar36 id PK
-    enum shift_type UK "morning | afternoon | night"
+    varchar100 name
     time start_time
     time end_time
     timestamp deleted_at
@@ -124,9 +124,12 @@ erDiagram
     date work_date
     timestamp scheduled_start_at
     timestamp scheduled_end_at
-    enum status "scheduled | checked_in | completed | absent"
+    enum status "pending | approved | rejected | expired"
     timestamp check_in_at
     timestamp check_out_at
+    varchar36 reviewed_by FK
+    timestamp reviewed_at
+    varchar255 reject_reason
   }
   DEVICES {
     varchar36 id PK
@@ -316,29 +319,33 @@ Không có `deleted_at`: `removed_at` + `status = removed` đã đại diện ch
 
 ### `shifts`
 
-Mẫu ca làm việc tĩnh (sáng/chiều/tối), không gắn với ngày hay nhân viên cụ thể — master data.
+Mẫu ca làm việc (tên tự đặt), không gắn với ngày hay nhân viên cụ thể — master data. Khung giờ các mẫu ca chưa xoá không chồng nhau, do `ShiftsService` kiểm tra (không có ràng buộc DB).
 
 | Cột | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | `varchar(36)` PK | |
-| `shift_type` | `enum` UNIQUE | `morning \| afternoon \| night` |
+| `name` | `varchar(100)` | duy nhất trong các mẫu ca chưa xoá — kiểm tra ở `ShiftsService`, không dùng unique index vì index sẽ tính cả mẫu đã xoá mềm |
 | `start_time`, `end_time` | `time` | |
 | `deleted_at` | soft delete | |
 
 ### `work_shifts`
 
-Bản ghi gán một mẫu ca cho một nhân viên vào một ngày, tại một warehouse cụ thể — nguồn của điều kiện "Ca trực" trong RBAC.
+Một lượt chấm công: nhân viên tự gửi yêu cầu vào một ca (mẫu ca + ngày) tại một warehouse, Manager duyệt — nguồn của điều kiện "Ca trực" trong RBAC. Ca được hệ thống chọn theo thời điểm gửi (xem `docs/API_DESIGN.md` §8).
 
 | Cột | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | `varchar(36)` PK | |
 | `shift_id` | FK → `shifts.id` | |
-| `staff_id` | FK → `users.id` | UNIQUE cùng `(work_date, shift_id)` — một nhân viên không bị xếp trùng 1 loại ca trong cùng 1 ngày |
-| `warehouse_id` | FK → `warehouses.id` | |
-| `work_date` | `date` | |
-| `scheduled_start_at`, `scheduled_end_at` | `timestamp` | snapshot `work_date` + giờ của `shift` tại thời điểm tạo — sửa `shifts` sau đó không làm thay đổi lịch đã chốt |
-| `status` | `enum`, default `scheduled` | `scheduled \| checked_in \| completed \| absent` |
-| `check_in_at`, `check_out_at` | `timestamp` nullable | có `check_in_at` nhưng `check_out_at` còn `NULL` = đang trong ca trực |
+| `staff_id` | FK → `users.id` | UNIQUE cùng `(work_date, shift_id)` — một nhân viên chỉ có một lượt chấm công cho một ca; gửi lại sau khi bị từ chối dùng lại chính dòng này |
+| `warehouse_id` | FK → `warehouses.id` | INDEX cùng `work_date` (danh sách duyệt theo kho + ngày) |
+| `work_date` | `date` | ngày bắt đầu ca (giờ Việt Nam) |
+| `scheduled_start_at`, `scheduled_end_at` | `timestamp` | snapshot `work_date` + giờ của `shift` tại thời điểm gửi — sửa `shifts` sau đó không làm thay đổi bản ghi đã có |
+| `status` | `enum`, default `pending` | `pending \| approved \| rejected \| expired` |
+| `check_in_at` | `timestamp` nullable | thời điểm gửi yêu cầu (lần gần nhất); `NULL` chỉ ở dữ liệu cũ |
+| `check_out_at` | `timestamp` nullable | khi Staff đăng xuất lúc hết ca, hoặc sweep điền (hết ca + 5 phút). `approved` + `check_out_at IS NULL` + chưa quá hết ca + 5 phút = đang trong ca trực |
+| `reviewed_by` | FK → `users.id` nullable | Manager/Admin đã duyệt hoặc từ chối |
+| `reviewed_at` | `timestamp` nullable | |
+| `reject_reason` | `varchar(255)` nullable | lý do từ chối, hiển thị cho Staff |
 
 Không có cascade xoá trên bất kỳ FK nào: lịch sử ca trực phải tồn tại độc lập với việc nhân viên/warehouse/mẫu ca bị xoá sau này (phục vụ đối chiếu công/audit).
 
@@ -490,7 +497,7 @@ Nhật ký append-only mọi hành động quan trọng trong hệ thống — A
 | Danh mục | `warehouse.*`, `product_type.*`, `shift.*` (`create`/`update`/`delete`) |
 | Phòng lạnh | `cold_room.create`, `cold_room.update`, `cold_room.delete` |
 | Lô hàng | `batch.create`, `batch.update`, `batch.remove` (xuất kho) |
-| Ca trực | `work_shift.create`, `work_shift.update`, `work_shift.delete`, `work_shift.check_in`, `work_shift.check_out` |
+| Ca trực | `work_shift.check_in`, `work_shift.approve`, `work_shift.reject`, `work_shift.check_out`, `work_shift.delete` |
 | Thiết bị | `device.create`, `device.update`, `device.delete`, `device.claim_code_generate`, `device.claim`, `device_channel.*` |
 
 Index: `(created_at)`, `(user_id, created_at)`, `(warehouse_id, created_at)`, `(target_type, target_id)` — khớp các bộ lọc của `GET /audit-logs`.
@@ -544,7 +551,7 @@ Redis không lưu dữ liệu nghiệp vụ, chỉ phục vụ 2 việc:
 | Queue | Mục đích |
 |---|---|
 | `batch-maintenance` | tác vụ định kỳ liên quan vòng đời lô hàng (vd tự động đánh dấu hết hạn) |
-| `work-shift-maintenance` | tác vụ định kỳ liên quan ca trực |
+| `work-shift-maintenance` | 5 phút/lần: `pending` hết ca → `expired`; `approved` quá hết ca + 5 phút chưa check-out → điền `check_out_at` |
 | `telemetry-rollup` | job gộp `telemetry_raw` → `telemetry_hourly` mỗi giờ |
 | `alert-notifications` | fan-out từ alert mới sang `notifications` + đẩy Web Push |
 
@@ -568,8 +575,7 @@ Redis không lưu dữ liệu nghiệp vụ, chỉ phục vụ 2 việc:
 | `users.status` | `active`, `locked` |
 | `product_types.unit` | `kg`, `liter`, `piece`, `box` |
 | `batches.status` | `in_stock`, `expired`, `removed` |
-| `shifts.shift_type` | `morning`, `afternoon`, `night` |
-| `work_shifts.status` | `scheduled`, `checked_in`, `completed`, `absent` |
+| `work_shifts.status` | `pending`, `approved`, `rejected`, `expired` |
 | `devices.status` | `registered`, `provisioned`, `active`, `offline`, `fault`, `maintenance`, `decommissioned` |
 | `device_status_history.trigger` | `manual`, `automated` |
 | `device_channels.channel_type` | `limit_switch`, `temp_humidity_sensor`, `current_sensor`, `fan_motor`, `indicator_light`, `buzzer` |

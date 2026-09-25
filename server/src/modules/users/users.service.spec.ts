@@ -27,7 +27,11 @@ const createMockRepository = (): MockRepository => ({
 });
 
 const createMockDataSource = () => {
-  const manager = { softDelete: jest.fn(), delete: jest.fn() };
+  const manager = {
+    softDelete: jest.fn(),
+    delete: jest.fn(),
+    count: jest.fn().mockResolvedValue(0),
+  };
   return {
     manager,
     transaction: jest.fn((cb: (entityManager: typeof manager) => unknown) =>
@@ -226,6 +230,37 @@ describe('UsersService', () => {
           { id: 'a1', role: UserRole.ADMIN },
         ),
       ).resolves.toMatchObject({ role: UserRole.MANAGER });
+    });
+
+    it('refuses to move an account out of Staff while it has warehouses', async () => {
+      repository.findOne!.mockResolvedValue({ ...staffUser });
+      dataSource.manager.count.mockResolvedValue(2);
+
+      await expect(
+        service.update(
+          's1',
+          { role: UserRole.MANAGER },
+          { id: 'a1', role: UserRole.ADMIN },
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('allows a role change that keeps Staff on the same side', async () => {
+      repository.findOne!.mockResolvedValue({
+        id: 'm1',
+        role: UserRole.MANAGER,
+      });
+      dataSource.manager.count.mockResolvedValue(2);
+
+      await expect(
+        service.update(
+          'm1',
+          { role: UserRole.TECHNICIAN },
+          { id: 'a1', role: UserRole.ADMIN },
+        ),
+      ).resolves.toMatchObject({ role: UserRole.TECHNICIAN });
+      expect(dataSource.manager.count).not.toHaveBeenCalled();
     });
   });
 

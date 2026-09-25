@@ -1,3 +1,4 @@
+import { ApiError } from '@/api/client'
 import { usersApi } from '@/api/endpoints'
 import type { User, UserRole } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
@@ -110,7 +111,11 @@ function UserFormDialog({
     onError: (err) =>
       setError('root.server', {
         message: mutationErrorText(err, {
-          409: 'Tên đăng nhập hoặc email đã được dùng.',
+          // 409 has two causes; the backend message tells them apart.
+          409:
+            err instanceof ApiError && err.message.includes('to or from Staff')
+              ? 'Nhân viên chỉ làm Nhân viên ở mọi kho: gỡ người này khỏi các kho đang được phân công trước khi đổi vai trò sang/từ Nhân viên.'
+              : 'Tên đăng nhập hoặc email đã được dùng.',
         }),
       }),
   })

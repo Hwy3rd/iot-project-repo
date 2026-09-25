@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Paginated,
   resolvePagination,
@@ -6,6 +10,7 @@ import {
 import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { UserRole } from '../../libs/constants/user.constant';
 import { User } from '../users/entities/user.entity';
 import { AssignWarehouseStaffDto } from './dto/assign-warehouse-staff.dto';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
@@ -42,15 +47,32 @@ export class WarehouseStaffService {
 
   // Upsert: assigning someone already in the warehouse just changes their
   // role there (one row per user+warehouse — the table's composite PK).
+  //
+  // Staff is Staff everywhere: the Staff role in a warehouse is only for
+  // users whose account role is Staff, and they get no other role. The
+  // check-in requirement (AttendanceGate on the frontend) is decided by the
+  // account role, so e.g. a Manager acting as Staff somewhere would never
+  // be asked to check in there. Manager/Technician may still mix across
+  // warehouses.
   async assign(
     warehouseId: string,
     userId: string,
     dto: AssignWarehouseStaffDto,
   ) {
     await this.assertWarehouseExists(warehouseId);
-    const userExists = await this.usersRepository.existsBy({ id: userId });
-    if (!userExists) {
+    const user = await this.usersRepository.findOne({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    if (!user) {
       throw new NotFoundException(`User ${userId} not found`);
+    }
+    if ((user.role === UserRole.STAFF) !== (dto.role === UserRole.STAFF)) {
+      throw new BadRequestException(
+        user.role === UserRole.STAFF
+          ? 'A Staff account can only be assigned as Staff'
+          : 'Only Staff accounts can be assigned as Staff',
+      );
     }
 
     const existing = await this.warehouseStaffRepository.findOne({

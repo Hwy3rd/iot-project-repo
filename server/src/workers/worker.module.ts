@@ -20,7 +20,7 @@ import { WorkShift } from '../modules/work-shifts/entities/work-shift.entity';
 import { AlertNotificationProcessor } from './processors/alert-notification.processor';
 import { BatchExpiryProcessor } from './processors/batch-expiry.processor';
 import { TelemetryRollupProcessor } from './processors/telemetry-rollup.processor';
-import { WorkShiftAbsenceProcessor } from './processors/work-shift-absence.processor';
+import { WorkShiftSweepProcessor } from './processors/work-shift-sweep.processor';
 
 // Standalone root module for the worker process (see src/workers/main.ts) —
 // no HTTP concerns here. Intentionally leaner than AppModule: no MinioModule,
@@ -65,7 +65,7 @@ import { WorkShiftAbsenceProcessor } from './processors/work-shift-absence.proce
   ],
   providers: [
     BatchExpiryProcessor,
-    WorkShiftAbsenceProcessor,
+    WorkShiftSweepProcessor,
     TelemetryRollupService,
     TelemetryRollupProcessor,
     NotificationsService,
