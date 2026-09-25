@@ -1,8 +1,15 @@
 import { alertsApi, type AlertQuery } from '@/api/endpoints'
-import type { AlertStatus, AlertType } from '@/api/types'
+import type { Alert, AlertStatus, AlertType } from '@/api/types'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, LocationFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  JsonBlock,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { AlertStatusBadge } from '@/components/common/StatusBadge'
 import {
@@ -16,8 +23,9 @@ import {
 import { emptyFilters, labelOptions, rangeError } from '@/lib/filters'
 import { formatDateTime, formatRelative, formatTemp } from '@/lib/format'
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/lib/labels'
-import { useColdRoomLookup } from '@/lib/lookups'
+import { shortId, useColdRoomLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 // `status` doubles as the dashboard tiles' deep link (/alerts?status=open).
@@ -91,6 +99,8 @@ export function AlertsPage() {
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const coldRooms = useColdRoomLookup()
+  const rows = useRowDialogs<Alert>()
+  const current = rows.item
 
   const params: AlertQuery = {
     page: list.page,
@@ -133,42 +143,85 @@ export function AlertsPage() {
               <TableRow>
                 <TableHead className="pl-4">Loại</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead className="hidden md:table-cell">Phòng lạnh</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">Giá trị / ngưỡng</TableHead>
-                <TableHead className="pr-4">Thời điểm</TableHead>
+                <TableHead>Phòng lạnh</TableHead>
+                <TableHead className="text-right">Giá trị / ngưỡng</TableHead>
+                <TableHead>Thời điểm</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell className="pl-4 font-medium whitespace-normal">
+                <TableRow key={a.id} {...rowOpenProps(() => rows.view(a))}>
+                  <TableCell className="pl-4 font-medium min-w-48 whitespace-normal">
                     {ALERT_TYPE_LABEL[a.type]}
-                    <span className="mt-0.5 block font-normal text-muted-foreground md:hidden">
-                      {coldRooms.label(a.coldRoomId)}
-                    </span>
                   </TableCell>
                   <TableCell>
                     <AlertStatusBadge status={a.status} />
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell>
                     {coldRooms.label(a.coldRoomId)}
                   </TableCell>
-                  <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                  <TableCell className="text-right tabular-nums">
                     {a.triggerValue === null
                       ? '—'
                       : `${formatTemp(a.triggerValue)} / ${formatTemp(a.threshold)}`}
                   </TableCell>
-                  <TableCell className="pr-4 text-muted-foreground">
+                  <TableCell className="text-muted-foreground">
                     <time dateTime={a.createdAt} title={formatDateTime(a.createdAt)}>
                       {formatRelative(a.createdAt)}
                     </time>
                   </TableCell>
+                  <RowActionsCell
+                    label={`cảnh báo ${ALERT_TYPE_LABEL[a.type]} lúc ${formatDateTime(a.createdAt)}`}
+                    onView={() => rows.view(a)}
+                  />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <DetailDialog
+          open={rows.viewing}
+          onClose={rows.close}
+          title={ALERT_TYPE_LABEL[current.type]}
+          description={coldRooms.label(current.coldRoomId)}
+          wide
+        >
+          <DetailList
+            fields={[
+              { label: 'Trạng thái', value: <AlertStatusBadge status={current.status} /> },
+              { label: 'Phòng lạnh', value: coldRooms.label(current.coldRoomId) },
+              {
+                label: 'Giá trị / ngưỡng',
+                value:
+                  current.triggerValue === null
+                    ? null
+                    : `${formatTemp(current.triggerValue)} / ${formatTemp(current.threshold)}`,
+              },
+              { label: 'Thời điểm', value: formatDateTime(current.createdAt) },
+              {
+                label: 'Thiết bị',
+                value: current.deviceId && <span className="font-mono">{shortId(current.deviceId)}</span>,
+              },
+              {
+                label: 'Lô hàng',
+                value: current.batchId && <span className="font-mono">{shortId(current.batchId)}</span>,
+              },
+              { label: 'Tiếp nhận lúc', value: current.acknowledgedAt && formatDateTime(current.acknowledgedAt) },
+              {
+                label: 'Xử lý lúc',
+                value:
+                  current.resolvedAt &&
+                  `${formatDateTime(current.resolvedAt)}${current.resolution === 'auto' ? ' (tự động)' : ''}`,
+              },
+              { label: 'Chi tiết', value: <JsonBlock value={current.details} />, full: true },
+            ]}
+          />
+        </DetailDialog>
+      )}
     </>
   )
 }

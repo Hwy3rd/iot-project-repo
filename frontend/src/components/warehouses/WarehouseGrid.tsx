@@ -1,10 +1,12 @@
 import type { ColdRoomStatus, Warehouse } from '@/api/types'
+import { RowActions } from '@/components/common/RowDetail'
 import { ToneBadge } from '@/components/common/StatusBadge'
 import { StatusUnavailable } from '@/components/common/StatusUnavailable'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatNumber } from '@/lib/format'
 import { PROBLEM_DEVICE_STATUSES, TEMP_STATE, TEMP_STATE_ORDER, tempState, type TempState } from '@/lib/room-status'
+import { rowOpenProps } from '@/lib/useRowDialogs'
 import type { RowSelection } from '@/lib/useRowSelection'
 import { cn } from '@/lib/utils'
 import { ArrowRight, Cpu, Siren, Thermometer } from 'lucide-react'
@@ -50,21 +52,28 @@ function WarehouseCard({
   statusPending,
   statusError,
   selection,
+  onView,
+  onEdit,
 }: {
   warehouse: Warehouse
   statuses: readonly ColdRoomStatus[]
   statusPending: boolean
   statusError: boolean
   selection?: RowSelection
+  onView: () => void
+  onEdit?: () => void
 }) {
   const summary = summarize(statuses)
   const worst = worstState(summary)
   const selectable = selection?.isSelectable(warehouse.id) ?? false
+  const open = rowOpenProps(onView)
 
   return (
     <article
+      onClick={open.onClick}
       className={cn(
-        'flex flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 shadow-xs',
+        'flex flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40',
+        open.className,
         worst ? ACCENT[worst] : 'border-l-border',
         selectable && selection?.isSelected(warehouse.id) && 'ring-2 ring-primary/40',
       )}
@@ -87,6 +96,7 @@ function WarehouseCard({
             <p className="line-clamp-1 text-sm text-muted-foreground">{warehouse.address}</p>
           )}
         </div>
+        <RowActions label={`kho ${warehouse.code}`} onView={onView} onEdit={onEdit} />
       </header>
 
       {statusError ? (
@@ -147,12 +157,17 @@ export function WarehouseGrid({
   statusPending,
   statusError,
   selection,
+  onView,
+  onEdit,
 }: {
   warehouses: Warehouse[]
   statuses: readonly ColdRoomStatus[]
   statusPending: boolean
   statusError: boolean
   selection?: RowSelection
+  onView: (warehouse: Warehouse) => void
+  /** Omit when the caller may not edit warehouses. */
+  onEdit?: (warehouse: Warehouse) => void
 }) {
   const byWarehouse = new Map<string, ColdRoomStatus[]>()
   for (const s of statuses) {
@@ -172,6 +187,8 @@ export function WarehouseGrid({
             statusPending={statusPending}
             statusError={statusError}
             selection={selection}
+            onView={() => onView(w)}
+            onEdit={onEdit && (() => onEdit(w))}
           />
         ))}
       </div>

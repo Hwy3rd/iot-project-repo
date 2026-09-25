@@ -1,7 +1,14 @@
 import { notificationsApi, type NotificationQuery } from '@/api/endpoints'
+import type { AppNotification } from '@/api/types'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { ToneBadge } from '@/components/common/StatusBadge'
 import {
@@ -15,6 +22,7 @@ import {
 import { emptyFilters, rangeError } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = ['unreadOnly', 'createdFrom', 'createdTo'] as const
@@ -65,6 +73,8 @@ function NotificationFilterDialog({
 export function NotificationsPage() {
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
+  const rows = useRowDialogs<AppNotification>()
+  const current = rows.item
 
   const params: NotificationQuery = {
     page: list.page,
@@ -105,35 +115,63 @@ export function NotificationsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-4">Nội dung</TableHead>
-                <TableHead className="hidden sm:table-cell">Trạng thái</TableHead>
-                <TableHead className="pr-4">Thời điểm</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <TableHead>Thời điểm</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((n) => (
-                <TableRow key={n.id}>
-                  <TableCell className="max-w-xl pl-4 whitespace-normal">
+                <TableRow key={n.id} {...rowOpenProps(() => rows.view(n))}>
+                  <TableCell className="max-w-xl min-w-64 pl-4 whitespace-normal">
                     <span className={n.readAt ? 'font-normal' : 'font-semibold'}>{n.title}</span>
                     <span className="mt-0.5 line-clamp-2 text-muted-foreground">{n.body}</span>
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">
+                  <TableCell>
                     {n.readAt ? (
                       <ToneBadge>Đã đọc</ToneBadge>
                     ) : (
                       <ToneBadge tone="info">Chưa đọc</ToneBadge>
                     )}
                   </TableCell>
-                  <TableCell className="pr-4 align-top text-muted-foreground">
+                  <TableCell className="align-top text-muted-foreground">
                     <time dateTime={n.createdAt} title={formatDateTime(n.createdAt)}>
                       {formatRelative(n.createdAt)}
                     </time>
                   </TableCell>
+                  <RowActionsCell label={`thông báo ${n.title}`} onView={() => rows.view(n)} />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <DetailDialog
+          open={rows.viewing}
+          onClose={rows.close}
+          title={current.title}
+          description={formatDateTime(current.createdAt)}
+        >
+          <DetailList
+            fields={[
+              {
+                label: 'Nội dung',
+                value: <span className="whitespace-pre-line">{current.body}</span>,
+                full: true,
+              },
+              {
+                label: 'Trạng thái',
+                value: current.readAt ? <ToneBadge>Đã đọc</ToneBadge> : <ToneBadge tone="info">Chưa đọc</ToneBadge>,
+              },
+              { label: 'Tạo lúc', value: formatDateTime(current.createdAt) },
+              { label: 'Gửi lúc', value: current.sentAt && formatDateTime(current.sentAt) },
+              { label: 'Đọc lúc', value: current.readAt && formatDateTime(current.readAt) },
+            ]}
+          />
+        </DetailDialog>
+      )}
     </>
   )
 }

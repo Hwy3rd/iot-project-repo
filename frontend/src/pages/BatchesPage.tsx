@@ -1,12 +1,18 @@
 import { batchesApi, type BatchQuery } from '@/api/endpoints'
-import type { BatchStatus } from '@/api/types'
+import type { Batch, BatchStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
-import { CreateBatchDialog } from '@/components/batches/CreateBatchDialog'
+import { CreateBatchDialog, EditBatchDialog } from '@/components/batches/BatchFormDialog'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, LocationFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { BatchStatusBadge } from '@/components/common/StatusBadge'
@@ -19,10 +25,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { emptyFilters, labelOptions, rangeError } from '@/lib/filters'
-import { formatDate, formatNumber } from '@/lib/format'
+import { formatDate, formatDateTime, formatNumber } from '@/lib/format'
 import { BATCH_STATUS_LABEL, PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { useColdRoomLookup, useProductTypeLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
@@ -112,6 +119,12 @@ export function BatchesPage() {
   const { user } = useAuth()
   const canCreate = hasRole(user?.role, ['admin', 'manager', 'staff'])
   const canDelete = hasRole(user?.role, ['admin', 'manager', 'staff'])
+  // Staff also need an active shift there; the backend checks that per batch.
+  const canEdit = canCreate
+  // A batch taken out of storage is history, not something to correct.
+  const editable = (b: Batch) => canEdit && b.status !== 'removed'
+  const rows = useRowDialogs<Batch>()
+  const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const coldRooms = useColdRoomLookup()
@@ -142,6 +155,8 @@ export function BatchesPage() {
     // Paging or resizing pages keeps the selection; a new search/filter starts over.
     JSON.stringify({ ...params, page: undefined, limit: undefined }),
   )
+
+  const currentProduct = productTypes.get(current?.productTypeId)
 
   return (
     <>
@@ -196,45 +211,48 @@ export function BatchesPage() {
                   <SelectAllHead selection={selection} label="Chọn tất cả lô hàng trên trang" />
                 )}
                 <TableHead className="pl-4">Mã lô</TableHead>
-                <TableHead className="hidden md:table-cell">Loại sản phẩm</TableHead>
-                <TableHead className="hidden lg:table-cell">Phòng lạnh</TableHead>
-                <TableHead className="hidden text-right sm:table-cell">Số lượng</TableHead>
+                <TableHead>Loại sản phẩm</TableHead>
+                <TableHead>Phòng lạnh</TableHead>
+                <TableHead className="text-right">Số lượng</TableHead>
                 <TableHead>Hạn sử dụng</TableHead>
-                <TableHead className="pr-4">Trạng thái</TableHead>
+                <TableHead>Trạng thái</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((b) => {
                 const product = productTypes.get(b.productTypeId)
                 return (
-                  <TableRow key={b.id}>
+                  <TableRow key={b.id} {...rowOpenProps(() => rows.view(b))}>
                     {canDelete && (
                       <SelectRowCell selection={selection} id={b.id} label={`Chọn lô hàng ${b.batchCode}`} />
                     )}
-                    <TableCell className="pl-4 whitespace-normal">
+                    <TableCell className="pl-4 min-w-48 whitespace-normal">
                       <span className="font-mono text-sm" translate="no">
                         {b.batchCode}
                       </span>
-                      <span className="mt-0.5 block text-muted-foreground md:hidden">
-                        {productTypes.label(b.productTypeId)}
-                      </span>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell>
                       {productTypes.label(b.productTypeId)}
                     </TableCell>
-                    <TableCell className="hidden lg:table-cell">
+                    <TableCell>
                       {coldRooms.label(b.coldRoomId)}
                     </TableCell>
-                    <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                    <TableCell className="text-right tabular-nums">
                       {formatNumber(b.quantity)}
                       {product && ` ${PRODUCT_UNIT_LABEL[product.unit]}`}
                     </TableCell>
                     <TableCell className="tabular-nums">
                       <time dateTime={b.expiryDate}>{formatDate(b.expiryDate)}</time>
                     </TableCell>
-                    <TableCell className="pr-4">
+                    <TableCell>
                       <BatchStatusBadge status={b.status} />
                     </TableCell>
+                    <RowActionsCell
+                      label={`lô hàng ${b.batchCode}`}
+                      onView={() => rows.view(b)}
+                      onEdit={editable(b) ? () => rows.edit(b) : undefined}
+                    />
                   </TableRow>
                 )
               })}
@@ -242,6 +260,55 @@ export function BatchesPage() {
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <>
+          <DetailDialog
+            open={rows.viewing}
+            onClose={rows.close}
+            title={<span className="font-mono" translate="no">{current.batchCode}</span>}
+            description={productTypes.label(current.productTypeId)}
+            onEdit={editable(current) ? () => rows.edit(current) : undefined}
+            wide
+          >
+            <DetailList
+              fields={[
+                {
+                  label: 'Mã lô',
+                  value: <span className="font-mono" translate="no">{current.batchCode}</span>,
+                },
+                { label: 'Trạng thái', value: <BatchStatusBadge status={current.status} /> },
+                { label: 'Loại sản phẩm', value: productTypes.label(current.productTypeId) },
+                { label: 'Phòng lạnh', value: coldRooms.label(current.coldRoomId) },
+                {
+                  label: 'Số lượng',
+                  value: `${formatNumber(current.quantity)}${
+                    currentProduct ? ` ${PRODUCT_UNIT_LABEL[currentProduct.unit]}` : ''
+                  }`,
+                },
+                { label: 'Nhà cung cấp', value: current.supplier },
+                { label: 'Ngày nhập', value: formatDate(current.receivedAt) },
+                { label: 'Hạn sử dụng', value: formatDate(current.expiryDate) },
+                { label: 'Ngày xuất kho', value: current.removedAt && formatDateTime(current.removedAt) },
+                { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
+                {
+                  label: 'Ghi chú',
+                  value: current.notes && <span className="whitespace-pre-line">{current.notes}</span>,
+                  full: true,
+                },
+              ]}
+            />
+          </DetailDialog>
+          {editable(current) && (
+            <EditBatchDialog
+              key={`${current.id}:${current.updatedAt}`}
+              batch={current}
+              open={rows.editing}
+              onClose={rows.close}
+            />
+          )}
+        </>
+      )}
     </>
   )
 }

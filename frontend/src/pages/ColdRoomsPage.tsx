@@ -1,11 +1,18 @@
 import { coldRoomsApi, type ColdRoomQuery } from '@/api/endpoints'
+import type { ColdRoom } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
-import { CreateColdRoomDialog } from '@/components/cold-rooms/CreateColdRoomDialog'
+import { CreateColdRoomDialog, EditColdRoomDialog } from '@/components/cold-rooms/ColdRoomFormDialog'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { LastUpdated } from '@/components/common/LastUpdated'
 import { ViewToggle } from '@/components/common/ViewToggle'
@@ -20,10 +27,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { emptyFilters, rangeError } from '@/lib/filters'
-import { formatDate, formatNumber, formatTemp } from '@/lib/format'
+import { formatDate, formatDateTime, formatNumber, formatTemp } from '@/lib/format'
 import { useWarehouseLookup } from '@/lib/lookups'
 import { STATUS_REFRESH_MS } from '@/lib/room-status'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { useViewMode } from '@/lib/useViewMode'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -78,6 +86,10 @@ export function ColdRoomsPage() {
   const { user } = useAuth()
   const canCreate = hasRole(user?.role, ['admin', 'manager'])
   const canDelete = hasRole(user?.role, ['admin'])
+  // Manager scope is checked per room by the backend.
+  const canEdit = canCreate
+  const rows = useRowDialogs<ColdRoom>()
+  const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const [view, setView] = useViewMode('cold-rooms')
   const f = list.filters
@@ -174,6 +186,8 @@ export function ColdRoomsPage() {
               statusError={status.isError}
               warehouseLabel={warehouses.label}
               selection={canDelete ? selection : undefined}
+              onView={rows.view}
+              onEdit={canEdit ? rows.edit : undefined}
             />
           ) : (
             <Table>
@@ -183,36 +197,39 @@ export function ColdRoomsPage() {
                     <SelectAllHead selection={selection} label="Chọn tất cả phòng lạnh trên trang" />
                   )}
                   <TableHead className="pl-4">Tên phòng</TableHead>
-                  <TableHead className="hidden md:table-cell">Kho</TableHead>
+                  <TableHead>Kho</TableHead>
                   <TableHead className="text-right">Ngưỡng nhiệt độ</TableHead>
-                  <TableHead className="hidden text-right lg:table-cell">Sức chứa (pallet)</TableHead>
-                  <TableHead className="hidden pr-4 sm:table-cell">Ngày tạo</TableHead>
+                  <TableHead className="text-right">Sức chứa (pallet)</TableHead>
+                  <TableHead>Ngày tạo</TableHead>
+                  <RowActionsHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((r) => (
-                  <TableRow key={r.id}>
+                  <TableRow key={r.id} {...rowOpenProps(() => rows.view(r))}>
                     {canDelete && (
                       <SelectRowCell selection={selection} id={r.id} label={`Chọn phòng lạnh ${r.name}`} />
                     )}
-                    <TableCell className="pl-4 whitespace-normal">
+                    <TableCell className="pl-4 min-w-48 whitespace-normal">
                       <span className="font-medium">{r.name}</span>
-                      <span className="mt-0.5 block text-muted-foreground md:hidden">
-                        {warehouses.label(r.warehouseId)}
-                      </span>
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">
+                    <TableCell>
                       {warehouses.label(r.warehouseId)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatTemp(r.tempMin)} – {formatTemp(r.tempMax)}
                     </TableCell>
-                    <TableCell className="hidden text-right tabular-nums lg:table-cell">
+                    <TableCell className="text-right tabular-nums">
                       {formatNumber(r.capacityPallets)}
                     </TableCell>
-                    <TableCell className="hidden pr-4 text-muted-foreground sm:table-cell">
+                    <TableCell className="text-muted-foreground">
                       <time dateTime={r.createdAt}>{formatDate(r.createdAt)}</time>
                     </TableCell>
+                    <RowActionsCell
+                      label={`phòng lạnh ${r.name}`}
+                      onView={() => rows.view(r)}
+                      onEdit={canEdit ? () => rows.edit(r) : undefined}
+                    />
                   </TableRow>
                 ))}
               </TableBody>
@@ -220,6 +237,50 @@ export function ColdRoomsPage() {
           )
         }
       </ListCard>
+
+      {current && (
+        <>
+          <DetailDialog
+            open={rows.viewing}
+            onClose={rows.close}
+            title={current.name}
+            description={warehouses.label(current.warehouseId)}
+            onEdit={canEdit ? () => rows.edit(current) : undefined}
+          >
+            <DetailList
+              fields={[
+                { label: 'Tên phòng', value: current.name },
+                { label: 'Kho', value: warehouses.label(current.warehouseId) },
+                {
+                  label: 'Ngưỡng nhiệt độ',
+                  value: `${formatTemp(current.tempMin)} – ${formatTemp(current.tempMax)}`,
+                },
+                { label: 'Độ trễ', value: formatTemp(current.hysteresis) },
+                { label: 'Cửa mở tối đa', value: `${formatNumber(current.doorOpenMaxSeconds)} giây` },
+                { label: 'Sức chứa (pallet)', value: formatNumber(current.capacityPallets) },
+                {
+                  label: 'Tải trọng',
+                  value: current.capacityWeightKg === null ? null : `${formatNumber(current.capacityWeightKg)} kg`,
+                },
+                {
+                  label: 'Thể tích',
+                  value: current.capacityVolumeM3 === null ? null : `${formatNumber(current.capacityVolumeM3)} m³`,
+                },
+                { label: 'Ngày tạo', value: formatDateTime(current.createdAt) },
+                { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
+              ]}
+            />
+          </DetailDialog>
+          {canEdit && (
+            <EditColdRoomDialog
+              key={`${current.id}:${current.updatedAt}`}
+              room={current}
+              open={rows.editing}
+              onClose={rows.close}
+            />
+          )}
+        </>
+      )}
     </>
   )
 }

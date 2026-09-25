@@ -1,4 +1,5 @@
 import { alertsApi, coldRoomsApi, devicesApi, warehousesApi, type WarehouseQuery } from '@/api/endpoints'
+import type { Warehouse as WarehouseItem } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
@@ -9,6 +10,12 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { LastUpdated } from '@/components/common/LastUpdated'
 import { ViewToggle } from '@/components/common/ViewToggle'
 import { WarehouseGrid } from '@/components/warehouses/WarehouseGrid'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { StatGrid, StatTile } from '@/components/common/StatTile'
 import {
@@ -19,11 +26,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { CreateWarehouseDialog } from '@/components/warehouses/CreateWarehouseDialog'
+import { CreateWarehouseDialog, EditWarehouseDialog } from '@/components/warehouses/WarehouseFormDialog'
 import { rangeError } from '@/lib/filters'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatDateTime } from '@/lib/format'
 import { STATUS_REFRESH_MS } from '@/lib/room-status'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { useViewMode } from '@/lib/useViewMode'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -121,6 +129,9 @@ export function WarehousesPage() {
   const { user } = useAuth()
   const isAdmin = hasRole(user?.role, ['admin'])
   const canDelete = isAdmin
+  const canEdit = isAdmin
+  const rows = useRowDialogs<WarehouseItem>()
+  const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const [view, setView] = useViewMode('warehouses')
   const { createdFrom, createdTo, hasAddress } = list.filters
@@ -222,6 +233,8 @@ export function WarehousesPage() {
               statusPending={status.isPending}
               statusError={status.isError}
               selection={canDelete ? selection : undefined}
+              onView={rows.view}
+              onEdit={canEdit ? rows.edit : undefined}
             />
           ) : (
             <Table>
@@ -232,34 +245,34 @@ export function WarehousesPage() {
                   )}
                   <TableHead className="pl-4">Mã</TableHead>
                   <TableHead>Tên kho</TableHead>
-                  <TableHead className="hidden md:table-cell">Địa chỉ</TableHead>
-                  <TableHead className="hidden pr-4 sm:table-cell">Ngày tạo</TableHead>
+                  <TableHead>Địa chỉ</TableHead>
+                  <TableHead>Ngày tạo</TableHead>
+                  <RowActionsHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((w) => (
-                  <TableRow key={w.id}>
+                  <TableRow key={w.id} {...rowOpenProps(() => rows.view(w))}>
                     {canDelete && (
                       <SelectRowCell selection={selection} id={w.id} label={`Chọn kho ${w.code}`} />
                     )}
-                    <TableCell className="pl-4 align-top font-mono text-sm whitespace-normal break-all sm:whitespace-nowrap sm:break-normal" translate="no">
+                    <TableCell className="pl-4 align-top font-mono text-sm" translate="no">
                       {w.code}
                     </TableCell>
                     <TableCell className="min-w-40 whitespace-normal break-words">
                       <span className="font-medium">{w.name}</span>
-                      {/* Address column is hidden on small screens; show it inline instead. */}
-                      {w.address && (
-                        <span className="mt-0.5 line-clamp-2 text-muted-foreground md:hidden">
-                          {w.address}
-                        </span>
-                      )}
                     </TableCell>
-                    <TableCell className="hidden max-w-md whitespace-normal text-muted-foreground md:table-cell">
+                    <TableCell className="max-w-md min-w-48 whitespace-normal text-muted-foreground">
                       <span className="line-clamp-2">{w.address || '—'}</span>
                     </TableCell>
-                    <TableCell className="hidden pr-4 text-muted-foreground sm:table-cell">
+                    <TableCell className="text-muted-foreground">
                       <time dateTime={w.createdAt}>{formatDate(w.createdAt)}</time>
                     </TableCell>
+                    <RowActionsCell
+                      label={`kho ${w.code}`}
+                      onView={() => rows.view(w)}
+                      onEdit={canEdit ? () => rows.edit(w) : undefined}
+                    />
                   </TableRow>
                 ))}
               </TableBody>
@@ -267,6 +280,36 @@ export function WarehousesPage() {
           )
         }
       </ListCard>
+
+      {current && (
+        <>
+          <DetailDialog
+            open={rows.viewing}
+            onClose={rows.close}
+            title={current.name}
+            description={current.code}
+            onEdit={canEdit ? () => rows.edit(current) : undefined}
+          >
+            <DetailList
+              fields={[
+                { label: 'Mã kho', value: <span className="font-mono">{current.code}</span> },
+                { label: 'Tên kho', value: current.name },
+                { label: 'Địa chỉ', value: current.address, full: true },
+                { label: 'Ngày tạo', value: formatDateTime(current.createdAt) },
+                { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
+              ]}
+            />
+          </DetailDialog>
+          {canEdit && (
+            <EditWarehouseDialog
+              key={`${current.id}:${current.updatedAt}`}
+              warehouse={current}
+              open={rows.editing}
+              onClose={rows.close}
+            />
+          )}
+        </>
+      )}
     </>
   )
 }

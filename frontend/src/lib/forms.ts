@@ -1,6 +1,6 @@
 import { ApiError } from '@/api/client'
 
-// Helpers for the create dialogs. Form values stay strings (what inputs
+// Helpers for the create/edit dialogs. Form values stay strings (what inputs
 // hold); they are validated as strings and converted when building the body.
 
 /** Blank → undefined, so optional fields are left out of the request body. */
@@ -8,6 +8,16 @@ export const optionalText = (value: string) => value.trim() || undefined
 
 /** Blank → undefined, else the number (call only after numberRule passed). */
 export const optionalNumber = (value: string) => (value.trim() ? Number(value) : undefined)
+
+/** Edit forms: blank → null, so PATCH clears the field instead of leaving it as is. */
+export const nullableText = (value: string) => value.trim() || null
+
+/** Edit forms: blank → null (call only after numberRule passed). */
+export const nullableNumber = (value: string) => (value.trim() ? Number(value) : null)
+
+/** Form value for an optional field loaded from the API. */
+export const toInput = (value: string | number | null | undefined) =>
+  value === null || value === undefined ? '' : String(value)
 
 /** react-hook-form `validate` for a numeric text input. */
 export function numberRule({
@@ -37,7 +47,7 @@ export function numberRule({
 export const requiredText = (message: string) => (value: string) => !!value.trim() || message
 
 /**
- * Message for a failed create. `byStatus` overrides per HTTP status (e.g. 409
+ * Message for a failed create or update. `byStatus` overrides per HTTP status (e.g. 409
  * for a duplicate); 400 falls back to the validator's messages.
  */
 export function mutationErrorText(

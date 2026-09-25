@@ -1,9 +1,9 @@
-import { usersApi, type CreateUserBody } from '@/api/endpoints'
-import type { UserRole } from '@/api/types'
+import { usersApi } from '@/api/endpoints'
+import type { User, UserRole } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
 import { SelectField, TextField } from '@/components/common/form-fields'
 import { labelOptions } from '@/lib/filters'
-import { mutationErrorText, optionalText } from '@/lib/forms'
+import { mutationErrorText, nullableText, optionalText, toInput } from '@/lib/forms'
 import { ROLE_LABEL } from '@/lib/labels'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -31,10 +31,49 @@ const EMPTY: FormValues = {
 // Loose on purpose; the backend's @IsEmail() has the final say.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+const toValues = (u: User): FormValues => ({
+  username: u.username,
+  password: '',
+  fullName: toInput(u.fullName),
+  email: toInput(u.email),
+  phone: toInput(u.phone),
+  role: u.role,
+})
+
 /** Admin only. Per-warehouse roles are assigned separately, from the warehouse. */
 export function CreateUserDialog() {
   const [open, setOpen] = useState(false)
+  return <UserFormDialog open={open} onOpenChange={setOpen} />
+}
+
+/**
+ * Admin only (the Users page is). Passwords aren't changed here.
+ * Mount with key={`${id}:${updatedAt}`} so the form reloads fresh values.
+ */
+export function EditUserDialog({
+  user,
+  open,
+  onClose,
+}: {
+  user: User
+  open: boolean
+  onClose: () => void
+}) {
+  return <UserFormDialog user={user} open={open} onOpenChange={(o) => !o && onClose()} />
+}
+
+function UserFormDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  /** Set = edit this user; unset = create. */
+  user?: User
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const qc = useQueryClient()
+  const initial = user ? toValues(user) : EMPTY
   const {
     register,
     control,
@@ -42,15 +81,31 @@ export function CreateUserDialog() {
     reset,
     setError,
     formState: { errors },
-  } = useForm<FormValues>({ defaultValues: EMPTY })
+  } = useForm<FormValues>({ defaultValues: initial })
 
-  const create = useMutation({
-    mutationFn: (body: CreateUserBody) => usersApi.create(body),
+  const save = useMutation({
+    mutationFn: (v: FormValues) =>
+      user
+        ? usersApi.update(user.id, {
+            username: v.username.trim(),
+            role: v.role as UserRole,
+            fullName: nullableText(v.fullName),
+            email: nullableText(v.email),
+            phone: nullableText(v.phone),
+          })
+        : usersApi.create({
+            username: v.username.trim(),
+            password: v.password,
+            role: v.role as UserRole,
+            fullName: optionalText(v.fullName),
+            email: optionalText(v.email),
+            phone: optionalText(v.phone),
+          }),
     onSuccess: (u) => {
       qc.invalidateQueries({ queryKey: ['users'] })
-      toast.success('Đã tạo tài khoản', { description: u.username })
-      setOpen(false)
-      reset(EMPTY)
+      toast.success(user ? 'Đã lưu thay đổi' : 'Đã tạo tài khoản', { description: u.username })
+      onOpenChange(false)
+      reset(user ? toValues(u) : EMPTY)
     },
     onError: (err) =>
       setError('root.server', {
@@ -60,28 +115,17 @@ export function CreateUserDialog() {
       }),
   })
 
-  const onSubmit = handleSubmit((v) =>
-    create.mutate({
-      username: v.username.trim(),
-      password: v.password,
-      role: v.role as UserRole,
-      fullName: optionalText(v.fullName),
-      email: optionalText(v.email),
-      phone: optionalText(v.phone),
-    }),
-  )
-
   return (
     <FormDialog
       open={open}
-      onOpenChange={setOpen}
-      onClosed={() => reset(EMPTY)}
-      triggerLabel="Tạo tài khoản"
-      title="Tạo tài khoản mới"
+      onOpenChange={onOpenChange}
+      onClosed={() => reset(initial)}
+      triggerLabel={user ? undefined : 'Tạo tài khoản'}
+      title={user ? `Sửa tài khoản ${user.username}` : 'Tạo tài khoản mới'}
       description="Vai trò ở đây là vai trò hệ thống; quyền trong từng kho được gán riêng khi phân công vào kho."
-      onSubmit={onSubmit}
-      pending={create.isPending}
-      submitLabel="Tạo tài khoản"
+      onSubmit={handleSubmit((v) => save.mutate(v))}
+      pending={save.isPending}
+      submitLabel={user ? 'Lưu thay đổi' : 'Tạo tài khoản'}
       serverError={errors.root?.server?.message}
       wide
     >
@@ -96,18 +140,20 @@ export function CreateUserDialog() {
             validate: (v) => v.trim().length >= 3 || 'Tên đăng nhập tối thiểu 3 ký tự.',
           })}
         />
-        <TextField
-          id="user-password"
-          label="Mật khẩu"
-          type="password"
-          autoComplete="new-password"
-          description="Tối thiểu 6 ký tự. Gửi cho người dùng qua kênh riêng."
-          error={errors.password}
-          {...register('password', {
-            minLength: { value: 6, message: 'Mật khẩu tối thiểu 6 ký tự.' },
-            required: 'Nhập mật khẩu.',
-          })}
-        />
+        {!user && (
+          <TextField
+            id="user-password"
+            label="Mật khẩu"
+            type="password"
+            autoComplete="new-password"
+            description="Tối thiểu 6 ký tự. Gửi cho người dùng qua kênh riêng."
+            error={errors.password}
+            {...register('password', {
+              minLength: { value: 6, message: 'Mật khẩu tối thiểu 6 ký tự.' },
+              required: 'Nhập mật khẩu.',
+            })}
+          />
+        )}
         <TextField
           id="user-full-name"
           label="Họ và tên"

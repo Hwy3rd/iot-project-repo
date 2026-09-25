@@ -1,12 +1,21 @@
 import { productTypesApi, type ProductTypeQuery } from '@/api/endpoints'
-import type { ProductUnit } from '@/api/types'
+import type { ProductType, ProductUnit } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
-import { CreateProductTypeDialog } from '@/components/product-types/CreateProductTypeDialog'
+import {
+  CreateProductTypeDialog,
+  EditProductTypeDialog,
+} from '@/components/product-types/ProductTypeFormDialog'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import {
@@ -18,9 +27,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { emptyFilters, labelOptions } from '@/lib/filters'
-import { formatTemp } from '@/lib/format'
+import { formatDateTime, formatTemp } from '@/lib/format'
 import { PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
@@ -38,6 +48,9 @@ export function ProductTypesPage() {
   const { user } = useAuth()
   const canCreate = hasRole(user?.role, ['admin'])
   const canDelete = hasRole(user?.role, ['admin'])
+  const canEdit = canCreate
+  const rows = useRowDialogs<ProductType>()
+  const current = rows.item
   const list = useListParams(FILTER_KEYS)
 
   const params: ProductTypeQuery = {
@@ -119,38 +132,73 @@ export function ProductTypesPage() {
                   <SelectAllHead selection={selection} label="Chọn tất cả loại sản phẩm trên trang" />
                 )}
                 <TableHead className="pl-4">Tên</TableHead>
-                <TableHead className="hidden sm:table-cell">Nhóm hàng</TableHead>
+                <TableHead>Nhóm hàng</TableHead>
                 <TableHead>Đơn vị</TableHead>
-                <TableHead className="pr-4 text-right">Nhiệt độ bảo quản</TableHead>
+                <TableHead className="text-right">Nhiệt độ bảo quản</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((p) => (
-                <TableRow key={p.id}>
+                <TableRow key={p.id} {...rowOpenProps(() => rows.view(p))}>
                   {canDelete && (
                     <SelectRowCell selection={selection} id={p.id} label={`Chọn loại sản phẩm ${p.name}`} />
                   )}
-                  <TableCell className="pl-4 whitespace-normal">
+                  <TableCell className="pl-4 min-w-48 whitespace-normal">
                     <span className="font-medium">{p.name}</span>
-                    {p.category && (
-                      <span className="mt-0.5 block text-muted-foreground sm:hidden">
-                        {p.category}
-                      </span>
-                    )}
                   </TableCell>
-                  <TableCell className="hidden text-muted-foreground sm:table-cell">
+                  <TableCell className="text-muted-foreground">
                     {p.category || '—'}
                   </TableCell>
                   <TableCell>{PRODUCT_UNIT_LABEL[p.unit]}</TableCell>
-                  <TableCell className="pr-4 text-right tabular-nums">
+                  <TableCell className="text-right tabular-nums">
                     {tempRange(p.storageTempMin, p.storageTempMax)}
                   </TableCell>
+                  <RowActionsCell
+                    label={`loại sản phẩm ${p.name}`}
+                    onView={() => rows.view(p)}
+                    onEdit={canEdit ? () => rows.edit(p) : undefined}
+                  />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <>
+          <DetailDialog
+            open={rows.viewing}
+            onClose={rows.close}
+            title={current.name}
+            description={current.category ?? undefined}
+            onEdit={canEdit ? () => rows.edit(current) : undefined}
+          >
+            <DetailList
+              fields={[
+                { label: 'Tên', value: current.name },
+                { label: 'Nhóm hàng', value: current.category },
+                { label: 'Đơn vị tính', value: PRODUCT_UNIT_LABEL[current.unit] },
+                {
+                  label: 'Nhiệt độ bảo quản',
+                  value: tempRange(current.storageTempMin, current.storageTempMax),
+                },
+                { label: 'Ngày tạo', value: formatDateTime(current.createdAt) },
+                { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
+              ]}
+            />
+          </DetailDialog>
+          {canEdit && (
+            <EditProductTypeDialog
+              key={`${current.id}:${current.updatedAt}`}
+              productType={current}
+              open={rows.editing}
+              onClose={rows.close}
+            />
+          )}
+        </>
+      )}
     </>
   )
 }

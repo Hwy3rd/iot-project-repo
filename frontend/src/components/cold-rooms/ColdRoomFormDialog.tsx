@@ -1,11 +1,14 @@
-import { coldRoomsApi, type CreateColdRoomBody } from '@/api/endpoints'
+import { coldRoomsApi } from '@/api/endpoints'
+import type { ColdRoom } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
 import { SelectField, TextField } from '@/components/common/form-fields'
 import {
   mutationErrorText,
+  nullableNumber,
   numberRule,
   optionalNumber,
   requiredText,
+  toInput,
 } from '@/lib/forms'
 import { useWarehouseLookup } from '@/lib/lookups'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -37,11 +40,53 @@ const EMPTY: FormValues = {
   capacityVolumeM3: '',
 }
 
+const toValues = (r: ColdRoom): FormValues => ({
+  warehouseId: r.warehouseId,
+  name: r.name,
+  tempMin: toInput(r.tempMin),
+  tempMax: toInput(r.tempMax),
+  hysteresis: toInput(r.hysteresis),
+  doorOpenMaxSeconds: toInput(r.doorOpenMaxSeconds),
+  capacityPallets: toInput(r.capacityPallets),
+  capacityWeightKg: toInput(r.capacityWeightKg),
+  capacityVolumeM3: toInput(r.capacityVolumeM3),
+})
+
 /** Admin, or Manager of the chosen warehouse (the backend checks the latter). */
 export function CreateColdRoomDialog() {
   const [open, setOpen] = useState(false)
+  return <ColdRoomFormDialog open={open} onOpenChange={setOpen} />
+}
+
+/**
+ * Admin, or Manager of the room's warehouse. The warehouse itself can't be
+ * changed. Mount with key={`${id}:${updatedAt}`} so the form reloads fresh values.
+ */
+export function EditColdRoomDialog({
+  room,
+  open,
+  onClose,
+}: {
+  room: ColdRoom
+  open: boolean
+  onClose: () => void
+}) {
+  return <ColdRoomFormDialog room={room} open={open} onOpenChange={(o) => !o && onClose()} />
+}
+
+function ColdRoomFormDialog({
+  room,
+  open,
+  onOpenChange,
+}: {
+  /** Set = edit this room; unset = create. */
+  room?: ColdRoom
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const qc = useQueryClient()
   const warehouses = useWarehouseLookup()
+  const initial = room ? toValues(room) : EMPTY
   const {
     register,
     control,
@@ -49,50 +94,61 @@ export function CreateColdRoomDialog() {
     reset,
     setError,
     formState: { errors },
-  } = useForm<FormValues>({ defaultValues: EMPTY })
+  } = useForm<FormValues>({ defaultValues: initial })
 
-  const create = useMutation({
-    mutationFn: (body: CreateColdRoomBody) => coldRoomsApi.create(body),
-    onSuccess: (room) => {
+  const save = useMutation({
+    mutationFn: (v: FormValues) =>
+      room
+        ? coldRoomsApi.update(room.id, {
+            name: v.name.trim(),
+            tempMin: Number(v.tempMin),
+            tempMax: Number(v.tempMax),
+            // Not nullable columns: blank keeps the current value.
+            hysteresis: optionalNumber(v.hysteresis),
+            doorOpenMaxSeconds: optionalNumber(v.doorOpenMaxSeconds),
+            capacityPallets: nullableNumber(v.capacityPallets),
+            capacityWeightKg: nullableNumber(v.capacityWeightKg),
+            capacityVolumeM3: nullableNumber(v.capacityVolumeM3),
+          })
+        : coldRoomsApi.create({
+            warehouseId: v.warehouseId,
+            name: v.name.trim(),
+            tempMin: Number(v.tempMin),
+            tempMax: Number(v.tempMax),
+            hysteresis: optionalNumber(v.hysteresis),
+            doorOpenMaxSeconds: optionalNumber(v.doorOpenMaxSeconds),
+            capacityPallets: optionalNumber(v.capacityPallets),
+            capacityWeightKg: optionalNumber(v.capacityWeightKg),
+            capacityVolumeM3: optionalNumber(v.capacityVolumeM3),
+          }),
+    onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['cold-rooms'] })
-      toast.success('Đã tạo phòng lạnh', { description: room.name })
-      setOpen(false)
-      reset(EMPTY)
+      toast.success(room ? 'Đã lưu thay đổi' : 'Đã tạo phòng lạnh', { description: r.name })
+      onOpenChange(false)
+      reset(room ? toValues(r) : EMPTY)
     },
     onError: (err) =>
       setError('root.server', {
         message: mutationErrorText(err, {
           409: 'Kho này đã có phòng lạnh trùng tên. Chọn tên khác.',
-          403: 'Bạn chỉ tạo được phòng lạnh trong kho mình quản lý.',
+          403: room
+            ? 'Bạn chỉ sửa được phòng lạnh trong kho mình quản lý.'
+            : 'Bạn chỉ tạo được phòng lạnh trong kho mình quản lý.',
         }),
       }),
   })
 
-  const onSubmit = handleSubmit((v) =>
-    create.mutate({
-      warehouseId: v.warehouseId,
-      name: v.name.trim(),
-      tempMin: Number(v.tempMin),
-      tempMax: Number(v.tempMax),
-      hysteresis: optionalNumber(v.hysteresis),
-      doorOpenMaxSeconds: optionalNumber(v.doorOpenMaxSeconds),
-      capacityPallets: optionalNumber(v.capacityPallets),
-      capacityWeightKg: optionalNumber(v.capacityWeightKg),
-      capacityVolumeM3: optionalNumber(v.capacityVolumeM3),
-    }),
-  )
-
   return (
     <FormDialog
       open={open}
-      onOpenChange={setOpen}
-      onClosed={() => reset(EMPTY)}
-      triggerLabel="Tạo phòng lạnh"
-      title="Tạo phòng lạnh mới"
+      onOpenChange={onOpenChange}
+      onClosed={() => reset(initial)}
+      triggerLabel={room ? undefined : 'Tạo phòng lạnh'}
+      title={room ? `Sửa phòng lạnh ${room.name}` : 'Tạo phòng lạnh mới'}
       description="Ngưỡng nhiệt độ dùng để phát cảnh báo; tên phòng là duy nhất trong mỗi kho."
-      onSubmit={onSubmit}
-      pending={create.isPending}
-      submitLabel="Tạo phòng lạnh"
+      onSubmit={handleSubmit((v) => save.mutate(v))}
+      pending={save.isPending}
+      submitLabel={room ? 'Lưu thay đổi' : 'Tạo phòng lạnh'}
       serverError={errors.root?.server?.message}
       wide
     >
@@ -100,11 +156,13 @@ export function CreateColdRoomDialog() {
         <SelectField
           control={control}
           name="warehouseId"
-          rules={{ required: 'Chọn kho.' }}
+          rules={room ? undefined : { required: 'Chọn kho.' }}
           id="cr-warehouse"
           label="Kho"
           options={warehouses.options}
           placeholder="Chọn kho…"
+          disabled={!!room}
+          description={room ? 'Không đổi được kho của phòng lạnh.' : undefined}
         />
         <TextField
           id="cr-name"
@@ -145,7 +203,7 @@ export function CreateColdRoomDialog() {
           id="cr-hysteresis"
           label="Độ trễ (°C)"
           inputMode="decimal"
-          description="Không bắt buộc."
+          description={room ? 'Để trống = giữ nguyên.' : 'Không bắt buộc.'}
           error={errors.hysteresis}
           {...register('hysteresis', { validate: numberRule({ label: 'độ trễ' }) })}
         />
@@ -155,7 +213,7 @@ export function CreateColdRoomDialog() {
           id="cr-door"
           label="Cửa mở tối đa (giây)"
           inputMode="numeric"
-          description="Để trống = 15 giây."
+          description={room ? 'Để trống = giữ nguyên.' : 'Để trống = 15 giây.'}
           error={errors.doorOpenMaxSeconds}
           {...register('doorOpenMaxSeconds', {
             validate: numberRule({ integer: true, min: 0, label: 'thời gian cửa mở' }),

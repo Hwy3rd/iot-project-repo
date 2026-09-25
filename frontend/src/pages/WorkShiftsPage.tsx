@@ -1,12 +1,18 @@
 import { workShiftsApi, type WorkShiftQuery } from '@/api/endpoints'
-import type { WorkShiftStatus } from '@/api/types'
+import type { WorkShift, WorkShiftStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
-import { CreateWorkShiftDialog } from '@/components/work-shifts/CreateWorkShiftDialog'
+import { CreateWorkShiftDialog, EditWorkShiftDialog } from '@/components/work-shifts/WorkShiftFormDialog'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { WorkShiftStatusBadge } from '@/components/common/StatusBadge'
@@ -19,10 +25,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { emptyFilters, labelOptions, rangeError } from '@/lib/filters'
-import { dayjs, formatDate } from '@/lib/format'
+import { dayjs, formatDate, formatDateTime } from '@/lib/format'
 import { WORK_SHIFT_STATUS_LABEL } from '@/lib/labels'
 import { useShiftLookup, useUserLookup, useWarehouseLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
@@ -118,6 +125,10 @@ export function WorkShiftsPage() {
   const canCreate = hasRole(user?.role, ['admin', 'manager'])
   const isAdmin = hasRole(user?.role, ['admin'])
   const canDelete = hasRole(user?.role, ['admin', 'manager'])
+  // Only upcoming shifts: once checked in, the record is attendance history.
+  const editable = (w: WorkShift) => canCreate && w.status === 'scheduled'
+  const rows = useRowDialogs<WorkShift>()
+  const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const warehouses = useWarehouseLookup()
@@ -198,43 +209,85 @@ export function WorkShiftsPage() {
                 )}
                 <TableHead className="pl-4">Ngày trực</TableHead>
                 <TableHead>Ca</TableHead>
-                <TableHead className="hidden md:table-cell">Nhân viên</TableHead>
-                <TableHead className="hidden lg:table-cell">Kho</TableHead>
+                <TableHead>Nhân viên</TableHead>
+                <TableHead>Kho</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead className="hidden pr-4 sm:table-cell">Vào / ra</TableHead>
+                <TableHead>Vào / ra</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((w) => (
-                <TableRow key={w.id}>
+                <TableRow key={w.id} {...rowOpenProps(() => rows.view(w))}>
                   {canDelete && (
                     <SelectRowCell selection={selection} id={w.id} label={`Chọn ca trực ${w.workDate}`} />
                   )}
                   <TableCell className="pl-4 tabular-nums">
                     <time dateTime={w.workDate}>{formatDate(w.workDate)}</time>
                   </TableCell>
-                  <TableCell className="whitespace-normal">
+                  <TableCell className="min-w-48 whitespace-normal">
                     {shifts.label(w.shiftId)}
                     <span className="block text-muted-foreground tabular-nums">
                       {time(w.scheduledStartAt)} – {time(w.scheduledEndAt)}
                     </span>
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">{staffName(w.staffId)}</TableCell>
-                  <TableCell className="hidden lg:table-cell">
+                  <TableCell>{staffName(w.staffId)}</TableCell>
+                  <TableCell>
                     {warehouses.label(w.warehouseId)}
                   </TableCell>
                   <TableCell>
                     <WorkShiftStatusBadge status={w.status} />
                   </TableCell>
-                  <TableCell className="hidden pr-4 text-muted-foreground tabular-nums sm:table-cell">
+                  <TableCell className="text-muted-foreground tabular-nums">
                     {time(w.checkInAt)} / {time(w.checkOutAt)}
                   </TableCell>
+                  <RowActionsCell
+                    label={`ca trực ngày ${formatDate(w.workDate)}`}
+                    onView={() => rows.view(w)}
+                    onEdit={editable(w) ? () => rows.edit(w) : undefined}
+                  />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <>
+          <DetailDialog
+            open={rows.viewing}
+            onClose={rows.close}
+            title={`${shifts.label(current.shiftId)} · ${formatDate(current.workDate)}`}
+            description={warehouses.label(current.warehouseId)}
+            onEdit={editable(current) ? () => rows.edit(current) : undefined}
+          >
+            <DetailList
+              fields={[
+                { label: 'Ngày trực', value: formatDate(current.workDate) },
+                { label: 'Ca', value: shifts.label(current.shiftId) },
+                {
+                  label: 'Giờ theo lịch',
+                  value: `${time(current.scheduledStartAt)} – ${time(current.scheduledEndAt)}`,
+                },
+                { label: 'Trạng thái', value: <WorkShiftStatusBadge status={current.status} /> },
+                { label: 'Nhân viên', value: staffName(current.staffId) },
+                { label: 'Kho', value: warehouses.label(current.warehouseId) },
+                { label: 'Vào ca lúc', value: formatDateTime(current.checkInAt) },
+                { label: 'Ra ca lúc', value: formatDateTime(current.checkOutAt) },
+              ]}
+            />
+          </DetailDialog>
+          {editable(current) && (
+            <EditWorkShiftDialog
+              key={`${current.id}:${current.updatedAt}`}
+              workShift={current}
+              open={rows.editing}
+              onClose={rows.close}
+            />
+          )}
+        </>
+      )}
     </>
   )
 }

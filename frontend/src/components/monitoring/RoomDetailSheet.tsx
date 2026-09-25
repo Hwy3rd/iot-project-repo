@@ -126,7 +126,7 @@ function RoomDetail({
                 <TableRow>
                   <TableHead className="pl-3">Mã thiết bị</TableHead>
                   <TableHead>Trạng thái</TableHead>
-                  <TableHead className="hidden sm:table-cell">Firmware</TableHead>
+                  <TableHead>Firmware</TableHead>
                   <TableHead className="pr-3">Tín hiệu cuối</TableHead>
                 </TableRow>
               </TableHeader>
@@ -139,7 +139,7 @@ function RoomDetail({
                     <TableCell>
                       <DeviceStatusBadge status={d.status} />
                     </TableCell>
-                    <TableCell className="hidden font-mono text-sm sm:table-cell" translate="no">
+                    <TableCell className="font-mono text-sm" translate="no">
                       {d.firmwareVersion || '—'}
                     </TableCell>
                     <TableCell className="pr-3 text-muted-foreground">

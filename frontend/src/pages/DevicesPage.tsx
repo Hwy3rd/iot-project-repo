@@ -1,12 +1,18 @@
 import { devicesApi, type DeviceQuery } from '@/api/endpoints'
-import type { DeviceStatus } from '@/api/types'
+import type { Device, DeviceStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
-import { CreateDeviceDialog } from '@/components/devices/CreateDeviceDialog'
+import { CreateDeviceDialog, EditDeviceDialog } from '@/components/devices/DeviceFormDialog'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { LocationFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { DeviceStatusBadge } from '@/components/common/StatusBadge'
@@ -23,6 +29,7 @@ import { formatDateTime, formatRelative } from '@/lib/format'
 import { DEVICE_STATUS_LABEL } from '@/lib/labels'
 import { useColdRoomLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
@@ -89,6 +96,10 @@ export function DevicesPage() {
   // Registering devices and seeing unclaimed ones are Admin-only (docs/RBAC.md).
   const isAdmin = hasRole(user?.role, ['admin'])
   const canDelete = isAdmin
+  // PATCH /devices/:id is Admin or Technician (firmware version only).
+  const canEdit = hasRole(user?.role, ['admin', 'technician'])
+  const rows = useRowDialogs<Device>()
+  const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const coldRooms = useColdRoomLookup()
@@ -165,34 +176,35 @@ export function DevicesPage() {
                 )}
                 <TableHead className="pl-4">Mã thiết bị</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead className="hidden md:table-cell">Phòng lạnh</TableHead>
-                <TableHead className="hidden lg:table-cell">Firmware</TableHead>
-                <TableHead className="hidden pr-4 sm:table-cell">Tín hiệu cuối</TableHead>
+                <TableHead>Phòng lạnh</TableHead>
+                <TableHead>Firmware</TableHead>
+                <TableHead>Tín hiệu cuối</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((d) => (
-                <TableRow key={d.id}>
+                <TableRow key={d.id} {...rowOpenProps(() => rows.view(d))}>
                   {canDelete && (
                     <SelectRowCell selection={selection} id={d.id} label={`Chọn thiết bị ${d.uniqueId}`} />
                   )}
-                  <TableCell className="pl-4 font-mono text-sm break-all whitespace-normal" translate="no">
+                  <TableCell className="pl-4 font-mono text-sm" translate="no">
                     {d.uniqueId}
                   </TableCell>
                   <TableCell>
                     <DeviceStatusBadge status={d.status} />
                   </TableCell>
-                  <TableCell className="hidden md:table-cell">
+                  <TableCell>
                     {d.coldRoomId ? (
                       coldRooms.label(d.coldRoomId)
                     ) : (
                       <span className="text-muted-foreground">Chưa gán</span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden font-mono text-sm lg:table-cell" translate="no">
+                  <TableCell className="font-mono text-sm" translate="no">
                     {d.firmwareVersion || '—'}
                   </TableCell>
-                  <TableCell className="hidden pr-4 text-muted-foreground sm:table-cell">
+                  <TableCell className="text-muted-foreground">
                     {d.lastHeartbeatAt ? (
                       <time dateTime={d.lastHeartbeatAt} title={formatDateTime(d.lastHeartbeatAt)}>
                         {formatRelative(d.lastHeartbeatAt)}
@@ -201,12 +213,63 @@ export function DevicesPage() {
                       '—'
                     )}
                   </TableCell>
+                  <RowActionsCell
+                    label={`thiết bị ${d.uniqueId}`}
+                    onView={() => rows.view(d)}
+                    onEdit={canEdit ? () => rows.edit(d) : undefined}
+                  />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <>
+          <DetailDialog
+            open={rows.viewing}
+            onClose={rows.close}
+            title={<span className="font-mono" translate="no">{current.uniqueId}</span>}
+            description={current.coldRoomId ? coldRooms.label(current.coldRoomId) : 'Chưa gán phòng lạnh'}
+            onEdit={canEdit ? () => rows.edit(current) : undefined}
+          >
+            <DetailList
+              fields={[
+                {
+                  label: 'Mã thiết bị',
+                  value: <span className="font-mono" translate="no">{current.uniqueId}</span>,
+                },
+                { label: 'Trạng thái', value: <DeviceStatusBadge status={current.status} /> },
+                {
+                  label: 'Phòng lạnh',
+                  value: current.coldRoomId ? coldRooms.label(current.coldRoomId) : 'Chưa gán',
+                },
+                {
+                  label: 'Firmware',
+                  value: current.firmwareVersion && (
+                    <span className="font-mono" translate="no">{current.firmwareVersion}</span>
+                  ),
+                },
+                { label: 'Tín hiệu cuối', value: formatDateTime(current.lastHeartbeatAt) },
+                { label: 'Gán vào phòng lúc', value: formatDateTime(current.claimedAt) },
+                { label: 'Mã claim hết hạn', value: formatDateTime(current.claimCodeExpiresAt) },
+                { label: 'Ngừng sử dụng lúc', value: formatDateTime(current.decommissionedAt) },
+                { label: 'Ngày đăng ký', value: formatDateTime(current.createdAt) },
+                { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
+              ]}
+            />
+          </DetailDialog>
+          {canEdit && (
+            <EditDeviceDialog
+              key={`${current.id}:${current.updatedAt}`}
+              device={current}
+              open={rows.editing}
+              onClose={rows.close}
+            />
+          )}
+        </>
+      )}
     </>
   )
 }

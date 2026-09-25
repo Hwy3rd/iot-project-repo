@@ -16,10 +16,11 @@ import { CircleAlert, Loader2, Plus } from 'lucide-react'
 import type { FormEventHandler, ReactNode } from 'react'
 
 /**
- * Shell shared by the create dialogs: "+ {triggerLabel}" button, header,
+ * Shell shared by the create/edit dialogs: "+ {triggerLabel}" button, header,
  * server error banner, fields, Huỷ / submit footer. The dialog can't be
  * closed while saving, and `onClosed` runs whenever it closes so the caller
- * can reset its form.
+ * can reset its form. Edit dialogs are opened from a table row, so they pass
+ * no triggerLabel and get no button.
  */
 export function FormDialog({
   open,
@@ -39,7 +40,8 @@ export function FormDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   onClosed?: () => void
-  triggerLabel: string
+  /** Omit for a dialog opened programmatically (no trigger button). */
+  triggerLabel?: string
   title: string
   description?: ReactNode
   onSubmit: FormEventHandler<HTMLFormElement>
@@ -59,12 +61,14 @@ export function FormDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button size="lg">
-          <Plus aria-hidden="true" />
-          {triggerLabel}
-        </Button>
-      </DialogTrigger>
+      {triggerLabel && (
+        <DialogTrigger asChild>
+          <Button size="lg">
+            <Plus aria-hidden="true" />
+            {triggerLabel}
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className={cn('max-h-[90dvh] overflow-y-auto', wide ? 'sm:max-w-2xl' : 'sm:max-w-lg')}>
         <form onSubmit={onSubmit} noValidate className="grid gap-4">
           <DialogHeader>
