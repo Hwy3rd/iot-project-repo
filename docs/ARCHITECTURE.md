@@ -43,7 +43,7 @@ Mọi request đi qua pipeline theo đúng thứ tự sau (đăng ký ở `RbacM
 
 1. **`JwtAuthGuard`** — bắt buộc có `access_token` hợp lệ trong cookie, trừ route đánh dấu `@Public()`.
 2. **`RolesGuard`** — role của caller (từ JWT payload) phải nằm trong `@Roles(...)` của route.
-3. **`WarehouseScopeGuard`** — nếu route có `@WarehouseScope(...)`, kiểm tra caller có được gán vào warehouse liên quan (qua `WarehouseStaff`), và nếu là Staff + `requireShift: true`, kiểm tra thêm đang có `WorkShift` đã check-in. Admin luôn bỏ qua bước này.
+3. **`WarehouseScopeGuard`** — nếu route có `@WarehouseScope(...)`, kiểm tra caller có được gán vào warehouse liên quan (qua `WarehouseStaff`), và nếu là Staff + `requireShift: true`, kiểm tra thêm đang có `WorkShift` đã được duyệt và chưa quá giờ kết thúc + 5 phút. Admin luôn bỏ qua bước này.
 4. Controller/service xử lý nghiệp vụ.
 5. **`TransformInterceptor`** (response thành công) bọc `{ success, statusCode, message, data }`, áp `@Serialize(dto)` nếu có.
 6. **`GlobalExceptionFilter`** (mọi lỗi, kể cả lỗi không lường trước) chuẩn hoá về `{ success: false, statusCode, path, timestamp, message, errors? }`.
@@ -105,7 +105,7 @@ Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `dock
 | `alert-notifications`    | `AlertsService.raise()` (khi ghi alert mới)              | `AlertNotificationProcessor`                          | Theo sự kiện (không lịch cố định)    | Đã hoạt động — ghi Notification + gửi Web Push                                                  |
 | `telemetry-rollup`       | Tự lên lịch (`upsertJobScheduler`, cron `5 * * * *` UTC) | `TelemetryRollupProcessor` → `TelemetryRollupService` | Mỗi giờ, phút thứ 5 (chờ sample trễ) | Đã hoạt động — gom `telemetry_raw` → `telemetry_hourly`                                         |
 | `batch-maintenance`      | Tự lên lịch (`every: 1h`)                                | `BatchExpiryProcessor`                                | Mỗi giờ                              | **TODO** — job chạy nhưng thân xử lý chỉ log, chưa sweep batch hết hạn (`IN_STOCK` → `EXPIRED`) |
-| `work-shift-maintenance` | Tự lên lịch (`every: 15m`)                               | `WorkShiftAbsenceProcessor`                           | Mỗi 15 phút                          | **TODO** — job chạy nhưng thân xử lý chỉ log, chưa sweep ca trực quá giờ → `ABSENT`             |
+| `work-shift-maintenance` | Tự lên lịch (`every: 5m`)                                | `WorkShiftSweepProcessor`                             | Mỗi 5 phút                           | Yêu cầu `pending` hết ca → `expired`; ca `approved` quá hết ca + 5 phút chưa check-out → điền `check_out_at` |
 
 `upsertJobScheduler` với id cố định nghĩa là job lặp được **upsert, không nhân bản**, mỗi lần `worker` restart — an toàn khi deploy lại.
 
@@ -138,5 +138,4 @@ Dockerfile multi-stage (`server/Dockerfile`):
 - **MQTT — chỉ mới chiều thiết bị → server** — `MqttIngestService` đã subscribe `devices/+/telemetry` và gọi `TelemetryService.ingest()` (mục 4), nhưng chiều ngược lại (publish `Command` xuống thiết bị, nhận ack) chưa làm; broker cũng chưa khoá bằng auth/TLS.
 - **Realtime broadcast** — `RealtimeGateway.emitToWarehouse()` chưa được service nào gọi; alert mới không tự đẩy qua WebSocket.
 - **Batch expiry sweep** (`BatchExpiryProcessor`) — job chạy đúng lịch nhưng chưa đánh dấu batch hết hạn.
-- **Work-shift absence sweep** (`WorkShiftAbsenceProcessor`) — tương tự, chưa đánh dấu ca trực vắng mặt.
 - **Frontend** (`frontend/`) — thư mục rỗng, chưa scaffold.

@@ -10,6 +10,10 @@ let socket: Socket | undefined
 // a room is left only when the last view releases it, and all of them are
 // re-joined after a reconnect (the server forgets rooms on disconnect).
 const wanted = new Map<string, number>()
+// Views that need the connection itself, for events sent to the user's own
+// room (every socket joins it on connect) rather than a warehouse room.
+let holders = 0
+const needed = () => wanted.size > 0 || holders > 0
 let authRetries = 0
 const RETRY_AFTER_MS = 5_000
 
@@ -31,11 +35,11 @@ export function getSocket(): Socket {
     if (error.message !== 'Unauthorized' || authRetries > 0) return
     authRetries++
     void refreshSession().then((outcome) => {
-      if (outcome === 'refreshed' && wanted.size > 0) s.connect()
+      if (outcome === 'refreshed' && needed()) s.connect()
       if (outcome === 'unavailable') {
         setTimeout(() => {
           authRetries = 0
-          if (wanted.size > 0 && !s.connected) s.connect()
+          if (needed() && !s.connected) s.connect()
         }, RETRY_AFTER_MS)
       }
     })
@@ -65,13 +69,26 @@ export function joinWarehouses(warehouseIds: readonly string[]): () => void {
       wanted.delete(id)
       if (s.connected) s.emit('leave:warehouse', { warehouseId: id })
     }
-    if (wanted.size === 0) s.disconnect()
+    if (!needed()) s.disconnect()
+  }
+}
+
+/** Keeps the socket connected for user-room events; call the result to let go. */
+export function holdSocket(): () => void {
+  const s = getSocket()
+  holders++
+  if (!s.connected && !s.active) s.connect()
+  return () => {
+    // disconnectSocket() may have reset the count since (logout).
+    holders = Math.max(0, holders - 1)
+    if (!needed()) s.disconnect()
   }
 }
 
 /** On login/logout/expiry: the socket belongs to the previous identity. */
 export function disconnectSocket() {
   wanted.clear()
+  holders = 0
   socket?.disconnect()
   socket = undefined
 }

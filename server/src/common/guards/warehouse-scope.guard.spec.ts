@@ -114,7 +114,7 @@ describe('WarehouseScopeGuard', () => {
       workShiftRepo.find.mockResolvedValue([]);
 
       await expect(run(UserRole.MANAGER, { id: 'w1' })).rejects.toThrow(
-        'Requires an active checked-in work shift for this warehouse',
+        'Requires an approved work shift in progress for this warehouse',
       );
     });
 

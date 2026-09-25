@@ -82,10 +82,10 @@ export function CommandStatusBadge({ status }: { status: CommandStatus }) {
 }
 
 const WORK_SHIFT_TONE: Record<WorkShiftStatus, Tone> = {
-  scheduled: 'neutral',
-  checked_in: 'info',
-  completed: 'success',
-  absent: 'warning',
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger',
+  expired: 'neutral',
 }
 
 export function WorkShiftStatusBadge({ status }: { status: WorkShiftStatus }) {

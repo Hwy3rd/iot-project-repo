@@ -5,8 +5,7 @@ export type UserRole = 'admin' | 'manager' | 'staff' | 'technician'
 export type UserStatus = 'active' | 'locked'
 export type ProductUnit = 'kg' | 'liter' | 'piece' | 'box'
 export type BatchStatus = 'in_stock' | 'expired' | 'removed'
-export type ShiftType = 'morning' | 'afternoon' | 'night'
-export type WorkShiftStatus = 'scheduled' | 'checked_in' | 'completed' | 'absent'
+export type WorkShiftStatus = 'pending' | 'approved' | 'rejected' | 'expired'
 export type DeviceStatus =
   | 'registered'
   | 'provisioned'
@@ -185,28 +184,53 @@ export interface Batch {
 
 export interface Shift {
   id: string
-  shiftType: ShiftType
-  /** HH:mm:ss */
+  name: string
+  /** HH:mm:ss, business-timezone (UTC+7) wall clock; endTime <= startTime = ends the next day. */
   startTime: string
   endTime: string
   createdAt: string
   updatedAt: string
 }
 
+/** One attendance request: a Staff member checking in to a shift, reviewed by a Manager. */
 export interface WorkShift {
   id: string
   shiftId: string
   staffId: string
   warehouseId: string
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD, the day the shift starts (a night shift after midnight belongs to the day before). */
   workDate: string
+  /** Snapshot of the shift template's times on workDate. */
   scheduledStartAt: string
   scheduledEndAt: string
   status: WorkShiftStatus
+  /** When the request was sent; null only on records older than check-in requests. */
   checkInAt: string | null
   checkOutAt: string | null
+  reviewedBy: string | null
+  reviewedAt: string | null
+  rejectReason: string | null
   createdAt: string
   updatedAt: string
+}
+
+/** GET /work-shifts/me — the caller's own check-in state. */
+export interface Attendance {
+  /** The approved shift being worked now (until its end + 5 min grace); null = must check in. */
+  active: WorkShift | null
+  /** The shift open for check-in right now (from 15 min before its start); null between shifts. */
+  open: {
+    shiftId: string
+    /** The shift template's name. */
+    name: string
+    workDate: string
+    scheduledStartAt: string
+    scheduledEndAt: string
+  } | null
+  /** The caller's request for `open`, whatever its status. */
+  request: WorkShift | null
+  /** Warehouses where the caller is Staff. */
+  warehouses: { id: string; name: string; code: string }[]
 }
 
 export interface Command {

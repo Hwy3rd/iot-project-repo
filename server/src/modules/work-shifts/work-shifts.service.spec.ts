@@ -3,14 +3,21 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { Paginated } from '../../common/pagination/paginated';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, QueryFailedError, Repository } from 'typeorm';
+import {
+  In,
+  IsNull,
+  MoreThan,
+  MoreThanOrEqual,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { WorkShiftStatus } from '../../libs/constants/work-shift.constant';
 import { Shift } from '../shifts/entities/shift.entity';
 import { User } from '../users/entities/user.entity';
-import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { WorkShift } from './entities/work-shift.entity';
 import { UserRole } from '../../libs/constants/user.constant';
@@ -33,15 +40,30 @@ describe('WorkShiftsService', () => {
   let service: WorkShiftsService;
   let workShiftsRepository: MockRepository<WorkShift>;
   let shiftsRepository: MockRepository<Shift>;
-  let warehousesRepository: MockRepository<Warehouse>;
   let usersRepository: MockRepository<User>;
   let warehouseStaffRepository: MockRepository<WarehouseStaff>;
 
-  const dto = {
-    shiftId: 'sh1',
-    staffId: 'u1',
-    warehouseId: 'w1',
-    workDate: '2026-01-01',
+  const realtime = { emitToUser: jest.fn() };
+
+  // Business timezone is UTC+7: 08:00 there on 2026-09-25.
+  const now = new Date('2026-09-25T01:00:00Z');
+  const morning = {
+    id: 'sh-m',
+    name: 'Ca sáng',
+    startTime: '06:00:00',
+    endTime: '14:00:00',
+  } as Shift;
+  const night = {
+    id: 'sh-n',
+    name: 'Ca tối',
+    startTime: '22:00:00',
+    endTime: '06:00:00',
+  } as Shift;
+  const morningSchedule = {
+    shiftId: 'sh-m',
+    workDate: '2026-09-25',
+    scheduledStartAt: new Date('2026-09-24T23:00:00Z'),
+    scheduledEndAt: new Date('2026-09-25T07:00:00Z'),
   };
 
   beforeEach(async () => {
@@ -57,10 +79,6 @@ describe('WorkShiftsService', () => {
           useValue: createMockRepository<Shift>(),
         },
         {
-          provide: getRepositoryToken(Warehouse),
-          useValue: createMockRepository<Warehouse>(),
-        },
-        {
           provide: getRepositoryToken(User),
           useValue: createMockRepository<User>(),
         },
@@ -68,13 +86,14 @@ describe('WorkShiftsService', () => {
           provide: getRepositoryToken(WarehouseStaff),
           useValue: createMockRepository<WarehouseStaff>(),
         },
+        { provide: RealtimeGateway, useValue: realtime },
       ],
     }).compile();
 
     service = module.get<WorkShiftsService>(WorkShiftsService);
     workShiftsRepository = module.get(getRepositoryToken(WorkShift));
     shiftsRepository = module.get(getRepositoryToken(Shift));
-    warehousesRepository = module.get(getRepositoryToken(Warehouse));
+    jest.clearAllMocks();
     usersRepository = module.get(getRepositoryToken(User));
     warehouseStaffRepository = module.get(getRepositoryToken(WarehouseStaff));
   });
@@ -133,14 +152,14 @@ describe('WorkShiftsService', () => {
           warehouseIds: ['w1', 'w2', 'w3'],
           staffWarehouseIds: ['w2', 'w3'],
         },
-        { warehouseId: 'w2', status: WorkShiftStatus.SCHEDULED },
+        { warehouseId: 'w2', status: WorkShiftStatus.PENDING },
       );
 
       expect(workShiftsRepository.findAndCount).toHaveBeenCalledWith(
         expect.objectContaining({
           where: [
             {
-              status: WorkShiftStatus.SCHEDULED,
+              status: WorkShiftStatus.PENDING,
               warehouseId: In(['w2']),
               staffId: 'u1',
             },
@@ -197,189 +216,308 @@ describe('WorkShiftsService', () => {
     });
   });
 
-  describe('create', () => {
-    it('throws NotFoundException when the warehouse does not exist', async () => {
-      warehousesRepository.findOne!.mockResolvedValue(null);
+  describe('attendance', () => {
+    it('returns the active shift, the open shift, the request for it and the Staff warehouses', async () => {
+      const active = { id: 'ws-night', status: WorkShiftStatus.APPROVED };
+      const request = { id: 'ws-1', status: WorkShiftStatus.PENDING };
+      workShiftsRepository
+        .findOne!.mockResolvedValueOnce(active)
+        .mockResolvedValueOnce(request);
+      shiftsRepository.find!.mockResolvedValue([morning, night]);
+      warehouseStaffRepository.find!.mockResolvedValue([
+        { warehouse: { id: 'w1', name: 'Kho 1', code: 'K1', address: 'x' } },
+        { warehouse: null },
+      ]);
 
-      await expect(service.create(dto)).rejects.toThrow(NotFoundException);
-    });
+      const result = await service.attendance('u1', now);
 
-    it('throws NotFoundException when the staff does not exist', async () => {
-      warehousesRepository.findOne!.mockResolvedValue({ id: 'w1' });
-      usersRepository.findOne!.mockResolvedValue(null);
-
-      await expect(service.create(dto)).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws BadRequestException when the staff is not assigned to the warehouse', async () => {
-      warehousesRepository.findOne!.mockResolvedValue({ id: 'w1' });
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
-      warehouseStaffRepository.findOne!.mockResolvedValue(null);
-
-      await expect(service.create(dto)).rejects.toThrow(BadRequestException);
-    });
-
-    it('throws NotFoundException when the shift template does not exist', async () => {
-      warehousesRepository.findOne!.mockResolvedValue({ id: 'w1' });
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
-      warehouseStaffRepository.findOne!.mockResolvedValue({
-        userId: 'u1',
-        warehouseId: 'w1',
+      expect(workShiftsRepository.findOne).toHaveBeenNthCalledWith(1, {
+        where: {
+          staffId: 'u1',
+          status: WorkShiftStatus.APPROVED,
+          checkOutAt: IsNull(),
+          scheduledEndAt: MoreThan(new Date('2026-09-25T00:55:00Z')),
+        },
+        order: { scheduledStartAt: 'DESC' },
       });
-      shiftsRepository.findOne!.mockResolvedValue(null);
-
-      await expect(service.create(dto)).rejects.toThrow(NotFoundException);
-    });
-
-    it('converts a duplicate (staff, work_date, shift) into ConflictException', async () => {
-      warehousesRepository.findOne!.mockResolvedValue({ id: 'w1' });
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
-      warehouseStaffRepository.findOne!.mockResolvedValue({
-        userId: 'u1',
-        warehouseId: 'w1',
+      expect(workShiftsRepository.findOne).toHaveBeenNthCalledWith(2, {
+        where: { staffId: 'u1', shiftId: 'sh-m', workDate: '2026-09-25' },
       });
-      shiftsRepository.findOne!.mockResolvedValue({
-        id: 'sh1',
-        startTime: '06:00:00',
-        endTime: '14:00:00',
-      });
-      workShiftsRepository.create!.mockImplementation(
-        (v: Partial<WorkShift>) => v,
-      );
-      workShiftsRepository.save!.mockRejectedValue(
-        new QueryFailedError('INSERT ...', [], {
-          name: 'Error',
-          message: 'Duplicate entry',
-          code: 'ER_DUP_ENTRY',
-        } as unknown as Error),
-      );
-
-      await expect(service.create(dto)).rejects.toThrow(ConflictException);
-    });
-
-    it('creates the work shift with a computed schedule', async () => {
-      warehousesRepository.findOne!.mockResolvedValue({ id: 'w1' });
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
-      warehouseStaffRepository.findOne!.mockResolvedValue({
-        userId: 'u1',
-        warehouseId: 'w1',
-      });
-      shiftsRepository.findOne!.mockResolvedValue({
-        id: 'sh1',
-        startTime: '06:00:00',
-        endTime: '14:00:00',
-      });
-      workShiftsRepository.create!.mockImplementation(
-        (v: Partial<WorkShift>) => v,
-      );
-      workShiftsRepository.save!.mockImplementation(
-        (v: Partial<WorkShift>) => ({
-          id: 'ws1',
-          ...v,
+      expect(warehouseStaffRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'u1', role: UserRole.STAFF },
         }),
       );
-
-      const result = await service.create(dto);
-
-      expect(result).toMatchObject({
-        id: 'ws1',
-        status: WorkShiftStatus.SCHEDULED,
+      expect(result).toEqual({
+        active,
+        open: { ...morningSchedule, name: 'Ca sáng' },
+        request,
+        warehouses: [{ id: 'w1', name: 'Kho 1', code: 'K1' }],
       });
-      expect(result.scheduledStartAt.toISOString()).toBe(
-        '2026-01-01T06:00:00.000Z',
-      );
-      expect(result.scheduledEndAt.toISOString()).toBe(
-        '2026-01-01T14:00:00.000Z',
-      );
     });
 
-    it('rolls the scheduled end to the next day for an overnight shift', async () => {
-      warehousesRepository.findOne!.mockResolvedValue({ id: 'w1' });
-      usersRepository.findOne!.mockResolvedValue({ id: 'u1' });
-      warehouseStaffRepository.findOne!.mockResolvedValue({
-        userId: 'u1',
-        warehouseId: 'w1',
-      });
-      shiftsRepository.findOne!.mockResolvedValue({
-        id: 'sh1',
-        startTime: '22:00:00',
-        endTime: '06:00:00',
-      });
-      workShiftsRepository.create!.mockImplementation(
-        (v: Partial<WorkShift>) => v,
-      );
-      workShiftsRepository.save!.mockImplementation(
-        (v: Partial<WorkShift>) => v,
+    it('has no open shift and no request between shifts', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue(null);
+      shiftsRepository.find!.mockResolvedValue([morning]);
+      warehouseStaffRepository.find!.mockResolvedValue([]);
+
+      // 20:00 in the business timezone.
+      const result = await service.attendance(
+        'u1',
+        new Date('2026-09-25T13:00:00Z'),
       );
 
-      const result = await service.create(dto);
-
-      expect(result.scheduledStartAt.toISOString()).toBe(
-        '2026-01-01T22:00:00.000Z',
-      );
-      expect(result.scheduledEndAt.toISOString()).toBe(
-        '2026-01-02T06:00:00.000Z',
-      );
+      expect(result.open).toBeNull();
+      expect(result.request).toBeNull();
+      expect(workShiftsRepository.findOne).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('checkIn', () => {
+    beforeEach(() => {
+      warehouseStaffRepository.findOne!.mockResolvedValue({
+        role: UserRole.STAFF,
+      });
+      shiftsRepository.find!.mockResolvedValue([morning, night]);
+      workShiftsRepository.create!.mockImplementation(
+        (value: object) => ({ ...value }) as WorkShift,
+      );
+      workShiftsRepository.save!.mockImplementation((value: WorkShift) =>
+        Promise.resolve({ ...value, id: 'ws-1' }),
+      );
+      warehouseStaffRepository.find!.mockResolvedValue([{ userId: 'm1' }]);
+      usersRepository.find!.mockResolvedValue([{ id: 'a1' }]);
+    });
+
+    it('refuses a caller who is not Staff of the warehouse', async () => {
+      warehouseStaffRepository.findOne!.mockResolvedValue({
+        role: UserRole.MANAGER,
+      });
+
+      await expect(service.checkIn('u1', 'w1', now)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('refuses when no shift is open', async () => {
+      shiftsRepository.find!.mockResolvedValue([night]);
+
+      await expect(service.checkIn('u1', 'w1', now)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('creates a pending request for the open shift and announces it', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue(null);
+
+      const result = await service.checkIn('u1', 'w1', now);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          ...morningSchedule,
+          staffId: 'u1',
+          warehouseId: 'w1',
+          status: WorkShiftStatus.PENDING,
+          checkInAt: now,
+        }),
+      );
+      const event = {
+        workShiftId: 'ws-1',
+        warehouseId: 'w1',
+        staffId: 'u1',
+        status: WorkShiftStatus.PENDING,
+      };
+      expect(warehouseStaffRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { warehouseId: 'w1', role: UserRole.MANAGER },
+        }),
+      );
+      for (const userId of ['u1', 'm1', 'a1']) {
+        expect(realtime.emitToUser).toHaveBeenCalledWith(
+          userId,
+          'workshift:changed',
+          event,
+        );
+      }
+    });
+
+    it.each([WorkShiftStatus.PENDING, WorkShiftStatus.APPROVED])(
+      'refuses a second request while one is %s',
+      async (status) => {
+        workShiftsRepository.findOne!.mockResolvedValue({ id: 'ws-1', status });
+
+        await expect(service.checkIn('u1', 'w1', now)).rejects.toThrow(
+          ConflictException,
+        );
+        expect(workShiftsRepository.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('re-sends a rejected request on the same row, clearing the review', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue({
+        id: 'ws-1',
+        staffId: 'u1',
+        warehouseId: 'w2',
+        status: WorkShiftStatus.REJECTED,
+        reviewedBy: 'm1',
+        reviewedAt: new Date(),
+        rejectReason: 'Sai kho',
+      });
+
+      await service.checkIn('u1', 'w1', now);
+
+      expect(workShiftsRepository.create).not.toHaveBeenCalled();
+      expect(workShiftsRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'ws-1',
+          warehouseId: 'w1',
+          status: WorkShiftStatus.PENDING,
+          reviewedBy: null,
+          reviewedAt: null,
+          rejectReason: null,
+        }),
+      );
+    });
+
+    it('converts a duplicate (staff, work_date, shift) race into ConflictException', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue(null);
+      const duplicate = new QueryFailedError('INSERT', [], new Error('dup'));
+      (duplicate as unknown as { code: string }).code = 'ER_DUP_ENTRY';
+      workShiftsRepository.save!.mockRejectedValue(duplicate);
+
+      await expect(service.checkIn('u1', 'w1', now)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('still succeeds when announcing fails', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue(null);
+      usersRepository.find!.mockRejectedValue(new Error('db down'));
+
+      await expect(service.checkIn('u1', 'w1', now)).resolves.toBeDefined();
+    });
+  });
+
+  describe('approve / reject', () => {
+    const pending = () => ({
+      id: 'ws-1',
+      staffId: 'u1',
+      warehouseId: 'w1',
+      status: WorkShiftStatus.PENDING,
+      scheduledEndAt: morningSchedule.scheduledEndAt,
+    });
+
+    beforeEach(() => {
+      workShiftsRepository.save!.mockImplementation((value: WorkShift) =>
+        Promise.resolve(value),
+      );
+      warehouseStaffRepository.find!.mockResolvedValue([]);
+      usersRepository.find!.mockResolvedValue([]);
+    });
+
     it('throws NotFoundException when the work shift does not exist', async () => {
       workShiftsRepository.findOne!.mockResolvedValue(null);
 
-      await expect(service.checkIn('missing-id')).rejects.toThrow(
+      await expect(service.approve('x', 'm1', now)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('throws ConflictException when the work shift is not scheduled', async () => {
-      workShiftsRepository.findOne!.mockResolvedValue({
-        id: 'ws1',
-        status: WorkShiftStatus.COMPLETED,
-      });
+    it('approves a pending request and records the reviewer', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue(pending());
 
-      await expect(service.checkIn('ws1')).rejects.toThrow(ConflictException);
+      const result = await service.approve('ws-1', 'm1', now);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: WorkShiftStatus.APPROVED,
+          reviewedBy: 'm1',
+          reviewedAt: now,
+        }),
+      );
+      expect(realtime.emitToUser).toHaveBeenCalledWith(
+        'u1',
+        'workshift:changed',
+        expect.objectContaining({ status: WorkShiftStatus.APPROVED }),
+      );
     });
 
-    it('sets check_in_at and status to checked_in', async () => {
-      const workShift = {
-        id: 'ws1',
-        status: WorkShiftStatus.SCHEDULED,
-        checkInAt: null,
-      };
-      workShiftsRepository.findOne!.mockResolvedValue(workShift);
-      workShiftsRepository.save!.mockImplementation((v: WorkShift) => v);
+    it('refuses to approve once the shift has ended', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue(pending());
 
-      const result = await service.checkIn('ws1');
+      await expect(
+        service.approve('ws-1', 'm1', new Date('2026-09-25T07:00:00Z')),
+      ).rejects.toThrow(ConflictException);
+    });
 
-      expect(result.status).toBe(WorkShiftStatus.CHECKED_IN);
-      expect(result.checkInAt).not.toBeNull();
+    it.each([
+      WorkShiftStatus.APPROVED,
+      WorkShiftStatus.REJECTED,
+      WorkShiftStatus.EXPIRED,
+    ])('refuses to review a %s request', async (status) => {
+      workShiftsRepository.findOne!.mockResolvedValue({ ...pending(), status });
+
+      await expect(service.approve('ws-1', 'm1', now)).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.reject('ws-1', 'm1')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('rejects with a trimmed reason, or none', async () => {
+      workShiftsRepository.findOne!.mockResolvedValueOnce(pending());
+      await expect(service.reject('ws-1', 'm1', '  Sai kho ')).resolves.toEqual(
+        expect.objectContaining({
+          status: WorkShiftStatus.REJECTED,
+          reviewedBy: 'm1',
+          rejectReason: 'Sai kho',
+        }),
+      );
+
+      workShiftsRepository.findOne!.mockResolvedValueOnce(pending());
+      await expect(service.reject('ws-1', 'm1', '   ')).resolves.toEqual(
+        expect.objectContaining({ rejectReason: null }),
+      );
     });
   });
 
   describe('checkOut', () => {
-    it('throws ConflictException when the work shift is not checked in', async () => {
-      workShiftsRepository.findOne!.mockResolvedValue({
-        id: 'ws1',
-        status: WorkShiftStatus.SCHEDULED,
-      });
-
-      await expect(service.checkOut('ws1')).rejects.toThrow(ConflictException);
+    beforeEach(() => {
+      workShiftsRepository.save!.mockImplementation((value: WorkShift) =>
+        Promise.resolve(value),
+      );
+      warehouseStaffRepository.find!.mockResolvedValue([]);
+      usersRepository.find!.mockResolvedValue([]);
     });
 
-    it('sets check_out_at and status to completed', async () => {
-      const workShift = {
-        id: 'ws1',
-        status: WorkShiftStatus.CHECKED_IN,
+    it('throws ConflictException unless the shift is approved and in progress', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue({
+        id: '1',
+        status: WorkShiftStatus.PENDING,
         checkOutAt: null,
-      };
-      workShiftsRepository.findOne!.mockResolvedValue(workShift);
-      workShiftsRepository.save!.mockImplementation((v: WorkShift) => v);
+      });
+      await expect(service.checkOut('1')).rejects.toThrow(ConflictException);
 
-      const result = await service.checkOut('ws1');
+      workShiftsRepository.findOne!.mockResolvedValue({
+        id: '1',
+        status: WorkShiftStatus.APPROVED,
+        checkOutAt: new Date(),
+      });
+      await expect(service.checkOut('1')).rejects.toThrow(ConflictException);
+    });
 
-      expect(result.status).toBe(WorkShiftStatus.COMPLETED);
-      expect(result.checkOutAt).not.toBeNull();
+    it('sets check_out_at', async () => {
+      workShiftsRepository.findOne!.mockResolvedValue({
+        id: '1',
+        status: WorkShiftStatus.APPROVED,
+        checkOutAt: null,
+      });
+
+      const result = await service.checkOut('1');
+
+      expect(result.checkOutAt).toBeInstanceOf(Date);
+      expect(result.status).toBe(WorkShiftStatus.APPROVED);
     });
   });
 
@@ -387,15 +525,15 @@ describe('WorkShiftsService', () => {
     it('throws NotFoundException when nothing was deleted', async () => {
       workShiftsRepository.delete!.mockResolvedValue({ affected: 0 });
 
-      await expect(service.remove('missing-id')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.remove('1')).rejects.toThrow(NotFoundException);
     });
 
     it('deletes the work shift', async () => {
       workShiftsRepository.delete!.mockResolvedValue({ affected: 1 });
 
-      await expect(service.remove('ws1')).resolves.toBeUndefined();
+      await service.remove('1');
+
+      expect(workShiftsRepository.delete).toHaveBeenCalledWith('1');
     });
   });
 });

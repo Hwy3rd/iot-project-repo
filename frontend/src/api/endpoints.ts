@@ -4,6 +4,7 @@ import type {
   AlertStatus,
   AlertType,
   AppNotification,
+  Attendance,
   AuditLog,
   Batch,
   BulkDeleteResult,
@@ -220,8 +221,22 @@ export const productTypesApi = {
   bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/product-types/bulk-delete', { ids }),
 }
 
+export interface CreateShiftBody {
+  name: string
+  /** HH:mm or HH:mm:ss, business-timezone wall clock. endTime <= startTime = ends the next day. */
+  startTime: string
+  endTime: string
+}
+
+export type UpdateShiftBody = Partial<CreateShiftBody>
+
 export const shiftsApi = {
   list: (q: PageQuery = {}) => api.get<Paginated<Shift>>('/shifts', { ...q }),
+  /** Admin only; 409 if the name is taken or the hours overlap another template. */
+  create: (body: CreateShiftBody) => api.post<Shift>('/shifts', body),
+  update: (id: string, body: UpdateShiftBody) => api.patch<Shift>(`/shifts/${id}`, body),
+  /** Soft delete; past attendance records keep pointing at it. */
+  remove: (id: string) => api.delete<null>(`/shifts/${id}`),
 }
 
 export interface BatchQuery extends SearchQuery {
@@ -278,26 +293,18 @@ export interface WorkShiftQuery extends PageQuery {
   workDateTo?: string
 }
 
-export interface CreateWorkShiftBody {
-  shiftId: string
-  staffId: string
-  warehouseId: string
-  /** YYYY-MM-DD */
-  workDate: string
-}
-
-/** warehouseId is immutable; the schedule is recomputed from shiftId + workDate. */
-export interface UpdateWorkShiftBody {
-  shiftId?: string
-  staffId?: string
-  /** YYYY-MM-DD */
-  workDate?: string
-}
-
 export const workShiftsApi = {
   list: (q: WorkShiftQuery = {}) => api.get<Paginated<WorkShift>>('/work-shifts', { ...q }),
-  create: (body: CreateWorkShiftBody) => api.post<WorkShift>('/work-shifts', body),
-  update: (id: string, body: UpdateWorkShiftBody) => api.patch<WorkShift>(`/work-shifts/${id}`, body),
+  /** The caller's own attendance state, for the Staff check-in screen. */
+  me: () => api.get<Attendance>('/work-shifts/me'),
+  /** Staff: ask to work the shift open right now (picked by the server); 409 if none or already sent. */
+  checkIn: (warehouseId: string) => api.post<WorkShift>('/work-shifts/check-in', { warehouseId }),
+  /** Admin, or Manager of the request's warehouse; 409 unless pending and the shift not over. */
+  approve: (id: string) => api.post<WorkShift>(`/work-shifts/${id}/approve`),
+  reject: (id: string, reason?: string) =>
+    api.post<WorkShift>(`/work-shifts/${id}/reject`, { reason }),
+  /** Staff: end your own approved shift (on logout at the end of it). */
+  checkOut: (id: string) => api.post<WorkShift>(`/work-shifts/${id}/check-out`),
   remove: (id: string) => api.delete<null>(`/work-shifts/${id}`),
   /** Up to 100 ids; see docs/API_DESIGN.md. */
   bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/work-shifts/bulk-delete', { ids }),

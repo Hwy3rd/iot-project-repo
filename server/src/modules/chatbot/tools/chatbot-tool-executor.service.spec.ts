@@ -28,11 +28,11 @@ describe('ChatbotToolExecutorService scoping', () => {
       find: jest.fn(() => Promise.resolve(assignments)),
     };
     // Active-shift lookups (WarehouseAccessService) and get_work_shifts
-    // both go through this repo; the former always filters on checkInAt.
+    // both go through this repo; the former always filters on checkOutAt.
     workShiftsRepo = {
-      find: jest.fn(({ where }: { where: { checkInAt?: unknown } }) =>
+      find: jest.fn(({ where }: { where: { checkOutAt?: unknown } }) =>
         Promise.resolve(
-          where && 'checkInAt' in where
+          where && 'checkOutAt' in where
             ? activeShiftWarehouses.map((warehouseId) => ({ warehouseId }))
             : [],
         ),

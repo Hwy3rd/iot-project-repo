@@ -1,12 +1,11 @@
 import { Expose } from 'class-transformer';
-import { ShiftType } from '../../../libs/constants/shift.constant';
 
 export class ShiftResponseDto {
   @Expose()
   id!: string;
 
   @Expose()
-  shiftType!: ShiftType;
+  name!: string;
 
   @Expose()
   startTime!: string;

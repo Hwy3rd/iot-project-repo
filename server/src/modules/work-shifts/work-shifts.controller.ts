@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  Patch,
   Post,
   Query,
   HttpCode,
@@ -16,14 +15,16 @@ import {
 } from '../../common/decorators/warehouse-list-scope.decorator';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Audit } from '../../common/decorators/audit.decorator';
+import { GetUserId } from '../../common/decorators/get-user-id.decorator';
 import { WorkShift } from './entities/work-shift.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
 import { UserRole } from '../../libs/constants/user.constant';
 import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.constant';
-import { CreateWorkShiftDto } from './dto/create-work-shift.dto';
-import { UpdateWorkShiftDto } from './dto/update-work-shift.dto';
+import { AttendanceResponseDto } from './dto/attendance-response.dto';
+import { CheckInDto } from './dto/check-in.dto';
+import { RejectWorkShiftDto } from './dto/reject-work-shift.dto';
 import { WorkShiftResponseDto } from './dto/work-shift-response.dto';
 import { QueryWorkShiftDto } from './dto/query-work-shift.dto';
 import { WorkShiftsService } from './work-shifts.service';
@@ -33,19 +34,28 @@ import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 export class WorkShiftsController {
   constructor(private readonly workShiftsService: WorkShiftsService) {}
 
-  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  // The caller's own attendance state for the check-in screen. Any global
+  // role may ask: it only reads the caller's rows and Staff assignments.
+  @Serialize(AttendanceResponseDto)
+  @Get('me')
+  attendance(@GetUserId() userId: string) {
+    return this.workShiftsService.attendance(userId);
+  }
+
+  // Staff of the warehouse in the body; the shift is picked by the server.
+  @Roles(UserRole.STAFF)
   @WarehouseScope(WarehouseScopeSource.WAREHOUSE_BODY, {
     paramName: 'warehouseId',
   })
   @Serialize(WorkShiftResponseDto)
   @Audit({
-    action: 'work_shift.create',
+    action: 'work_shift.check_in',
     targetType: 'work_shift',
     entity: WorkShift,
   })
-  @Post()
-  create(@Body() createWorkShiftDto: CreateWorkShiftDto) {
-    return this.workShiftsService.create(createWorkShiftDto);
+  @Post('check-in')
+  checkIn(@GetUserId() userId: string, @Body() dto: CheckInDto) {
+    return this.workShiftsService.checkIn(userId, dto.warehouseId);
   }
 
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
@@ -72,31 +82,32 @@ export class WorkShiftsController {
   @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM)
   @Serialize(WorkShiftResponseDto)
   @Audit({
-    action: 'work_shift.update',
+    action: 'work_shift.approve',
     targetType: 'work_shift',
     entity: WorkShift,
   })
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() updateWorkShiftDto: UpdateWorkShiftDto,
-  ) {
-    return this.workShiftsService.update(id, updateWorkShiftDto);
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/approve')
+  approve(@Param('id') id: string, @GetUserId() reviewerId: string) {
+    return this.workShiftsService.approve(id, reviewerId);
   }
 
-  @Roles(UserRole.STAFF)
-  @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM, {
-    ownStaffOnly: true,
-  })
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM)
   @Serialize(WorkShiftResponseDto)
   @Audit({
-    action: 'work_shift.check_in',
+    action: 'work_shift.reject',
     targetType: 'work_shift',
     entity: WorkShift,
   })
-  @Post(':id/check-in')
-  checkIn(@Param('id') id: string) {
-    return this.workShiftsService.checkIn(id);
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/reject')
+  reject(
+    @Param('id') id: string,
+    @GetUserId() reviewerId: string,
+    @Body() dto: RejectWorkShiftDto,
+  ) {
+    return this.workShiftsService.reject(id, reviewerId, dto.reason);
   }
 
   @Roles(UserRole.STAFF)
@@ -109,6 +120,7 @@ export class WorkShiftsController {
     targetType: 'work_shift',
     entity: WorkShift,
   })
+  @HttpCode(HttpStatus.OK)
   @Post(':id/check-out')
   checkOut(@Param('id') id: string) {
     return this.workShiftsService.checkOut(id);

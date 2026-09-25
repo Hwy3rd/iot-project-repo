@@ -169,6 +169,23 @@ export class UsersService {
       throw new ForbiddenException('Only an admin can change a user role');
     }
 
+    // Staff is Staff everywhere (see WarehouseStaffService.assign): moving
+    // an account into or out of Staff would leave its warehouse roles
+    // inconsistent, so it must be unassigned from them first.
+    if (
+      updateUserDto.role !== undefined &&
+      (updateUserDto.role === UserRole.STAFF) !== (user.role === UserRole.STAFF)
+    ) {
+      const assigned = await this.dataSource.manager.count(WarehouseStaff, {
+        where: { userId: id },
+      });
+      if (assigned > 0) {
+        throw new ConflictException(
+          'Remove the user from their warehouses before changing their role to or from Staff',
+        );
+      }
+    }
+
     Object.assign(user, updateUserDto);
     const saved = await this.saveUser(user);
     return this.sanitize(saved);

@@ -13,6 +13,7 @@ import { MonitoringPage } from './pages/MonitoringPage'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { ProductTypesPage } from './pages/ProductTypesPage'
+import { ShiftsPage } from './pages/ShiftsPage'
 import { NotFoundPage, RouteErrorPage } from './pages/StatusPages'
 import { UsersPage } from './pages/UsersPage'
 import { WarehousesPage } from './pages/WarehousesPage'
@@ -39,7 +40,7 @@ export const router = createBrowserRouter([
           { path: 'warehouses', element: <WarehousesPage /> },
           { path: 'cold-rooms', element: <ColdRoomsPage /> },
           { path: 'product-types', element: <ProductTypesPage /> },
-          { path: 'shifts', ...placeholder('Mẫu ca', 'Mẫu ca sáng/chiều/tối dùng chung.') },
+          { path: 'shifts', element: <ShiftsPage /> },
           { path: 'notifications', element: <NotificationsPage /> },
           { path: 'chatbot', ...placeholder('Trợ lý AI', 'Hỏi đáp về dữ liệu kho trong phạm vi của bạn.') },
           {

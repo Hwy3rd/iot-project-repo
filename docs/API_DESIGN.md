@@ -121,7 +121,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `POST /warehouses/:id/images` | A | `multipart/form-data` | `WarehouseResponseDto` |
 | `DELETE /warehouses/:id/images` | A | `{ url }` | `WarehouseResponseDto` |
 | `GET /warehouses/:warehouseId/staff` | A, M (**P**) | `page?`, `limit?` | `Paginated<WarehouseStaffResponseDto>` (`userId`, `warehouseId`, `role` tại kho, `user { id, username, fullName }`) |
-| `PUT /warehouses/:warehouseId/staff/:userId` | A | `{ role: manager \| technician \| staff }` | `WarehouseStaffResponseDto` — upsert: gán mới hoặc đổi role tại kho |
+| `PUT /warehouses/:warehouseId/staff/:userId` | A | `{ role: manager \| technician \| staff }` | `WarehouseStaffResponseDto` — upsert: gán mới hoặc đổi role tại kho. `400` nếu role `staff` cho tài khoản không phải Staff, hoặc role khác `staff` cho tài khoản Staff |
 | `DELETE /warehouses/:warehouseId/staff/:userId` | A | — | `null` (`404` nếu user chưa được gán) |
 
 > Các endpoint `GET` liệt kê danh sách của tài nguyên gắn warehouse (`/warehouses`, `/cold-rooms`, `/devices`, `/batches`, `/work-shifts`, `/commands`, `/alerts`, `/audit-logs`) chỉ trả về bản ghi thuộc các warehouse caller được đọc, xét theo **role tại từng warehouse** (`warehouse_staff.role`) — Admin thấy toàn bộ. Chi tiết mô hình: `docs/RBAC.md` §1, §3.
@@ -160,30 +160,36 @@ Master data, chỉ Admin thao tác ghi; các role khác chỉ xem.
 
 ## 7. Shifts (mẫu ca) — `/shifts`
 
-Master data (mẫu ca sáng/chiều/tối tĩnh, không gắn ngày/nhân viên) — chỉ Admin thao tác ghi.
+Master data (mẫu ca có tên tự đặt, không gắn ngày/nhân viên) — chỉ Admin thao tác ghi. Tạo bao nhiêu cũng được, nhưng **khung giờ các mẫu ca đang hoạt động không được chồng nhau** trong ngày (ca qua đêm tính cả phần sau 0h; hai ca nối tiếp 14:00/14:00 không tính là chồng) và **tên không trùng** (không phân biệt hoa thường). Vi phạm → `409`; giờ bắt đầu = giờ kết thúc → `400`.
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
-| `POST /shifts` | A | `{ shiftType, startTime, endTime }` (giờ dạng `HH:mm` hoặc `HH:mm:ss`) | `ShiftResponseDto` |
+| `POST /shifts` | A | `{ name, startTime, endTime }` (tên ≤ 100 ký tự; giờ Việt Nam dạng `HH:mm` hoặc `HH:mm:ss`, kết thúc ≤ bắt đầu = ca qua đêm) | `ShiftResponseDto` |
 | `GET /shifts` | mọi role | `page?`, `limit?` | `Paginated<ShiftResponseDto>` |
 | `GET /shifts/:id` | mọi role | — | `ShiftResponseDto` |
-| `PATCH /shifts/:id` | A | | `ShiftResponseDto` |
-| `DELETE /shifts/:id` | A | — | `null` (soft delete) |
+| `PATCH /shifts/:id` | A | các field như create (đều tuỳ chọn) | `ShiftResponseDto` |
+| `DELETE /shifts/:id` | A | — | `null` (soft delete — các lượt chấm công cũ vẫn giữ; tên và khung giờ được giải phóng) |
 
 ---
 
-## 8. Work Shifts (lịch ca trực) — `/work-shifts`
+## 8. Work Shifts (chấm công ca trực) — `/work-shifts`
 
-Gán 1 mẫu ca cho 1 nhân viên vào 1 ngày, tại 1 warehouse.
+Mỗi bản ghi là một lượt chấm công: Staff tự gửi yêu cầu vào ca, Manager của kho (hoặc Admin) duyệt/từ chối. Không còn xếp lịch trước.
+
+- **Ca được hệ thống tự chọn** theo thời điểm gửi: mẫu ca có khung `[giờ bắt đầu − 15 phút, giờ kết thúc)` chứa thời điểm đó (giờ theo múi giờ Việt Nam, UTC+7). Hai khung chồng nhau → chọn ca bắt đầu muộn hơn (ca sắp tới). Ca đêm sau 0h thuộc `workDate` của ngày bắt đầu.
+- **Vòng đời**: `pending` → `approved` | `rejected`; `pending` chưa ai duyệt khi ca kết thúc → `expired` (sweep). Bị từ chối/quá hạn thì Staff gửi lại trên chính bản ghi đó (unique `(staff, workDate, shift)`).
+- **Ca đang hoạt động** (điều kiện "Ca trực" của RBAC): `approved`, chưa `checkOutAt`, và `scheduledEndAt` + 5 phút > hiện tại. Staff được thao tác thêm 5 phút sau giờ kết thúc; frontend tự đăng xuất + check-out khi hết 5 phút, sweep check-out các ca còn sót.
+- Mỗi thay đổi đẩy sự kiện `workshift:changed` (`{ workShiftId, warehouseId, staffId, status }`) tới room của Staff đó, các Manager của kho và mọi Admin.
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
-| `POST /work-shifts` | A, M (**P** theo `warehouseId` trong body) | `{ shiftId, staffId, warehouseId, workDate }` | `WorkShiftResponseDto` |
+| `GET /work-shifts/me` | mọi role (dữ liệu của chính mình) | — | `AttendanceResponseDto` `{ active, open, request, warehouses }` |
+| `POST /work-shifts/check-in` | S, **P** theo `warehouseId` trong body | `{ warehouseId }` | `WorkShiftResponseDto` (`pending`); `409` nếu không có ca nào đang mở hoặc đã có yêu cầu `pending`/`approved` cho ca này |
 | `GET /work-shifts` | A, M, S | `status?`, `warehouseId?`, `shiftId?`, `staffId?`, `workDateFrom?`/`workDateTo?`, `page?`, `limit?` | `Paginated<WorkShiftResponseDto>` |
 | `GET /work-shifts/:id` | A, M, S, **P** | — | `WorkShiftResponseDto` |
-| `PATCH /work-shifts/:id` | A, M, **P** | các field như create (trừ `warehouseId` — ca ở kho khác phải tạo mới; `staffId` mới phải thuộc cùng kho) | `WorkShiftResponseDto` |
-| `POST /work-shifts/:id/check-in` | S, **P** + chỉ đúng ca của chính mình | — | `WorkShiftResponseDto` |
-| `POST /work-shifts/:id/check-out` | S, **P** + chỉ đúng ca của chính mình | — | `WorkShiftResponseDto` |
+| `POST /work-shifts/:id/approve` | A, M, **P** | — | `WorkShiftResponseDto`; `409` nếu không `pending` hoặc ca đã kết thúc |
+| `POST /work-shifts/:id/reject` | A, M, **P** | `{ reason? }` (≤ 255 ký tự) | `WorkShiftResponseDto`; `409` nếu không `pending` |
+| `POST /work-shifts/:id/check-out` | S, **P** + chỉ đúng ca của chính mình | — | `WorkShiftResponseDto`; `409` nếu không phải ca `approved` chưa check-out |
 | `DELETE /work-shifts/:id` | A, M, **P** | — | `null` (hard delete — bảng này không có `deleted_at`) |
 
 ---
@@ -363,7 +369,7 @@ socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
 | Users | A | TT |
 | Warehouses, Product Types, Shifts (mẫu ca) | A | mọi role |
 | Cold Rooms | A, M (**P**) | mọi role, **P** khi truy cập 1 phòng cụ thể |
-| Work Shifts | A, M (**P**); check-in/out: S (own) | A, M, S |
+| Work Shifts | duyệt/từ chối: A, M (**P**); check-in/out: S (own) | A, M, S |
 | Batches | A, M (**P**); S (**C**) | A, M, S |
 | Devices — vòng đời kỹ thuật | A, T (**P**); tạo mới/xoá cứng: A | A, M, T, S (xem cơ bản) |
 | Device Channels | A, T (**P**) | A, M, T (**P**) |

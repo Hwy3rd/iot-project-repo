@@ -8,11 +8,16 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
-import { ShiftType } from '../../../libs/constants/shift.constant';
 
-// A reusable shift template (e.g. "morning: 06:00-14:00") — not tied to any
-// staff member or date. WorkShift is the junction that assigns one of these
-// to a specific staff member on a specific date.
+// A reusable shift template (e.g. "Ca sáng: 06:00-14:00") — not tied to any
+// staff member or date; a WorkShift is one Staff member's check-in to one
+// occurrence of it. Admins create as many as they like, but the active
+// templates' hours never overlap within the day (ShiftsService), so a
+// moment of the day belongs to at most one shift.
+//
+// `name` is unique among active templates only, checked by ShiftsService:
+// a DB unique index would also count soft-deleted ones and block reusing
+// the name of a deleted template.
 @Entity('shifts')
 export class Shift {
   @PrimaryColumn({ type: 'varchar', length: 36 })
@@ -23,8 +28,8 @@ export class Shift {
     this.id ??= uuidv7();
   }
 
-  @Column({ type: 'enum', enum: ShiftType, name: 'shift_type', unique: true })
-  shiftType!: ShiftType;
+  @Column({ type: 'varchar', length: 100 })
+  name!: string;
 
   @Column({ type: 'time', name: 'start_time' })
   startTime!: string;
