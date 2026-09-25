@@ -1,11 +1,18 @@
-import { batchesApi, type CreateBatchBody } from '@/api/endpoints'
-import type { ColdRoom, ProductType } from '@/api/types'
+import { batchesApi } from '@/api/endpoints'
+import type { Batch, ColdRoom, ProductType } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
 import { SelectField, TextField } from '@/components/common/form-fields'
 import { Field, FieldLabel } from '@/components/ui/field'
 import { Textarea } from '@/components/ui/textarea'
 import { dayjs, formatTemp } from '@/lib/format'
-import { mutationErrorText, numberRule, optionalText, requiredText } from '@/lib/forms'
+import {
+  mutationErrorText,
+  nullableText,
+  numberRule,
+  optionalText,
+  requiredText,
+  toInput,
+} from '@/lib/forms'
 import { PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { useColdRoomLookup, useProductTypeLookup, useWarehouseLookup } from '@/lib/lookups'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -51,13 +58,55 @@ function fitError(room: ColdRoom | undefined, product: ProductType | undefined) 
   )
 }
 
+const toValues = (b: Batch): FormValues => ({
+  coldRoomId: b.coldRoomId,
+  productTypeId: b.productTypeId,
+  batchCode: b.batchCode,
+  quantity: toInput(b.quantity),
+  supplier: toInput(b.supplier),
+  receivedAt: b.receivedAt,
+  expiryDate: b.expiryDate,
+  notes: toInput(b.notes),
+})
+
 /** Admin, Manager, or Staff with an active shift in that warehouse (backend-checked). */
 export function CreateBatchDialog() {
   const [open, setOpen] = useState(false)
+  return <BatchFormDialog open={open} onOpenChange={setOpen} />
+}
+
+/**
+ * Same roles as creating. The cold room can't be changed (moving stock means
+ * taking the batch out and recording a new one there).
+ * Mount with key={`${id}:${updatedAt}`} so the form reloads fresh values.
+ */
+export function EditBatchDialog({
+  batch,
+  open,
+  onClose,
+}: {
+  batch: Batch
+  open: boolean
+  onClose: () => void
+}) {
+  return <BatchFormDialog batch={batch} open={open} onOpenChange={(o) => !o && onClose()} />
+}
+
+function BatchFormDialog({
+  batch,
+  open,
+  onOpenChange,
+}: {
+  /** Set = edit this batch; unset = create. */
+  batch?: Batch
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const qc = useQueryClient()
   const warehouses = useWarehouseLookup()
   const coldRooms = useColdRoomLookup()
   const productTypes = useProductTypeLookup()
+  const initial = () => (batch ? toValues(batch) : empty())
   const {
     register,
     control,
@@ -65,7 +114,7 @@ export function CreateBatchDialog() {
     reset,
     setError,
     formState: { errors },
-  } = useForm<FormValues>({ defaultValues: empty() })
+  } = useForm<FormValues>({ defaultValues: initial() })
 
   const product = productTypes.get(useWatch({ control, name: 'productTypeId' }))
   const roomOptions = coldRooms.items.map((r) => ({
@@ -73,47 +122,56 @@ export function CreateBatchDialog() {
     label: `${r.name} · ${warehouses.label(r.warehouseId)}`,
   }))
 
-  const create = useMutation({
-    mutationFn: (body: CreateBatchBody) => batchesApi.create(body),
+  const save = useMutation({
+    mutationFn: (v: FormValues) =>
+      batch
+        ? batchesApi.update(batch.id, {
+            productTypeId: v.productTypeId,
+            batchCode: v.batchCode.trim(),
+            quantity: Number(v.quantity),
+            supplier: nullableText(v.supplier),
+            receivedAt: v.receivedAt,
+            expiryDate: v.expiryDate,
+            notes: nullableText(v.notes),
+          })
+        : batchesApi.create({
+            coldRoomId: v.coldRoomId,
+            productTypeId: v.productTypeId,
+            batchCode: v.batchCode.trim(),
+            quantity: Number(v.quantity),
+            supplier: optionalText(v.supplier),
+            receivedAt: v.receivedAt,
+            expiryDate: v.expiryDate,
+            notes: optionalText(v.notes),
+          }),
     onSuccess: (b) => {
       qc.invalidateQueries({ queryKey: ['batches'] })
-      toast.success('Đã nhập lô hàng', { description: b.batchCode })
-      setOpen(false)
-      reset(empty())
+      toast.success(batch ? 'Đã lưu thay đổi' : 'Đã nhập lô hàng', { description: b.batchCode })
+      onOpenChange(false)
+      reset(batch ? toValues(b) : empty())
     },
     onError: (err) =>
       setError('root.server', {
         message: mutationErrorText(err, {
           409: 'Phòng lạnh này đã có lô trùng mã. Kiểm tra lại mã lô.',
-          403: 'Bạn không có quyền nhập hàng vào phòng lạnh này (nhân viên cần đang trong ca trực tại kho).',
+          403: batch
+            ? 'Bạn không có quyền sửa lô hàng này (nhân viên cần đang trong ca trực tại kho).'
+            : 'Bạn không có quyền nhập hàng vào phòng lạnh này (nhân viên cần đang trong ca trực tại kho).',
         }),
       }),
   })
 
-  const onSubmit = handleSubmit((v) =>
-    create.mutate({
-      coldRoomId: v.coldRoomId,
-      productTypeId: v.productTypeId,
-      batchCode: v.batchCode.trim(),
-      quantity: Number(v.quantity),
-      supplier: optionalText(v.supplier),
-      receivedAt: v.receivedAt,
-      expiryDate: v.expiryDate,
-      notes: optionalText(v.notes),
-    }),
-  )
-
   return (
     <FormDialog
       open={open}
-      onOpenChange={setOpen}
-      onClosed={() => reset(empty())}
-      triggerLabel="Nhập lô hàng"
-      title="Nhập lô hàng mới"
+      onOpenChange={onOpenChange}
+      onClosed={() => reset(initial())}
+      triggerLabel={batch ? undefined : 'Nhập lô hàng'}
+      title={batch ? `Sửa lô hàng ${batch.batchCode}` : 'Nhập lô hàng mới'}
       description="Mã lô là duy nhất trong mỗi phòng lạnh."
-      onSubmit={onSubmit}
-      pending={create.isPending}
-      submitLabel="Nhập lô"
+      onSubmit={handleSubmit((v) => save.mutate(v))}
+      pending={save.isPending}
+      submitLabel={batch ? 'Lưu thay đổi' : 'Nhập lô'}
       serverError={errors.root?.server?.message}
       wide
     >
@@ -138,6 +196,8 @@ export function CreateBatchDialog() {
           id="batch-room"
           label="Phòng lạnh"
           options={roomOptions}
+          disabled={!!batch}
+          description={batch ? 'Không đổi được phòng lạnh của lô hàng.' : undefined}
         />
         <TextField
           id="batch-code"

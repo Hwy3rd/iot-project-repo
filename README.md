@@ -6,6 +6,7 @@ Hệ thống giám sát & quản lý kho lạnh: theo dõi nhiệt độ/thiết
 
 | Thành phần | Công nghệ |
 |---|---|
+| Frontend | React + Vite (TypeScript) — [frontend/](frontend/) |
 | Backend API | NestJS (TypeScript) — [server/](server/) |
 | Dữ liệu quan hệ | MySQL + TypeORM (migration-based, không dùng `synchronize`) |
 | Dữ liệu phi quan hệ | MongoDB + Mongoose |
@@ -21,8 +22,10 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
 ```
 .
 ├── server/                       # NestJS backend (toàn bộ code ứng dụng)
-├── frontend/                     # (chưa scaffold)
-├── docs/                         # Tài liệu thiết kế
+├── frontend/                     # React + Vite SPA
+├── docs/                         # Tài liệu thiết kế & vận hành
+│   ├── DEVELOPMENT.md            # Chạy môi trường dev local
+│   ├── INFRASTRUCTURE.md         # Hạ tầng production, Cloudflare Tunnel
 │   ├── API_DESIGN.md             # REST + WebSocket API reference
 │   ├── DATABASE_DESIGN.md        # Schema, quan hệ, entity
 │   └── RBAC.md                   # Vai trò, phạm vi, ma trận quyền
@@ -50,14 +53,19 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
    ./run.sh logs app    # xem log
    ```
 
-Nếu chỉ cần chạy backend trực tiếp trên host (không qua container `app`) để dev với hot-reload — tạo `server/.env` từ mẫu [server/.env.example](server/.env.example) (khác với `.env` ở root, chỉ dùng cho container; hostname là `localhost`, mật khẩu datastore khớp mặc định của `docker-compose.yml`):
+## Phát triển local
+
+Datastore chạy bằng Docker, backend và frontend chạy trực tiếp trên host với hot-reload. Tóm tắt:
+
 ```bash
-cp server/.env.example server/.env   # rồi điền các giá trị <...>
 docker compose up -d redis mysql mongo minio mosquitto   # chỉ datastore + broker
-cd server && pnpm install
-pnpm migration:run
-pnpm start:dev
+cd server && cp .env.example .env    # điền các giá trị <...>
+npm install && npm run migration:run && npm run seed:admin && npm run start:dev
+# terminal khác, từ root repo:
+cd frontend && cp .env.example .env && npm install && npm run dev
 ```
+
+Hướng dẫn đầy đủ (cách tạo secret, seed dữ liệu mẫu, worker, cổng, lỗi thường gặp) xem [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Kết nối thiết bị ESP32 qua WiFi (WSL2)
 
@@ -71,11 +79,13 @@ Khi đổi sang WiFi/hotspot mới, chạy lại để chuyển mạng đó sang
 
 ## Tài liệu
 
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Chạy môi trường dev local cho người mới clone repo.
+- [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) — Hạ tầng production: container, cổng, Cloudflare Tunnel, volume, vận hành.
 - [docs/REQUIREMENT.md](docs/REQUIREMENT.md) — Bài toán, đối tượng sử dụng, yêu cầu chức năng/phi chức năng.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Tổng quan kiến trúc backend: tiến trình, luồng dữ liệu, các phần đã/chưa hoàn thiện.
 - [docs/API_DESIGN.md](docs/API_DESIGN.md) — API REST + WebSocket, quy ước response/lỗi, mã hoá quyền theo endpoint.
 - [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md) — Schema MySQL, quan hệ giữa các entity.
 - [docs/RBAC.md](docs/RBAC.md) — 4 vai trò (Admin/Manager/Technician/Staff), phạm vi theo warehouse, ma trận quyền theo module.
+- [docs/MESSAGE_QUEUE.md](docs/MESSAGE_QUEUE.md) — BullMQ giữa `app`/`worker` và MQTT với thiết bị.
+- [docs/NOTIFICATION.md](docs/NOTIFICATION.md) — Cơ chế thông báo: khi nào gửi, gửi cho ai, luồng xử lý.
 - [server/CLAUDE.md](server/CLAUDE.md) — Quy ước kiến trúc, cấu trúc module, auth flow, ghi chú kỹ thuật khi phát triển backend.
-
-`docs/MESSAGE_QUEUE.md`, `docs/NOTIFICATION.md` hiện chưa có nội dung — sẽ bổ sung sau.

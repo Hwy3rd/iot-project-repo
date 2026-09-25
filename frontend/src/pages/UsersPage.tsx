@@ -1,12 +1,18 @@
 import { usersApi, type UserQuery } from '@/api/endpoints'
-import type { UserRole, UserStatus } from '@/api/types'
-import { CreateUserDialog } from '@/components/users/CreateUserDialog'
+import type { User, UserRole, UserStatus } from '@/api/types'
+import { CreateUserDialog, EditUserDialog } from '@/components/users/UserFormDialog'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import { UserStatusBadge } from '@/components/common/StatusBadge'
@@ -22,6 +28,7 @@ import { emptyFilters, labelOptions } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { ROLE_LABEL, USER_STATUS_LABEL } from '@/lib/labels'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
@@ -31,6 +38,10 @@ const NO_FILTERS = emptyFilters(FILTER_KEYS)
 export function UsersPage() {
   const { user } = useAuth()
   const canDelete = hasRole(user?.role, ['admin'])
+  // The page itself is Admin-only.
+  const canEdit = canDelete
+  const rows = useRowDialogs<User>()
+  const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
 
@@ -127,36 +138,36 @@ export function UsersPage() {
                   <SelectAllHead selection={selection} label="Chọn tất cả người dùng trên trang" />
                 )}
                 <TableHead className="pl-4">Tài khoản</TableHead>
-                <TableHead className="hidden md:table-cell">Liên hệ</TableHead>
-                <TableHead className="hidden sm:table-cell">Vai trò</TableHead>
+                <TableHead>Liên hệ</TableHead>
+                <TableHead>Vai trò</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead className="hidden pr-4 lg:table-cell">Đăng nhập cuối</TableHead>
+                <TableHead>Đăng nhập cuối</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((u) => (
-                <TableRow key={u.id}>
+                <TableRow key={u.id} {...rowOpenProps(() => rows.view(u))}>
                   {canDelete && (
                     <SelectRowCell selection={selection} id={u.id} label={`Chọn người dùng ${u.username}`} />
                   )}
-                  <TableCell className="pl-4 whitespace-normal">
+                  <TableCell className="pl-4 min-w-48 whitespace-normal">
                     <span className="font-medium">{u.fullName || u.username}</span>
                     <span className="block text-muted-foreground" translate="no">
                       {u.username}
-                      <span className="sm:hidden"> · {ROLE_LABEL[u.role]}</span>
                     </span>
                   </TableCell>
-                  <TableCell className="hidden whitespace-normal md:table-cell">
+                  <TableCell className="min-w-48 whitespace-normal">
                     <span className="block break-all">{u.email || '—'}</span>
                     {u.phone && (
                       <span className="block text-muted-foreground tabular-nums">{u.phone}</span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">{ROLE_LABEL[u.role]}</TableCell>
+                  <TableCell>{ROLE_LABEL[u.role]}</TableCell>
                   <TableCell>
                     <UserStatusBadge status={u.status} />
                   </TableCell>
-                  <TableCell className="hidden pr-4 text-muted-foreground lg:table-cell">
+                  <TableCell className="text-muted-foreground">
                     {u.lastLoginAt ? (
                       <time dateTime={u.lastLoginAt} title={formatDateTime(u.lastLoginAt)}>
                         {formatRelative(u.lastLoginAt)}
@@ -165,12 +176,53 @@ export function UsersPage() {
                       'Chưa đăng nhập'
                     )}
                   </TableCell>
+                  <RowActionsCell
+                    label={`người dùng ${u.username}`}
+                    onView={() => rows.view(u)}
+                    onEdit={canEdit ? () => rows.edit(u) : undefined}
+                  />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <>
+          <DetailDialog
+            open={rows.viewing}
+            onClose={rows.close}
+            title={current.fullName || current.username}
+            description={current.username}
+            onEdit={canEdit ? () => rows.edit(current) : undefined}
+          >
+            <DetailList
+              fields={[
+                {
+                  label: 'Tên đăng nhập',
+                  value: <span translate="no">{current.username}</span>,
+                },
+                { label: 'Họ và tên', value: current.fullName },
+                { label: 'Vai trò', value: ROLE_LABEL[current.role] },
+                { label: 'Trạng thái', value: <UserStatusBadge status={current.status} /> },
+                { label: 'Email', value: current.email && <span className="break-all">{current.email}</span> },
+                { label: 'Số điện thoại', value: current.phone },
+                { label: 'Đăng nhập cuối', value: current.lastLoginAt ? formatDateTime(current.lastLoginAt) : 'Chưa đăng nhập' },
+                { label: 'Ngày tạo', value: formatDateTime(current.createdAt) },
+              ]}
+            />
+          </DetailDialog>
+          {canEdit && (
+            <EditUserDialog
+              key={`${current.id}:${current.updatedAt}`}
+              user={current}
+              open={rows.editing}
+              onClose={rows.close}
+            />
+          )}
+        </>
+      )}
     </>
   )
 }

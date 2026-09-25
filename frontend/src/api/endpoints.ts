@@ -67,11 +67,19 @@ export interface CreateWarehouseBody {
   address?: string
 }
 
+/** PATCH body: omitted = unchanged, null = cleared. */
+export interface UpdateWarehouseBody {
+  name?: string
+  code?: string
+  address?: string | null
+}
+
 export const warehousesApi = {
   list: (q: WarehouseQuery = {}) =>
     api.get<Paginated<Warehouse>>('/warehouses', { ...q, hasAddress: flag(q.hasAddress) }),
   get: (id: string) => api.get<Warehouse>(`/warehouses/${id}`),
   create: (body: CreateWarehouseBody) => api.post<Warehouse>('/warehouses', body),
+  update: (id: string, body: UpdateWarehouseBody) => api.patch<Warehouse>(`/warehouses/${id}`, body),
   /** Soft delete; also removes its cold rooms and staff assignments. */
   remove: (id: string) => api.delete<null>(`/warehouses/${id}`),
   /** Up to 100 ids; see docs/API_DESIGN.md. */
@@ -97,9 +105,22 @@ export interface CreateColdRoomBody {
   capacityVolumeM3?: number
 }
 
+/** warehouseId is immutable; the capacity fields accept null to clear. */
+export interface UpdateColdRoomBody {
+  name?: string
+  tempMin?: number
+  tempMax?: number
+  hysteresis?: number
+  doorOpenMaxSeconds?: number
+  capacityPallets?: number | null
+  capacityWeightKg?: number | null
+  capacityVolumeM3?: number | null
+}
+
 export const coldRoomsApi = {
   list: (q: ColdRoomQuery = {}) => api.get<Paginated<ColdRoom>>('/cold-rooms', { ...q }),
   create: (body: CreateColdRoomBody) => api.post<ColdRoom>('/cold-rooms', body),
+  update: (id: string, body: UpdateColdRoomBody) => api.patch<ColdRoom>(`/cold-rooms/${id}`, body),
   remove: (id: string) => api.delete<null>(`/cold-rooms/${id}`),
   /**
    * Latest reading + device/alert counts for the given rooms, or for every
@@ -131,10 +152,16 @@ export interface CreateDeviceBody {
   firmwareVersion?: string
 }
 
+/** uniqueId is immutable; room/status change through claim/decommission. */
+export interface UpdateDeviceBody {
+  firmwareVersion?: string | null
+}
+
 export const devicesApi = {
   list: (q: DeviceQuery = {}) =>
     api.get<Paginated<Device>>('/devices', { ...q, unassigned: flag(q.unassigned) }),
   create: (body: CreateDeviceBody) => api.post<Device>('/devices', body),
+  update: (id: string, body: UpdateDeviceBody) => api.patch<Device>(`/devices/${id}`, body),
   remove: (id: string) => api.delete<null>(`/devices/${id}`),
   /** Up to 100 ids; see docs/API_DESIGN.md. */
   bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/devices/bulk-delete', { ids }),
@@ -174,10 +201,20 @@ export interface CreateProductTypeBody {
   storageTempMax?: number
 }
 
+export interface UpdateProductTypeBody {
+  name?: string
+  category?: string | null
+  unit?: ProductUnit
+  storageTempMin?: number | null
+  storageTempMax?: number | null
+}
+
 export const productTypesApi = {
   list: (q: ProductTypeQuery = {}) =>
     api.get<Paginated<ProductType>>('/product-types', { ...q }),
   create: (body: CreateProductTypeBody) => api.post<ProductType>('/product-types', body),
+  update: (id: string, body: UpdateProductTypeBody) =>
+    api.patch<ProductType>(`/product-types/${id}`, body),
   remove: (id: string) => api.delete<null>(`/product-types/${id}`),
   /** Up to 100 ids; see docs/API_DESIGN.md. */
   bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/product-types/bulk-delete', { ids }),
@@ -211,9 +248,21 @@ export interface CreateBatchBody {
   notes?: string
 }
 
+/** coldRoomId is immutable; status changes only through remove. */
+export interface UpdateBatchBody {
+  productTypeId?: string
+  batchCode?: string
+  quantity?: number
+  supplier?: string | null
+  receivedAt?: string
+  expiryDate?: string
+  notes?: string | null
+}
+
 export const batchesApi = {
   list: (q: BatchQuery = {}) => api.get<Paginated<Batch>>('/batches', { ...q }),
   create: (body: CreateBatchBody) => api.post<Batch>('/batches', body),
+  update: (id: string, body: UpdateBatchBody) => api.patch<Batch>(`/batches/${id}`, body),
   /** Not a delete: marks the batch `removed` (taken out of storage); 409 if it already is. */
   remove: (id: string) => api.delete<unknown>(`/batches/${id}`),
   /** Up to 100 ids; see docs/API_DESIGN.md. */
@@ -237,9 +286,18 @@ export interface CreateWorkShiftBody {
   workDate: string
 }
 
+/** warehouseId is immutable; the schedule is recomputed from shiftId + workDate. */
+export interface UpdateWorkShiftBody {
+  shiftId?: string
+  staffId?: string
+  /** YYYY-MM-DD */
+  workDate?: string
+}
+
 export const workShiftsApi = {
   list: (q: WorkShiftQuery = {}) => api.get<Paginated<WorkShift>>('/work-shifts', { ...q }),
   create: (body: CreateWorkShiftBody) => api.post<WorkShift>('/work-shifts', body),
+  update: (id: string, body: UpdateWorkShiftBody) => api.patch<WorkShift>(`/work-shifts/${id}`, body),
   remove: (id: string) => api.delete<null>(`/work-shifts/${id}`),
   /** Up to 100 ids; see docs/API_DESIGN.md. */
   bulkRemove: (ids: string[]) => api.post<BulkDeleteResult>('/work-shifts/bulk-delete', { ids }),
@@ -300,9 +358,19 @@ export interface CreateUserBody {
   phone?: string
 }
 
+/** No password here; only an admin may change `role`. */
+export interface UpdateUserBody {
+  username?: string
+  role?: UserRole
+  fullName?: string | null
+  email?: string | null
+  phone?: string | null
+}
+
 export const usersApi = {
   list: (q: UserQuery = {}) => api.get<Paginated<User>>('/users', { ...q }),
   create: (body: CreateUserBody) => api.post<User>('/users', body),
+  update: (id: string, body: UpdateUserBody) => api.patch<User>(`/users/${id}`, body),
   /** Soft delete; also drops the user's warehouse assignments. */
   remove: (id: string) => api.delete<null>(`/users/${id}`),
   /** Up to 100 ids; see docs/API_DESIGN.md. */

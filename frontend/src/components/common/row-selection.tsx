@@ -29,7 +29,8 @@ export function SelectRowCell({
 }) {
   const selectable = selection.isSelectable(id)
   return (
-    <TableCell className="w-12 pl-4">
+    // A near-miss on the checkbox shouldn't open the row's detail dialog.
+    <TableCell className="w-12 pl-4" data-row-click="ignore">
       <Checkbox
         checked={selectable && selection.isSelected(id)}
         onCheckedChange={(v) => selection.toggle(id, v === true)}

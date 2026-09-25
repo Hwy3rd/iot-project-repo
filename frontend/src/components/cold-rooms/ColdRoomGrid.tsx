@@ -1,4 +1,5 @@
 import type { ColdRoom, ColdRoomStatus } from '@/api/types'
+import { RowActions } from '@/components/common/RowDetail'
 import { ToneBadge } from '@/components/common/StatusBadge'
 import { StatusUnavailable } from '@/components/common/StatusUnavailable'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -6,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatDateTime, formatNumber, formatRelative, formatTemp } from '@/lib/format'
 import { DEVICE_STATUS_LABEL } from '@/lib/labels'
 import { PROBLEM_DEVICE_STATUSES, TEMP_STATE, tempState, type TempState } from '@/lib/room-status'
+import { rowOpenProps } from '@/lib/useRowDialogs'
 import type { RowSelection } from '@/lib/useRowSelection'
 import { cn } from '@/lib/utils'
 import { Cpu, DoorClosed, DoorOpen, Siren } from 'lucide-react'
@@ -53,21 +55,28 @@ function ColdRoomCard({
   statusPending,
   warehouseLabel,
   selection,
+  onView,
+  onEdit,
 }: {
   room: ColdRoom
   status: ColdRoomStatus | undefined
   statusPending: boolean
   warehouseLabel: string
   selection?: RowSelection
+  onView: () => void
+  onEdit?: () => void
 }) {
   const latest = status?.latest ?? null
   const state = tempState(latest)
   const selectable = selection?.isSelectable(room.id) ?? false
+  const open = rowOpenProps(onView)
 
   return (
     <article
+      onClick={open.onClick}
       className={cn(
-        'flex flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 shadow-xs',
+        'flex flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 shadow-xs transition-colors hover:bg-muted/40',
+        open.className,
         status ? ACCENT[state] : 'border-l-border',
         selectable && selection?.isSelected(room.id) && 'ring-2 ring-primary/40',
       )}
@@ -84,8 +93,13 @@ function ColdRoomCard({
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold break-words">{room.name}</h3>
           <p className="truncate text-sm text-muted-foreground">{warehouseLabel}</p>
+          {status && (
+            <div className="mt-1.5">
+              <ToneBadge tone={TEMP_STATE[state].tone}>{TEMP_STATE[state].label}</ToneBadge>
+            </div>
+          )}
         </div>
-        {status && <ToneBadge tone={TEMP_STATE[state].tone}>{TEMP_STATE[state].label}</ToneBadge>}
+        <RowActions label={`phòng lạnh ${room.name}`} onView={onView} onEdit={onEdit} />
       </header>
 
       <div className="flex items-end justify-between gap-3">
@@ -154,6 +168,8 @@ export function ColdRoomGrid({
   statusError,
   warehouseLabel,
   selection,
+  onView,
+  onEdit,
 }: {
   rooms: ColdRoom[]
   statuses: ReadonlyMap<string, ColdRoomStatus>
@@ -161,6 +177,9 @@ export function ColdRoomGrid({
   statusError: boolean
   warehouseLabel: (warehouseId: string) => string
   selection?: RowSelection
+  onView: (room: ColdRoom) => void
+  /** Omit when the caller may not edit cold rooms. */
+  onEdit?: (room: ColdRoom) => void
 }) {
   return (
     <>
@@ -174,6 +193,8 @@ export function ColdRoomGrid({
             statusPending={statusPending && !statusError}
             warehouseLabel={warehouseLabel(room.warehouseId)}
             selection={selection}
+            onView={() => onView(room)}
+            onEdit={onEdit && (() => onEdit(room))}
           />
         ))}
       </div>

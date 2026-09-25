@@ -1,9 +1,17 @@
 import { auditLogsApi, type AuditLogQuery } from '@/api/endpoints'
+import type { AuditLog } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, SelectFilter, TextFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  JsonBlock,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import {
   Table,
@@ -17,6 +25,7 @@ import { emptyFilters, rangeError } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { shortId, useUserLookup, useWarehouseLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = [
@@ -108,6 +117,8 @@ export function AuditLogsPage() {
   const f = list.filters
   const warehouses = useWarehouseLookup()
   const users = useUserLookup(isAdmin)
+  const rows = useRowDialogs<AuditLog>()
+  const current = rows.item
 
   const params: AuditLogQuery = {
     page: list.page,
@@ -157,14 +168,15 @@ export function AuditLogsPage() {
               <TableRow>
                 <TableHead className="pl-4">Thời điểm</TableHead>
                 <TableHead>Thao tác</TableHead>
-                <TableHead className="hidden sm:table-cell">Người thực hiện</TableHead>
-                <TableHead className="hidden md:table-cell">Đối tượng</TableHead>
-                <TableHead className="hidden pr-4 lg:table-cell">Kho</TableHead>
+                <TableHead>Người thực hiện</TableHead>
+                <TableHead>Đối tượng</TableHead>
+                <TableHead>Kho</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((l) => (
-                <TableRow key={l.id}>
+                <TableRow key={l.id} {...rowOpenProps(() => rows.view(l))}>
                   <TableCell className="pl-4 text-muted-foreground">
                     <time dateTime={l.createdAt} title={formatDateTime(l.createdAt)}>
                       {formatRelative(l.createdAt)}
@@ -173,8 +185,8 @@ export function AuditLogsPage() {
                   <TableCell className="font-mono text-sm" translate="no">
                     {l.action}
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">{actor(l.userId)}</TableCell>
-                  <TableCell className="hidden font-mono text-sm md:table-cell" translate="no">
+                  <TableCell>{actor(l.userId)}</TableCell>
+                  <TableCell className="font-mono text-sm" translate="no">
                     {l.targetType ?? '—'}
                     {l.targetId && (
                       <span className="text-muted-foreground" title={l.targetId}>
@@ -183,15 +195,51 @@ export function AuditLogsPage() {
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="hidden pr-4 lg:table-cell">
+                  <TableCell>
                     {warehouses.label(l.warehouseId)}
                   </TableCell>
+                  <RowActionsCell
+                    label={`nhật ký ${l.action} lúc ${formatDateTime(l.createdAt)}`}
+                    onView={() => rows.view(l)}
+                  />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <DetailDialog
+          open={rows.viewing}
+          onClose={rows.close}
+          title={<span className="font-mono" translate="no">{current.action}</span>}
+          description={formatDateTime(current.createdAt)}
+          wide
+        >
+          <DetailList
+            fields={[
+              { label: 'Người thực hiện', value: actor(current.userId) },
+              { label: 'Thời điểm', value: formatDateTime(current.createdAt) },
+              { label: 'Kho', value: current.warehouseId && warehouses.label(current.warehouseId) },
+              {
+                label: 'Loại đối tượng',
+                value: current.targetType && (
+                  <span className="font-mono" translate="no">{current.targetType}</span>
+                ),
+              },
+              {
+                label: 'Mã đối tượng',
+                value: current.targetId && (
+                  <span className="font-mono text-sm break-all" translate="no">{current.targetId}</span>
+                ),
+                full: true,
+              },
+              { label: 'Dữ liệu kèm theo', value: <JsonBlock value={current.metadata} />, full: true },
+            ]}
+          />
+        </DetailDialog>
+      )}
     </>
   )
 }

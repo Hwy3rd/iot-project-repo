@@ -1,14 +1,17 @@
-import { productTypesApi, type CreateProductTypeBody } from '@/api/endpoints'
-import type { ProductUnit } from '@/api/types'
+import { productTypesApi } from '@/api/endpoints'
+import type { ProductType, ProductUnit } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
 import { SelectField, TextField } from '@/components/common/form-fields'
 import { labelOptions } from '@/lib/filters'
 import {
   mutationErrorText,
+  nullableNumber,
+  nullableText,
   numberRule,
   optionalNumber,
   optionalText,
   requiredText,
+  toInput,
 } from '@/lib/forms'
 import { PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -32,10 +35,51 @@ const EMPTY: FormValues = {
   storageTempMax: '',
 }
 
+const toValues = (p: ProductType): FormValues => ({
+  name: p.name,
+  category: toInput(p.category),
+  unit: p.unit,
+  storageTempMin: toInput(p.storageTempMin),
+  storageTempMax: toInput(p.storageTempMax),
+})
+
 /** Admin only — product types are shared master data. */
 export function CreateProductTypeDialog() {
   const [open, setOpen] = useState(false)
+  return <ProductTypeFormDialog open={open} onOpenChange={setOpen} />
+}
+
+/** Admin only. Mount with key={`${id}:${updatedAt}`} so the form reloads fresh values. */
+export function EditProductTypeDialog({
+  productType,
+  open,
+  onClose,
+}: {
+  productType: ProductType
+  open: boolean
+  onClose: () => void
+}) {
+  return (
+    <ProductTypeFormDialog
+      productType={productType}
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+    />
+  )
+}
+
+function ProductTypeFormDialog({
+  productType,
+  open,
+  onOpenChange,
+}: {
+  /** Set = edit this product type; unset = create. */
+  productType?: ProductType
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const qc = useQueryClient()
+  const initial = productType ? toValues(productType) : EMPTY
   const {
     register,
     control,
@@ -43,15 +87,30 @@ export function CreateProductTypeDialog() {
     reset,
     setError,
     formState: { errors },
-  } = useForm<FormValues>({ defaultValues: EMPTY })
+  } = useForm<FormValues>({ defaultValues: initial })
 
-  const create = useMutation({
-    mutationFn: (body: CreateProductTypeBody) => productTypesApi.create(body),
+  const save = useMutation({
+    mutationFn: (v: FormValues) =>
+      productType
+        ? productTypesApi.update(productType.id, {
+            name: v.name.trim(),
+            category: nullableText(v.category),
+            unit: v.unit as ProductUnit,
+            storageTempMin: nullableNumber(v.storageTempMin),
+            storageTempMax: nullableNumber(v.storageTempMax),
+          })
+        : productTypesApi.create({
+            name: v.name.trim(),
+            category: optionalText(v.category),
+            unit: v.unit as ProductUnit,
+            storageTempMin: optionalNumber(v.storageTempMin),
+            storageTempMax: optionalNumber(v.storageTempMax),
+          }),
     onSuccess: (p) => {
       qc.invalidateQueries({ queryKey: ['product-types'] })
-      toast.success('Đã tạo loại sản phẩm', { description: p.name })
-      setOpen(false)
-      reset(EMPTY)
+      toast.success(productType ? 'Đã lưu thay đổi' : 'Đã tạo loại sản phẩm', { description: p.name })
+      onOpenChange(false)
+      reset(productType ? toValues(p) : EMPTY)
     },
     onError: (err) =>
       setError('root.server', {
@@ -61,27 +120,17 @@ export function CreateProductTypeDialog() {
       }),
   })
 
-  const onSubmit = handleSubmit((v) =>
-    create.mutate({
-      name: v.name.trim(),
-      category: optionalText(v.category),
-      unit: v.unit as ProductUnit,
-      storageTempMin: optionalNumber(v.storageTempMin),
-      storageTempMax: optionalNumber(v.storageTempMax),
-    }),
-  )
-
   return (
     <FormDialog
       open={open}
-      onOpenChange={setOpen}
-      onClosed={() => reset(EMPTY)}
-      triggerLabel="Tạo loại sản phẩm"
-      title="Tạo loại sản phẩm mới"
+      onOpenChange={onOpenChange}
+      onClosed={() => reset(initial)}
+      triggerLabel={productType ? undefined : 'Tạo loại sản phẩm'}
+      title={productType ? `Sửa loại sản phẩm ${productType.name}` : 'Tạo loại sản phẩm mới'}
       description="Khoảng nhiệt độ bảo quản (nếu có) được dùng để kiểm tra phòng lạnh khi nhập lô hàng."
-      onSubmit={onSubmit}
-      pending={create.isPending}
-      submitLabel="Tạo loại sản phẩm"
+      onSubmit={handleSubmit((v) => save.mutate(v))}
+      pending={save.isPending}
+      submitLabel={productType ? 'Lưu thay đổi' : 'Tạo loại sản phẩm'}
       serverError={errors.root?.server?.message}
     >
       <TextField

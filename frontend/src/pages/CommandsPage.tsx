@@ -1,11 +1,18 @@
 import { commandsApi, type CommandQuery } from '@/api/endpoints'
-import type { CommandAction, CommandStatus } from '@/api/types'
+import type { Command, CommandAction, CommandStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { CreateCommandDialog } from '@/components/commands/CreateCommandDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
+import {
+  DetailDialog,
+  DetailList,
+  JsonBlock,
+  RowActionsCell,
+  RowActionsHead,
+} from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { CommandStatusBadge } from '@/components/common/StatusBadge'
 import {
@@ -21,6 +28,7 @@ import { formatDateTime, formatRelative } from '@/lib/format'
 import { COMMAND_ACTION_LABEL, COMMAND_STATUS_LABEL } from '@/lib/labels'
 import { shortId, useUserLookup, useWarehouseLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = [
@@ -112,6 +120,8 @@ export function CommandsPage() {
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const users = useUserLookup(isAdmin)
+  const rows = useRowDialogs<Command>()
+  const current = rows.item
 
   const params: CommandQuery = {
     page: list.page,
@@ -165,14 +175,15 @@ export function CommandsPage() {
                 <TableHead className="pl-4">Thời điểm</TableHead>
                 <TableHead>Lệnh</TableHead>
                 <TableHead>Trạng thái</TableHead>
-                <TableHead className="hidden md:table-cell">Kênh</TableHead>
-                <TableHead className="hidden sm:table-cell">Người gửi</TableHead>
-                <TableHead className="hidden pr-4 lg:table-cell">Xác nhận</TableHead>
+                <TableHead>Kênh</TableHead>
+                <TableHead>Người gửi</TableHead>
+                <TableHead>Xác nhận</TableHead>
+                <RowActionsHead />
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map((c) => (
-                <TableRow key={c.id}>
+                <TableRow key={c.id} {...rowOpenProps(() => rows.view(c))}>
                   <TableCell className="pl-4 text-muted-foreground">
                     <time dateTime={c.createdAt} title={formatDateTime(c.createdAt)}>
                       {formatRelative(c.createdAt)}
@@ -183,22 +194,54 @@ export function CommandsPage() {
                     <CommandStatusBadge status={c.status} />
                   </TableCell>
                   <TableCell
-                    className="hidden font-mono text-sm text-muted-foreground md:table-cell"
+                    className="font-mono text-sm text-muted-foreground"
                     title={c.channelId}
                     translate="no"
                   >
                     {shortId(c.channelId)}
                   </TableCell>
-                  <TableCell className="hidden sm:table-cell">{issuer(c.issuedBy)}</TableCell>
-                  <TableCell className="hidden pr-4 text-muted-foreground lg:table-cell">
+                  <TableCell>{issuer(c.issuedBy)}</TableCell>
+                  <TableCell className="text-muted-foreground">
                     {formatDateTime(c.ackAt)}
                   </TableCell>
+                  <RowActionsCell
+                    label={`lệnh ${COMMAND_ACTION_LABEL[c.action]} lúc ${formatDateTime(c.createdAt)}`}
+                    onView={() => rows.view(c)}
+                  />
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </ListCard>
+
+      {current && (
+        <DetailDialog
+          open={rows.viewing}
+          onClose={rows.close}
+          title={COMMAND_ACTION_LABEL[current.action]}
+          description={formatDateTime(current.createdAt)}
+        >
+          <DetailList
+            fields={[
+              { label: 'Trạng thái', value: <CommandStatusBadge status={current.status} /> },
+              { label: 'Người gửi', value: issuer(current.issuedBy) },
+              { label: 'Gửi lúc', value: formatDateTime(current.createdAt) },
+              { label: 'Xác nhận lúc', value: current.ackAt && formatDateTime(current.ackAt) },
+              {
+                label: 'Kênh',
+                value: (
+                  <span className="font-mono text-sm break-all" translate="no">
+                    {current.channelId}
+                  </span>
+                ),
+                full: true,
+              },
+              { label: 'Payload', value: <JsonBlock value={current.payload} />, full: true },
+            ]}
+          />
+        </DetailDialog>
+      )}
     </>
   )
 }
