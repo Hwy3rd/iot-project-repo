@@ -26,7 +26,7 @@ export interface ChatbotToolCaller {
   // Set by execute() for the running tool — resolved by the same
   // WarehouseAccessService the REST list routes use, from the tool's
   // allowedRoles/requireShift, so a tool never sees more than its REST
-  // counterpart (per-warehouse role model, docs/RBAC.md §3).
+  // counterpart (docs/RBAC.md §3).
   access?: WarehouseAccess;
 }
 
@@ -206,7 +206,7 @@ export class ChatbotToolExecutorService {
   // a freshly created Manager/Staff account.
   // null = unrestricted (Admin). Never null and empty at once — empty means
   // "no warehouse where this tool's data is reachable for you right now"
-  // (not assigned, wrong role there, or — for Staff on requireShift tools —
+  // (not assigned, wrong role, or — for Staff on requireShift tools —
   // not checked in).
   private async getAssignedWarehouseIds(
     caller: ChatbotToolCaller,

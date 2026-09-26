@@ -71,7 +71,7 @@ export class WorkShiftsService {
       }),
       this.shiftsRepository.find(),
       this.warehouseStaffRepository.find({
-        where: { userId, role: UserRole.STAFF },
+        where: { userId, user: { role: UserRole.STAFF } },
         relations: { warehouse: true },
         order: { createdAt: 'ASC' },
       }),
@@ -114,10 +114,12 @@ export class WorkShiftsService {
   // reviews it. WarehouseScopeGuard has already checked the caller's role
   // there is Staff — except for Admin, who bypasses it and is refused here.
   async checkIn(userId: string, warehouseId: string, now = new Date()) {
-    const assignment = await this.warehouseStaffRepository.findOne({
-      where: { userId, warehouseId },
+    const assigned = await this.warehouseStaffRepository.existsBy({
+      userId,
+      warehouseId,
+      user: { role: UserRole.STAFF },
     });
-    if (assignment?.role !== UserRole.STAFF) {
+    if (!assigned) {
       throw new BadRequestException(
         `You are not Staff of warehouse ${warehouseId}`,
       );
@@ -332,7 +334,10 @@ export class WorkShiftsService {
     try {
       const [managers, admins] = await Promise.all([
         this.warehouseStaffRepository.find({
-          where: { warehouseId: workShift.warehouseId, role: UserRole.MANAGER },
+          where: {
+            warehouseId: workShift.warehouseId,
+            user: { role: UserRole.MANAGER },
+          },
           select: { userId: true },
         }),
         this.usersRepository.find({

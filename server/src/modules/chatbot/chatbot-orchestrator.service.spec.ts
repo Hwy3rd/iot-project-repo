@@ -54,7 +54,6 @@ describe('ChatbotOrchestratorService', () => {
       chatbotService as never,
       llmService as never,
       toolExecutor as never,
-      { assignedRoles: jest.fn().mockResolvedValue([]) } as never,
       realtime as never,
       redis as never,
     );

@@ -2,7 +2,7 @@ import type { WorkShiftStatus } from './work-shift.constant';
 
 // Warehouse-room events pushed by RealtimeGateway.emitToWarehouse(). Every
 // socket in `warehouse:{id}` gets them — i.e. anyone assigned to that
-// warehouse, whatever their role there or whether they're on shift (the
+// warehouse, whatever their role or whether they're on shift (the
 // same audience as GET /cold-rooms/status).
 export const REALTIME_EVENTS = {
   // A new telemetry sample was stored. Payload: ColdRoomReadingEvent.

@@ -31,6 +31,7 @@ const createMockRepository = <T extends object>(): MockRepository<T> => ({
   findOne: jest.fn(),
   find: jest.fn(),
   findAndCount: jest.fn(),
+  existsBy: jest.fn(),
   create: jest.fn(),
   save: jest.fn(),
   delete: jest.fn(),
@@ -245,7 +246,7 @@ describe('WorkShiftsService', () => {
       });
       expect(warehouseStaffRepository.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { userId: 'u1', role: UserRole.STAFF },
+          where: { userId: 'u1', user: { role: UserRole.STAFF } },
         }),
       );
       expect(result).toEqual({
@@ -275,9 +276,7 @@ describe('WorkShiftsService', () => {
 
   describe('checkIn', () => {
     beforeEach(() => {
-      warehouseStaffRepository.findOne!.mockResolvedValue({
-        role: UserRole.STAFF,
-      });
+      warehouseStaffRepository.existsBy!.mockResolvedValue(true);
       shiftsRepository.find!.mockResolvedValue([morning, night]);
       workShiftsRepository.create!.mockImplementation(
         (value: object) => ({ ...value }) as WorkShift,
@@ -290,13 +289,16 @@ describe('WorkShiftsService', () => {
     });
 
     it('refuses a caller who is not Staff of the warehouse', async () => {
-      warehouseStaffRepository.findOne!.mockResolvedValue({
-        role: UserRole.MANAGER,
-      });
+      warehouseStaffRepository.existsBy!.mockResolvedValue(false);
 
       await expect(service.checkIn('u1', 'w1', now)).rejects.toThrow(
         BadRequestException,
       );
+      expect(warehouseStaffRepository.existsBy).toHaveBeenCalledWith({
+        userId: 'u1',
+        warehouseId: 'w1',
+        user: { role: UserRole.STAFF },
+      });
     });
 
     it('refuses when no shift is open', async () => {
@@ -329,7 +331,7 @@ describe('WorkShiftsService', () => {
       };
       expect(warehouseStaffRepository.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { warehouseId: 'w1', role: UserRole.MANAGER },
+          where: { warehouseId: 'w1', user: { role: UserRole.MANAGER } },
         }),
       );
       for (const userId of ['u1', 'm1', 'a1']) {

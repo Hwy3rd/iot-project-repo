@@ -7,7 +7,7 @@ import { ChatbotToolExecutorService } from './chatbot-tool-executor.service';
 // they mirror, under the per-warehouse role model (docs/RBAC.md §3), via
 // the same WarehouseAccessService the guards use.
 describe('ChatbotToolExecutorService scoping', () => {
-  let assignments: { warehouseId: string; role: UserRole }[];
+  let assignments: { warehouseId: string }[];
   let activeShiftWarehouses: string[];
   let workShiftsRepo: { find: jest.Mock };
   let devicesRepo: { find: jest.Mock; findOne: jest.Mock };
@@ -63,7 +63,7 @@ describe('ChatbotToolExecutorService scoping', () => {
   });
 
   it('refuses a device-log tool to someone who is only Staff anywhere', async () => {
-    assignments = [{ warehouseId: 'w1', role: UserRole.STAFF }];
+    assignments = [{ warehouseId: 'w1' }];
 
     const result = await service.execute(
       'get_telemetry_raw',
@@ -75,7 +75,7 @@ describe('ChatbotToolExecutorService scoping', () => {
   });
 
   it('refuses batches to a Technician (no stock operations)', async () => {
-    assignments = [{ warehouseId: 'w1', role: UserRole.TECHNICIAN }];
+    assignments = [{ warehouseId: 'w1' }];
 
     const result = await service.execute(
       'get_batches',
@@ -88,7 +88,7 @@ describe('ChatbotToolExecutorService scoping', () => {
   });
 
   it('hides devices from Staff who are not checked into a shift', async () => {
-    assignments = [{ warehouseId: 'w1', role: UserRole.STAFF }];
+    assignments = [{ warehouseId: 'w1' }];
     activeShiftWarehouses = [];
 
     const result = await service.execute(
@@ -101,10 +101,7 @@ describe('ChatbotToolExecutorService scoping', () => {
   });
 
   it('shows devices of the warehouse where Staff is checked in', async () => {
-    assignments = [
-      { warehouseId: 'w1', role: UserRole.STAFF },
-      { warehouseId: 'w2', role: UserRole.STAFF },
-    ];
+    assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
     activeShiftWarehouses = ['w2'];
     coldRoomsRepo.find.mockResolvedValue([{ id: 'cr2' }]);
 
@@ -119,50 +116,47 @@ describe('ChatbotToolExecutorService scoping', () => {
     });
   });
 
-  it('lets a global Staff who is Technician in w3 read device logs there only', async () => {
-    assignments = [
-      { warehouseId: 'w1', role: UserRole.STAFF },
-      { warehouseId: 'w3', role: UserRole.TECHNICIAN },
-    ];
-    // d1 lives in w1, where this user is only Staff.
+  it('refuses device logs from a warehouse the caller is not assigned to', async () => {
+    assignments = [{ warehouseId: 'w3' }];
+    // d1 lives in w1.
     devicesRepo.findOne.mockResolvedValue({ id: 'd1', coldRoomId: 'cr1' });
     coldRoomsRepo.findOne.mockResolvedValue({ id: 'cr1', warehouseId: 'w1' });
 
     const result = await service.execute(
       'get_telemetry_raw',
       { deviceId: 'd1' },
-      { id: 'u1', role: UserRole.STAFF },
+      { id: 'u1', role: UserRole.TECHNICIAN },
     );
 
     expect(result.error).toContain('không có quyền truy cập tài nguyên này');
   });
 
-  it('shows all shifts where the caller manages, only their own where they are Staff', async () => {
-    assignments = [
-      { warehouseId: 'w1', role: UserRole.MANAGER },
-      { warehouseId: 'w2', role: UserRole.STAFF },
-    ];
+  it('shows a Manager every shift in their warehouses, and Staff only their own', async () => {
+    assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
 
     await service.execute(
       'get_work_shifts',
       { staffId: 'someone' },
       { id: 'u1', role: UserRole.MANAGER },
     );
-
     expect(workShiftsRepo.find).toHaveBeenLastCalledWith({
-      where: [
-        { warehouseId: In(['w1']), staffId: 'someone' },
-        { warehouseId: In(['w2']), staffId: 'u1' },
-      ],
+      where: [{ warehouseId: In(['w1', 'w2']), staffId: 'someone' }],
+      order: { workDate: 'DESC' },
+    });
+
+    await service.execute(
+      'get_work_shifts',
+      { staffId: 'someone' },
+      { id: 'u1', role: UserRole.STAFF },
+    );
+    expect(workShiftsRepo.find).toHaveBeenLastCalledWith({
+      where: [{ warehouseId: In(['w1', 'w2']), staffId: 'u1' }],
       order: { workDate: 'DESC' },
     });
   });
 
   it('lists alerts across all reachable warehouses in a single query', async () => {
-    assignments = [
-      { warehouseId: 'w1', role: UserRole.MANAGER },
-      { warehouseId: 'w2', role: UserRole.TECHNICIAN },
-    ];
+    assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
 
     await service.execute(
       'get_alerts',

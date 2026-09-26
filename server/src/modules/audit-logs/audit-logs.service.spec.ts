@@ -118,7 +118,7 @@ describe('AuditLogsService', () => {
       await service.findAll({ targetType: 'batch' }, manager);
 
       expect(warehouseStaffRepository.find).toHaveBeenCalledWith({
-        where: { userId: 'm1', role: UserRole.MANAGER },
+        where: { userId: 'm1' },
       });
       expect(auditLogsRepository.findAndCount).toHaveBeenCalledWith({
         where: { targetType: 'batch', warehouseId: In(['w1', 'w2']) },

@@ -38,7 +38,7 @@ Bốn vai trò; ma trận quyền chi tiết theo từng chức năng xem [RBAC.
 ### 3.2 Quản lý kho, phòng lạnh & danh mục sản phẩm
 
 - Quản lý danh sách kho (warehouse) và các phòng lạnh (cold room) bên trong từng kho; mỗi phòng có ngưỡng nhiệt độ an toàn riêng, biên trễ chống bật/tắt liên tục thiết bị làm mát, ngưỡng thời gian mở cửa tối đa và sức chứa.
-- Gán nhân sự (Manager/Technician/Staff) vào một hoặc nhiều kho — cùng một người có thể giữ vai trò khác nhau ở mỗi kho, trừ Nhân viên: tài khoản Nhân viên chỉ làm Nhân viên, và chỉ tài khoản Nhân viên mới được gán vai trò Nhân viên.
+- Gán nhân sự (Manager/Technician/Staff) vào một hoặc nhiều kho. Mỗi tài khoản chỉ có một vai trò và dùng vai trò đó ở mọi kho được gán — không gán vai trò riêng theo từng kho. Quản trị viên không cần gán vì đã thấy mọi kho.
 - Quản lý danh mục loại sản phẩm dùng chung toàn hệ thống, kèm khoảng nhiệt độ bảo quản khuyến nghị, dùng để đối chiếu khi xếp một lô hàng vào một phòng lạnh cụ thể.
 
 ### 3.3 Quản lý lô hàng

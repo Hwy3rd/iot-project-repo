@@ -10,6 +10,10 @@ class WarehouseStaffUserDto {
 
   @Expose()
   fullName!: string | null;
+
+  // What they may do in this warehouse — the same in all of theirs.
+  @Expose()
+  role!: UserRole;
 }
 
 export class WarehouseStaffResponseDto {
@@ -18,10 +22,6 @@ export class WarehouseStaffResponseDto {
 
   @Expose()
   warehouseId!: string;
-
-  // Role within this warehouse — may differ from the user's global role.
-  @Expose()
-  role!: UserRole;
 
   @Expose()
   createdAt!: Date;

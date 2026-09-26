@@ -34,10 +34,10 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('User not found in request');
     }
 
-    // Warehouse-scoped routes: for everyone but Admin, the role that counts
-    // is the caller's role *in the target warehouse* (warehouse_staff.role),
-    // not their global account role — WarehouseScopeGuard checks that once
-    // it has resolved the warehouse. See docs/RBAC.md §3.
+    // Warehouse-scoped routes: for everyone but Admin, WarehouseScopeGuard
+    // checks the role together with the warehouse assignment once it has
+    // resolved the warehouse (a list route never rejects, it just narrows
+    // to nothing). See docs/RBAC.md §3.
     const isWarehouseScoped =
       this.reflector.getAllAndOverride<unknown>(WAREHOUSE_SCOPE_KEY, [
         context.getHandler(),

@@ -232,35 +232,34 @@ describe('UsersService', () => {
       ).resolves.toMatchObject({ role: UserRole.MANAGER });
     });
 
-    it('refuses to move an account out of Staff while it has warehouses', async () => {
-      repository.findOne!.mockResolvedValue({ ...staffUser });
-      dataSource.manager.count.mockResolvedValue(2);
+    it.each([UserRole.MANAGER, UserRole.TECHNICIAN])(
+      'changes a Staff account to %s without touching its warehouses',
+      async (role) => {
+        repository.findOne!.mockResolvedValue({ ...staffUser });
 
-      await expect(
-        service.update(
-          's1',
-          { role: UserRole.MANAGER },
-          { id: 'a1', role: UserRole.ADMIN },
-        ),
-      ).rejects.toThrow(ConflictException);
-      expect(repository.save).not.toHaveBeenCalled();
-    });
+        await expect(
+          service.update('s1', { role }, { id: 'a1', role: UserRole.ADMIN }),
+        ).resolves.toMatchObject({ role });
+        expect(dataSource.manager.delete).not.toHaveBeenCalled();
+      },
+    );
 
-    it('allows a role change that keeps Staff on the same side', async () => {
+    it('drops the warehouse assignments of an account promoted to Admin', async () => {
       repository.findOne!.mockResolvedValue({
         id: 'm1',
         role: UserRole.MANAGER,
       });
-      dataSource.manager.count.mockResolvedValue(2);
 
       await expect(
         service.update(
           'm1',
-          { role: UserRole.TECHNICIAN },
+          { role: UserRole.ADMIN },
           { id: 'a1', role: UserRole.ADMIN },
         ),
-      ).resolves.toMatchObject({ role: UserRole.TECHNICIAN });
-      expect(dataSource.manager.count).not.toHaveBeenCalled();
+      ).resolves.toMatchObject({ role: UserRole.ADMIN });
+      expect(dataSource.manager.delete).toHaveBeenCalledWith(WarehouseStaff, {
+        userId: 'm1',
+      });
     });
   });
 

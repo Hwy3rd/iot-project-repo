@@ -34,9 +34,9 @@ export interface ChatbotToolDefinition {
     properties: Record<string, unknown>;
     required?: string[];
   };
-  // Mirrors the @Roles of the REST route(s) exposing the same data. For a
-  // non-admin these are matched against their role *in each warehouse*
-  // (warehouse_staff.role), same model as WarehouseScopeGuard — see
+  // Mirrors the @Roles of the REST route(s) exposing the same data. A
+  // non-admin whose role is listed reaches the data of the warehouses
+  // they're assigned to, same model as WarehouseScopeGuard — see
   // WarehouseAccessService.
   allowedRoles: UserRole[];
   // Mirrors the REST route's @WarehouseScope({ requireShift }): in a
