@@ -61,4 +61,4 @@ compose run --rm app node dist/seeds/account.seed.js
 ok "seed complete"
 
 echo
-ok "system initialized — app is reachable through the Cloudflare Tunnel hostnames (no host port is published)"
+ok "system initialized — app is reachable through the Cloudflare Tunnel hostnames (API/datastore ports are bound to 127.0.0.1 only)"

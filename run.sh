@@ -8,6 +8,8 @@
 #
 # Usage:
 #   ./run.sh start            resume all stopped containers
+#   ./run.sh dev              up everything except app + cloudflared; start
+#                             the backend on the host yourself
 #   ./run.sh stop             stop all containers (keeps data/volumes)
 #   ./run.sh restart [svc]    restart everything, or just one service
 #   ./run.sh status           show container status
@@ -23,6 +25,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
 SERVICES=(app worker redis mysql mongo minio mosquitto cloudflared)
+# `dev`: backend runs on the host, reaching datastores via 127.0.0.1 ports.
+DEV_SERVICES=(worker redis mysql mongo minio mosquitto)
 # Services built from ./server (same image, different command).
 BACKEND_SERVICES=(app worker)
 REBUILD_WAIT_SECONDS=300
@@ -67,6 +71,15 @@ case "$cmd" in
       compose start "${SERVICES[@]}"
     fi
     ok "stack is up"
+    compose ps
+    ;;
+
+  dev)
+    # --no-deps: worker depends_on app (healthy); without it compose would
+    # start app too (plain `start` does as well).
+    log "starting containers: ${DEV_SERVICES[*]}"
+    compose up -d --no-deps "${DEV_SERVICES[@]}"
+    ok "dev stack is up — app/cloudflared not started, run the backend on the host yourself"
     compose ps
     ;;
 

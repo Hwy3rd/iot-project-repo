@@ -2,9 +2,10 @@
 # init.sh/run.sh. Differs from the dev file in:
 #   - the root .env is required and datastore credentials must be set in it
 #     (no dev defaults);
-#   - nothing is published on the host except MQTT (1883, for devices): the
-#     API and MinIO are reached through the Cloudflare Tunnel, datastores only
-#     from inside the compose network (admin via `docker exec`);
+#   - only MQTT (1883, for devices) is published on all interfaces; the API,
+#     MinIO and datastores are published on 127.0.0.1 only (same ports as
+#     dev) for local admin tools, and reached publicly through the Cloudflare
+#     Tunnel (API, MinIO) or not at all (datastores);
 #   - the cloudflared service.
 # Keep the shared parts (builds, healthchecks, depends_on, volumes) in sync
 # with docker-compose.yml by hand.
@@ -15,6 +16,8 @@ services:
       additional_contexts:
         docs: ./docs
     container_name: node_server
+    ports:
+      - "8080:3000"
     env_file:
       - ./.env
     environment:
@@ -72,6 +75,8 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis_db
+    ports:
+      - "6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -84,6 +89,8 @@ services:
   mysql:
     image: mysql:8.0
     container_name: mysql_db
+    ports:
+      - "3306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
       MYSQL_USER: ${MYSQL_USER:?set MYSQL_USER in .env}
@@ -108,6 +115,8 @@ services:
   mongo:
     image: mongo:7
     container_name: mongo_db
+    ports:
+      - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?set MONGO_ROOT_USERNAME in .env}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in .env}
@@ -130,6 +139,9 @@ services:
     image: cgr.dev/chainguard/minio:latest
     container_name: minio_bucket
     command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}

@@ -127,7 +127,7 @@ Dockerfile multi-stage (`server/Dockerfile`):
 2 file compose **độc lập** (mỗi file tự đầy đủ, chạy riêng bằng `-f`), cùng tập service và cùng build/healthcheck/`depends_on`/volume — phần chung này phải sửa **cả 2 file** khi thay đổi:
 
 - `docker-compose.yml` — dev: publish port datastore ra `localhost`, credential có giá trị mặc định (khớp `server/.env.example`), `.env` ở root là tuỳ chọn — dùng cho `docker compose up -d redis mysql mongo minio mosquitto` khi chạy backend trên host bằng `pnpm start:dev`.
-- `docker-compose.production.yml` — production, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh): `.env` và credential datastore bắt buộc, không publish port nào trừ MQTT `1883`, có thêm `cloudflared`.
+- `docker-compose.production.yml` — production, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh): `.env` và credential datastore bắt buộc, API/datastore chỉ publish trên `127.0.0.1` (cho client trên máy chủ), chỉ MQTT `1883` publish ra ngoài, có thêm `cloudflared`.
 
 ---
 
