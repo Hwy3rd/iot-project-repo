@@ -7,7 +7,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { IsNull, Like, QueryFailedError, Repository } from 'typeorm';
-import { DeviceStatus } from '../../libs/constants/device.constant';
+import {
+  DeviceStatus,
+  DeviceStatusChangeTrigger,
+} from '../../libs/constants/device.constant';
+import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { DevicesService } from './devices.service';
 import { Device } from './entities/device.entity';
@@ -27,18 +31,35 @@ const createMockRepository = <T extends object>(): MockRepository<T> => ({
   softDelete: jest.fn(),
 });
 
+// The EntityManager a lifecycle step's transaction runs with: saves echo
+// back what they were given, creates build a plain object.
+const createMockManager = () => ({
+  save: jest.fn((_entity: unknown, value: unknown) => Promise.resolve(value)),
+  create: jest.fn((_entity: unknown, value: unknown) => value),
+});
+
 describe('DevicesService', () => {
   let service: DevicesService;
   let devicesRepository: MockRepository<Device>;
   let coldRoomsRepository: MockRepository<ColdRoom>;
+  let manager: ReturnType<typeof createMockManager>;
 
   beforeEach(async () => {
+    manager = createMockManager();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DevicesService,
         {
           provide: getRepositoryToken(Device),
-          useValue: createMockRepository<Device>(),
+          useValue: {
+            ...createMockRepository<Device>(),
+            manager: {
+              transaction: jest.fn(
+                (work: (m: ReturnType<typeof createMockManager>) => unknown) =>
+                  work(manager),
+              ),
+            },
+          },
         },
         {
           provide: getRepositoryToken(ColdRoom),
@@ -119,11 +140,30 @@ describe('DevicesService', () => {
       devicesRepository.findOne!.mockResolvedValue(device);
       devicesRepository.save!.mockImplementation((v: Device) => v);
 
-      const result = await service.generateClaimCode('d1');
+      const result = await service.generateClaimCode('d1', 'u1');
 
       expect(device.status).toBe(DeviceStatus.PROVISIONED);
       expect(result.claimCode).toMatch(/^\d{6}$/);
       expect(result.claimCodeExpiresAt).toBeInstanceOf(Date);
+      expect(manager.save).toHaveBeenLastCalledWith(DeviceStatusHistory, {
+        deviceId: 'd1',
+        oldStatus: DeviceStatus.REGISTERED,
+        newStatus: DeviceStatus.PROVISIONED,
+        trigger: DeviceStatusChangeTrigger.MANUAL,
+        changedBy: 'u1',
+      });
+    });
+
+    it('records no history when re-generating on a provisioned device', async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'd1',
+        status: DeviceStatus.PROVISIONED,
+      });
+
+      await service.generateClaimCode('d1', 'u1');
+
+      expect(manager.save).toHaveBeenCalledTimes(1);
+      expect(manager.save).toHaveBeenCalledWith(Device, expect.anything());
     });
   });
 
@@ -195,8 +235,16 @@ describe('DevicesService', () => {
       coldRoomsRepository.findOne!.mockResolvedValue({ id: 'cr1' });
       devicesRepository.save!.mockImplementation((v: Device) => v);
 
-      const result = await service.claim('d1', claimDto);
+      const result = await service.claim('d1', claimDto, 'u1');
 
+      expect(manager.save).toHaveBeenLastCalledWith(
+        DeviceStatusHistory,
+        expect.objectContaining({
+          oldStatus: DeviceStatus.PROVISIONED,
+          newStatus: DeviceStatus.ACTIVE,
+          changedBy: 'u1',
+        }),
+      );
       expect(result.status).toBe(DeviceStatus.ACTIVE);
       expect(result.coldRoomId).toBe('cr1');
       expect(result.claimCodeHash).toBeNull();
@@ -221,8 +269,16 @@ describe('DevicesService', () => {
       devicesRepository.findOne!.mockResolvedValue(device);
       devicesRepository.save!.mockImplementation((v: Device) => v);
 
-      const result = await service.decommission('d1');
+      const result = await service.decommission('d1', 'u1');
 
+      expect(manager.save).toHaveBeenLastCalledWith(
+        DeviceStatusHistory,
+        expect.objectContaining({
+          oldStatus: DeviceStatus.ACTIVE,
+          newStatus: DeviceStatus.DECOMMISSIONED,
+          trigger: DeviceStatusChangeTrigger.MANUAL,
+        }),
+      );
       expect(result.status).toBe(DeviceStatus.DECOMMISSIONED);
       expect(result.decommissionedAt).not.toBeNull();
     });

@@ -17,6 +17,7 @@ import {
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { Device } from './entities/device.entity';
+import { GetUserId } from '../../common/decorators/get-user-id.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
@@ -94,8 +95,8 @@ export class DevicesController {
     entity: Device,
   })
   @Post(':id/claim-code')
-  generateClaimCode(@Param('id') id: string) {
-    return this.devicesService.generateClaimCode(id);
+  generateClaimCode(@Param('id') id: string, @GetUserId() actorId: string) {
+    return this.devicesService.generateClaimCode(id, actorId);
   }
 
   // Scoped by the *destination* cold room (body.coldRoomId), not the
@@ -108,16 +109,25 @@ export class DevicesController {
   @Serialize(DeviceResponseDto)
   @Audit({ action: 'device.claim', targetType: 'device', entity: Device })
   @Post(':id/claim')
-  claim(@Param('id') id: string, @Body() claimDeviceDto: ClaimDeviceDto) {
-    return this.devicesService.claim(id, claimDeviceDto);
+  claim(
+    @Param('id') id: string,
+    @Body() claimDeviceDto: ClaimDeviceDto,
+    @GetUserId() actorId: string,
+  ) {
+    return this.devicesService.claim(id, claimDeviceDto, actorId);
   }
 
   @Roles(...DEVICE_TECHNICAL_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM)
   @Serialize(DeviceResponseDto)
+  @Audit({
+    action: 'device.decommission',
+    targetType: 'device',
+    entity: Device,
+  })
   @Post(':id/decommission')
-  decommission(@Param('id') id: string) {
-    return this.devicesService.decommission(id);
+  decommission(@Param('id') id: string, @GetUserId() actorId: string) {
+    return this.devicesService.decommission(id, actorId);
   }
 
   // Hard delete stays Admin-only, separate from (and rarer than) the

@@ -56,7 +56,7 @@ ok "prerequisites present"
 log "building and starting stack (datastores -> app [migrate + serve] -> worker)"
 compose up -d --build
 
-log "seeding admin account"
+log "seeding accounts (admin, manager, technician, staff)"
 compose run --rm app node dist/seeds/account.seed.js
 ok "seed complete"
 

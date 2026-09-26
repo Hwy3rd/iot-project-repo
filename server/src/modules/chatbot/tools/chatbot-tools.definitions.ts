@@ -1,6 +1,7 @@
 import { AlertStatus, AlertType } from '../../../libs/constants/alert.constant';
 import { BatchStatus } from '../../../libs/constants/batch.constant';
 import { CommandStatus } from '../../../libs/constants/command.constant';
+import { DeviceStatus } from '../../../libs/constants/device.constant';
 import { MAX_PAGE_LIMIT } from '../../../libs/constants/pagination.constant';
 import { UserRole } from '../../../libs/constants/user.constant';
 
@@ -81,6 +82,32 @@ const WORK_SHIFT_ROLES = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
 
 const DATE_DESC = 'Định dạng ISO date (YYYY-MM-DD) hoặc datetime ISO 8601';
 
+// Lookup params take whatever the user said, not only ids — the executor
+// resolves names/codes within the caller's own scope, so the model needn't
+// list rooms/devices first just to find an id (one round trip less).
+const WAREHOUSE_REF = {
+  type: 'string',
+  description: 'Kho: id, mã kho (vd "WH-HCM-01") hoặc tên kho',
+};
+const COLD_ROOM_REF = {
+  type: 'string',
+  description: 'Phòng lạnh: id hoặc tên phòng (vd "Phòng A1")',
+};
+const DEVICE_REF = {
+  type: 'string',
+  description: 'Thiết bị: id hoặc mã thiết bị uniqueId (vd "ESP32-A10000")',
+};
+const BATCH_REF = {
+  type: 'string',
+  description: 'Lô hàng: id hoặc mã lô (batchCode)',
+};
+const LIMIT_PROP = (max: number, fallback: number) => ({
+  type: 'integer',
+  minimum: 1,
+  maximum: max,
+  description: `Số bản ghi tối đa (mặc định ${fallback})`,
+});
+
 export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   // ---------------------------------------------------------------------
   // Tra cứu trực tiếp 1 entity — wrap service hiện có
@@ -89,15 +116,18 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_alerts',
     description:
-      'Liệt kê cảnh báo, lọc theo trạng thái/loại/phòng lạnh/thiết bị/lô hàng. Dùng khi user hỏi có cảnh báo gì đang mở, lịch sử cảnh báo.',
+      'Liệt kê cảnh báo (mới nhất trước), lọc theo trạng thái/loại/kho/phòng lạnh/thiết bị/lô hàng/khoảng ngày. Kết quả đã kèm tên phòng, mã kho, mã thiết bị. Chỉ cần số liệu tổng quan thì dùng get_system_health_summary.',
     input_schema: {
       type: 'object',
       properties: {
         status: { type: 'string', enum: Object.values(AlertStatus) },
         type: { type: 'string', enum: Object.values(AlertType) },
-        coldRoomId: { type: 'string', description: 'Lọc theo phòng lạnh' },
-        deviceId: { type: 'string', description: 'Lọc theo thiết bị' },
-        batchId: { type: 'string', description: 'Lọc theo lô hàng' },
+        warehouseId: WAREHOUSE_REF,
+        coldRoomId: COLD_ROOM_REF,
+        deviceId: DEVICE_REF,
+        batchId: BATCH_REF,
+        createdFrom: { type: 'string', description: `Từ ngày — ${DATE_DESC}` },
+        createdTo: { type: 'string', description: `Đến ngày — ${DATE_DESC}` },
         ...PAGINATION_PROPS,
       },
     },
@@ -106,7 +136,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   },
   {
     name: 'get_alert_detail',
-    description: 'Lấy chi tiết 1 cảnh báo theo id.',
+    description: 'Lấy chi tiết 1 cảnh báo theo id (kèm details, người xử lý).',
     input_schema: {
       type: 'object',
       properties: { alertId: { type: 'string' } },
@@ -117,11 +147,15 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   },
   {
     name: 'get_devices',
-    description: 'Liệt kê thiết bị, có thể lọc theo phòng lạnh.',
+    description:
+      'Liệt kê thiết bị kèm trạng thái, lần heartbeat cuối, tên phòng và mã kho. Lọc theo kho/phòng lạnh/trạng thái — vd thiết bị mất kết nối: status="offline"; lỗi: status="fault".',
     input_schema: {
       type: 'object',
       properties: {
-        coldRoomId: { type: 'string' },
+        warehouseId: WAREHOUSE_REF,
+        coldRoomId: COLD_ROOM_REF,
+        status: { type: 'string', enum: Object.values(DeviceStatus) },
+        limit: LIMIT_PROP(200, 50),
       },
     },
     allowedRoles: ALL_ROLES,
@@ -131,10 +165,10 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_device_detail',
     description:
-      'Chi tiết 1 thiết bị: trạng thái, firmware, last_heartbeat_at, phòng lạnh đang gắn.',
+      'Chi tiết 1 thiết bị: trạng thái, firmware, lần heartbeat cuối, phòng lạnh đang gắn.',
     input_schema: {
       type: 'object',
-      properties: { deviceId: { type: 'string' } },
+      properties: { deviceId: DEVICE_REF },
       required: ['deviceId'],
     },
     allowedRoles: ALL_ROLES,
@@ -143,10 +177,10 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   },
   {
     name: 'get_device_status_history',
-    description: 'Lịch sử chuyển trạng thái của 1 thiết bị.',
+    description: 'Lịch sử chuyển trạng thái của 1 thiết bị (mới nhất trước).',
     input_schema: {
       type: 'object',
-      properties: { deviceId: { type: 'string' }, ...PAGINATION_PROPS },
+      properties: { deviceId: DEVICE_REF, ...PAGINATION_PROPS },
       required: ['deviceId'],
     },
     allowedRoles: DEVICE_LOG_ROLES,
@@ -155,15 +189,15 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_telemetry_hourly',
     description:
-      'Số liệu nhiệt độ/cửa tổng hợp theo giờ (avg/min/max_temperature, door_open_count...) của 1 thiết bị trong khoảng thời gian.',
+      'Nhiệt độ/cửa tổng hợp theo giờ (avg/min/max nhiệt độ, số lần mở cửa...) trong khoảng thời gian (mặc định 24 giờ qua). Truyền coldRoomId để lấy cho mọi thiết bị trong phòng, hoặc deviceId cho 1 thiết bị.',
     input_schema: {
       type: 'object',
       properties: {
-        deviceId: { type: 'string' },
+        coldRoomId: COLD_ROOM_REF,
+        deviceId: DEVICE_REF,
         from: { type: 'string', description: DATE_DESC },
         to: { type: 'string', description: DATE_DESC },
       },
-      required: ['deviceId'],
     },
     allowedRoles: ALL_ROLES,
     requireShift: true,
@@ -172,28 +206,38 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_telemetry_raw',
     description:
-      'Dữ liệu cảm biến thô gần nhất của 1 thiết bị (lưu ý: chỉ giữ trong thời gian ngắn theo TTL, không dùng để tra cứu lịch sử xa).',
+      'Mẫu cảm biến thô gần nhất (chỉ giữ trong thời gian ngắn, không dùng tra lịch sử xa). Truyền coldRoomId (mọi thiết bị trong phòng) hoặc deviceId. Chỉ cần nhiệt độ hiện tại của phòng thì dùng get_cold_room_detail.',
     input_schema: {
       type: 'object',
       properties: {
-        deviceId: { type: 'string' },
+        coldRoomId: COLD_ROOM_REF,
+        deviceId: DEVICE_REF,
         from: { type: 'string', description: DATE_DESC },
         to: { type: 'string', description: DATE_DESC },
         limit: { type: 'integer', minimum: 1, maximum: 500 },
       },
-      required: ['deviceId'],
     },
     allowedRoles: DEVICE_LOG_ROLES,
     scope: 'deviceId',
   },
   {
     name: 'get_batches',
-    description: 'Liệt kê lô hàng, lọc theo phòng lạnh/trạng thái.',
+    description:
+      'Liệt kê lô hàng (hạn dùng gần nhất trước) kèm loại sản phẩm, số lượng, tên phòng, mã kho. Lọc theo kho/phòng lạnh/trạng thái; expiringWithinDays để tìm lô còn trong kho sắp hết hạn.',
     input_schema: {
       type: 'object',
       properties: {
-        coldRoomId: { type: 'string' },
+        warehouseId: WAREHOUSE_REF,
+        coldRoomId: COLD_ROOM_REF,
         status: { type: 'string', enum: Object.values(BatchStatus) },
+        expiringWithinDays: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 365,
+          description:
+            'Chỉ lô đang trong kho có hạn dùng trong N ngày tới (kể cả đã quá hạn)',
+        },
+        limit: LIMIT_PROP(200, 50),
       },
     },
     allowedRoles: BATCH_ROLES,
@@ -202,10 +246,10 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_batch_detail',
     description:
-      'Chi tiết 1 lô hàng: khối lượng/số lượng, ngày nhập, hạn dùng, nhà cung cấp.',
+      'Chi tiết 1 lô hàng: số lượng, ngày nhập, hạn dùng, nhà cung cấp, ghi chú.',
     input_schema: {
       type: 'object',
-      properties: { batchId: { type: 'string' } },
+      properties: { batchId: BATCH_REF },
       required: ['batchId'],
     },
     allowedRoles: BATCH_ROLES,
@@ -213,10 +257,11 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   },
   {
     name: 'get_cold_rooms',
-    description: 'Liệt kê phòng lạnh và ngưỡng nhiệt độ, lọc theo kho.',
+    description:
+      'Liệt kê phòng lạnh kèm mã kho và ngưỡng nhiệt độ (tempMin/tempMax), lọc theo kho. Không có số liệu hiện tại — dùng get_system_health_summary hoặc get_cold_room_detail.',
     input_schema: {
       type: 'object',
-      properties: { warehouseId: { type: 'string' } },
+      properties: { warehouseId: WAREHOUSE_REF },
     },
     allowedRoles: ALL_ROLES,
     scope: 'warehouseId',
@@ -224,10 +269,10 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_cold_room_detail',
     description:
-      'Chi tiết 1 phòng lạnh: temp_min/max/hysteresis, door_open_max_seconds.',
+      'Chi tiết 1 phòng lạnh kèm trạng thái hiện tại: nhiệt độ mới nhất, cửa, lỗi cảm biến, có vượt ngưỡng không, số thiết bị theo trạng thái, số cảnh báo chưa xử lý, cùng ngưỡng cấu hình.',
     input_schema: {
       type: 'object',
-      properties: { coldRoomId: { type: 'string' } },
+      properties: { coldRoomId: COLD_ROOM_REF },
       required: ['coldRoomId'],
     },
     allowedRoles: ALL_ROLES,
@@ -236,7 +281,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_warehouses',
     description:
-      'Liệt kê kho — tự động chỉ trả về kho user được gán (Admin thấy tất cả).',
+      'Liệt kê kho (mã, tên, địa chỉ, số phòng lạnh) — tự động chỉ trả về kho user được gán (Admin thấy tất cả).',
     input_schema: { type: 'object', properties: {} },
     allowedRoles: ALL_ROLES,
     scope: 'none', // lọc theo user_assignments ngay trong executor, không qua param
@@ -254,12 +299,14 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
     // Resolved via Command.channelId -> DeviceChannel.deviceId in the
     // executor (Command has no direct deviceId column), not through
     // CommandsService — see chatbot-tool-executor.service.ts.
-    description: 'Lịch sử lệnh điều khiển đã gửi tới thiết bị.',
+    description:
+      'Lịch sử lệnh điều khiển đã gửi tới thiết bị (mới nhất trước), kèm mã thiết bị và kênh.',
     input_schema: {
       type: 'object',
       properties: {
-        deviceId: { type: 'string' },
+        deviceId: DEVICE_REF,
         status: { type: 'string', enum: Object.values(CommandStatus) },
+        limit: LIMIT_PROP(100, 20),
       },
     },
     allowedRoles: ALL_ROLES,
@@ -270,13 +317,14 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
     // Staff bị executor ép staffId = chính họ bất kể LLM truyền gì (xem
     // chatbot-tool-executor.service.ts).
     description:
-      'Lịch ca trực. Staff chỉ xem được ca của chính mình; Manager/Admin xem theo kho.',
+      'Lịch ca trực / chấm công (mới nhất trước). Staff chỉ xem được ca của chính mình; Manager/Admin xem theo kho.',
     input_schema: {
       type: 'object',
       properties: {
-        warehouseId: { type: 'string' },
+        warehouseId: WAREHOUSE_REF,
         staffId: { type: 'string' },
         date: { type: 'string', description: DATE_DESC },
+        limit: LIMIT_PROP(200, 50),
       },
     },
     allowedRoles: WORK_SHIFT_ROLES,
@@ -290,10 +338,10 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_system_health_summary',
     description:
-      'Tổng quan tình trạng hệ thống: tỷ lệ thiết bị online/offline, số cảnh báo đang mở theo loại, phòng lạnh nào đang vượt ngưỡng.',
+      'Tổng quan hiện tại trong 1 lần gọi: số kho/phòng, thiết bị theo trạng thái, cảnh báo chưa xử lý theo loại, các phòng cần chú ý (vượt ngưỡng, cửa mở, lỗi cảm biến, mất tín hiệu, thiết bị hỏng, có cảnh báo) và danh sách thiết bị offline/lỗi/bảo trì. Ưu tiên dùng cho câu hỏi "tình hình thế nào", "có gì bất thường", "thiết bị nào mất kết nối".',
     input_schema: {
       type: 'object',
-      properties: { warehouseId: { type: 'string' } },
+      properties: { warehouseId: WAREHOUSE_REF },
     },
     allowedRoles: ALL_ROLES,
     scope: 'warehouseId',

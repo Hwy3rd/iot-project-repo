@@ -40,7 +40,7 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
 **Yêu cầu:** Docker + Docker Compose v2.
 
 1. Tạo `.env` ở root từ mẫu [.env.example](.env.example) (điền các giá trị `<CHANGE_ME_...>`, rồi `chmod 600 .env`) — đây là file env duy nhất của `docker-compose.production.yml`: nạp vào container `app`/`worker`, đồng thời cấp mật khẩu cho mysql/mongo/minio và token cho `cloudflared`. Tách riêng khỏi `server/.env` (dùng khi chạy backend trực tiếp trên host, xem mục dev bên dưới).
-2. Khởi tạo hệ thống (build image, chạy migration, seed tài khoản admin đầu tiên):
+2. Khởi tạo hệ thống (build image, chạy migration, seed tài khoản admin đầu tiên cùng một tài khoản Manager/Technician/Staff, chung mật khẩu admin):
    ```bash
    ./init.sh
    ```
@@ -99,4 +99,5 @@ Khi đổi sang WiFi/hotspot mới, chạy lại để chuyển mạng đó sang
 - [docs/RBAC.md](docs/RBAC.md) — 4 vai trò (Admin/Manager/Technician/Staff), phạm vi theo warehouse, ma trận quyền theo module.
 - [docs/MESSAGE_QUEUE.md](docs/MESSAGE_QUEUE.md) — BullMQ giữa `app`/`worker` và MQTT với thiết bị.
 - [docs/NOTIFICATION.md](docs/NOTIFICATION.md) — Cơ chế thông báo: khi nào gửi, gửi cho ai, luồng xử lý.
+- [docs/LLM_ARCHITECTURE.md](docs/LLM_ARCHITECTURE.md) — Trợ lý AI: luồng một lượt trả lời, bộ tool đọc dữ liệu, phân quyền, giới hạn, cấu hình.
 - [server/CLAUDE.md](server/CLAUDE.md) — Quy ước kiến trúc, cấu trúc module, auth flow, ghi chú kỹ thuật khi phát triển backend.

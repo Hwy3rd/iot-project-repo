@@ -21,9 +21,8 @@ const EMPTY: FormValues = { deviceId: '', channelId: '', action: '' }
 const DEVICE_PAGE = { limit: 100 } as const
 
 /**
- * Admin / Technician. Staff may also issue commands on their shift, but
- * can't list a device's channels (docs/RBAC.md), so this picker isn't
- * offered to them.
+ * Admin / Technician, and Staff while on an approved shift (the device list
+ * and channels are then limited to the warehouse they're checked into).
  */
 export function CreateCommandDialog() {
   const [open, setOpen] = useState(false)

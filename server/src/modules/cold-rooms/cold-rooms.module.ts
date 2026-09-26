@@ -20,5 +20,7 @@ import { ColdRoomsController } from './cold-rooms.controller';
   ],
   controllers: [ColdRoomsController],
   providers: [ColdRoomsService, ColdRoomStatusService],
+  // The chatbot's room status/health tools read the same live overview.
+  exports: [ColdRoomStatusService],
 })
 export class ColdRoomsModule {}

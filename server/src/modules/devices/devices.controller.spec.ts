@@ -39,23 +39,23 @@ describe('DevicesController', () => {
   });
 
   it('delegates generateClaimCode to the service', async () => {
-    await controller.generateClaimCode('1');
+    await controller.generateClaimCode('1', 'u1');
 
-    expect(devicesService.generateClaimCode).toHaveBeenCalledWith('1');
+    expect(devicesService.generateClaimCode).toHaveBeenCalledWith('1', 'u1');
   });
 
   it('delegates claim to the service', async () => {
     const dto = { claimCode: '123456', coldRoomId: 'cr1' };
 
-    await controller.claim('1', dto);
+    await controller.claim('1', dto, 'u1');
 
-    expect(devicesService.claim).toHaveBeenCalledWith('1', dto);
+    expect(devicesService.claim).toHaveBeenCalledWith('1', dto, 'u1');
   });
 
   it('delegates decommission to the service', async () => {
-    await controller.decommission('1');
+    await controller.decommission('1', 'u1');
 
-    expect(devicesService.decommission).toHaveBeenCalledWith('1');
+    expect(devicesService.decommission).toHaveBeenCalledWith('1', 'u1');
   });
 
   it('delegates remove to the service', async () => {

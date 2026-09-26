@@ -24,8 +24,12 @@ import {
   QueryFailedError,
   Repository,
 } from 'typeorm';
-import { DeviceStatus } from '../../libs/constants/device.constant';
+import {
+  DeviceStatus,
+  DeviceStatusChangeTrigger,
+} from '../../libs/constants/device.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { ClaimDeviceDto } from './dto/claim-device.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
@@ -43,6 +47,32 @@ export class DevicesService {
     @InjectRepository(ColdRoom)
     private readonly coldRoomsRepository: Repository<ColdRoom>,
   ) {}
+
+  // Saves a lifecycle step and, when it changed the status, the matching
+  // device_status_history row — in one transaction, so the history can
+  // never disagree with the device. Every step here is a person's action.
+  private transition(
+    device: Device,
+    oldStatus: DeviceStatus,
+    actorId: string | null,
+  ): Promise<Device> {
+    return this.devicesRepository.manager.transaction(async (manager) => {
+      const saved = await manager.save(Device, device);
+      if (saved.status !== oldStatus) {
+        await manager.save(
+          DeviceStatusHistory,
+          manager.create(DeviceStatusHistory, {
+            deviceId: saved.id,
+            oldStatus,
+            newStatus: saved.status,
+            trigger: DeviceStatusChangeTrigger.MANUAL,
+            changedBy: actorId,
+          }),
+        );
+      }
+      return saved;
+    });
+  }
 
   private async saveDevice(device: Device): Promise<Device> {
     try {
@@ -106,8 +136,9 @@ export class DevicesService {
     return this.saveDevice(device);
   }
 
-  async generateClaimCode(id: string) {
+  async generateClaimCode(id: string, actorId: string | null = null) {
     const device = await this.findOne(id);
+    const oldStatus = device.status;
     if (
       device.status !== DeviceStatus.REGISTERED &&
       device.status !== DeviceStatus.PROVISIONED
@@ -121,7 +152,8 @@ export class DevicesService {
     device.claimCodeHash = await bcrypt.hash(claimCode, CLAIM_CODE_SALT_ROUNDS);
     device.claimCodeExpiresAt = new Date(Date.now() + CLAIM_CODE_TTL_MS);
     device.status = DeviceStatus.PROVISIONED;
-    await this.devicesRepository.save(device);
+    // Re-generating on a provisioned device records nothing (no change).
+    await this.transition(device, oldStatus, actorId);
 
     return {
       claimCode,
@@ -129,7 +161,11 @@ export class DevicesService {
     };
   }
 
-  async claim(id: string, claimDeviceDto: ClaimDeviceDto) {
+  async claim(
+    id: string,
+    claimDeviceDto: ClaimDeviceDto,
+    actorId: string | null = null,
+  ) {
     const device = await this.findOne(id);
     if (device.status !== DeviceStatus.PROVISIONED) {
       throw new ConflictException(
@@ -166,17 +202,18 @@ export class DevicesService {
     device.claimedAt = new Date();
     device.claimCodeHash = null;
     device.claimCodeExpiresAt = null;
-    return this.devicesRepository.save(device);
+    return this.transition(device, DeviceStatus.PROVISIONED, actorId);
   }
 
-  async decommission(id: string) {
+  async decommission(id: string, actorId: string | null = null) {
     const device = await this.findOne(id);
+    const oldStatus = device.status;
     if (device.status === DeviceStatus.DECOMMISSIONED) {
       throw new ConflictException(`Device ${id} is already decommissioned`);
     }
     device.status = DeviceStatus.DECOMMISSIONED;
     device.decommissionedAt = new Date();
-    return this.devicesRepository.save(device);
+    return this.transition(device, oldStatus, actorId);
   }
 
   async remove(id: string) {

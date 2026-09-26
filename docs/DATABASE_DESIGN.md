@@ -497,7 +497,7 @@ Nhật ký append-only mọi hành động quan trọng trong hệ thống — A
 | Phòng lạnh | `cold_room.create`, `cold_room.update`, `cold_room.delete` |
 | Lô hàng | `batch.create`, `batch.update`, `batch.remove` (xuất kho) |
 | Ca trực | `work_shift.check_in`, `work_shift.approve`, `work_shift.reject`, `work_shift.check_out`, `work_shift.delete` |
-| Thiết bị | `device.create`, `device.update`, `device.delete`, `device.claim_code_generate`, `device.claim`, `device_channel.*` |
+| Thiết bị | `device.create`, `device.update`, `device.delete`, `device.claim_code_generate`, `device.claim`, `device.decommission`, `device_channel.*` |
 
 Index: `(created_at)`, `(user_id, created_at)`, `(warehouse_id, created_at)`, `(target_type, target_id)` — khớp các bộ lọc của `GET /audit-logs`.
 

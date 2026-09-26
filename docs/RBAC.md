@@ -72,7 +72,7 @@ Mỗi tài khoản chỉ có **một** role, áp dụng như nhau ở mọi nơi
 - Chấm công vào ca: khi đăng nhập, hệ thống chặn toàn bộ giao diện bằng một hộp thoại không tắt được cho tới khi yêu cầu chấm công (chọn kho; ca và giờ tự điền theo thời điểm gửi) được Manager duyệt. Hết ca: được nhắc đăng xuất, có thể thao tác thêm tối đa 5 phút rồi tự đăng xuất (check-out).
 - Chỉ có khả năng nghiệp vụ với hàng hoá: ghi nhận nhập/xuất lô hàng trong warehouse.
 - Xem cảnh báo cơ bản: xem danh sách và acknowledge cảnh báo trong phạm vi — không xem log kỹ thuật chi tiết, không resolve.
-- Điều khiển thiết bị cơ bản: gửi một tập lệnh an toàn, giới hạn được cấu hình trước (ví dụ tắt còi báo động tại chỗ) — không có quyền điều khiển chủ động/toàn bộ tập lệnh như Technician.
+- Điều khiển thiết bị: gửi lệnh bật/tắt tới các kênh điều khiển (quạt, đèn báo, còi) của thiết bị trong kho đang trực; xem được danh sách kênh của thiết bị để chọn. Hiện **chưa** giới hạn một tập lệnh an toàn riêng cho Staff — Staff gửi được mọi lệnh bật/tắt như Technician, chỉ khác là phải đang trong ca.
 
 **Tương tác với vai trò khác:** thực thi công việc vận hành hằng ngày do Manager xếp lịch; khi phát hiện sự cố, Staff xem/acknowledge ở mức cơ bản rồi việc xử lý kỹ thuật chuyển cho Technician, việc quyết định nghiệp vụ (resolve) thuộc Manager/Admin.
 
@@ -103,7 +103,7 @@ Việc kiểm tra quyền phải đi đủ các cấp này — chỉ kiểm tra 
 - Route thao tác trên 1 tài nguyên (`@WarehouseScope`): `WarehouseScopeGuard` kiểm tra role của caller nằm trong `@Roles` của route, suy ra warehouse và kiểm tra caller có bản ghi `warehouse_staff` tại đó; `RolesGuard` nhường cả hai bước cho guard này trên các route này (trừ Admin). Điều kiện ca trực / "chỉ ca của mình" áp dụng khi caller là Staff.
 - Route danh sách (`@WarehouseListScope`): không chặn mà tính danh sách warehouse caller được đọc (các warehouse caller được phân công nếu role của họ thuộc `@Roles`, ngược lại là rỗng; với Staff và route yêu cầu ca trực thì chỉ tính warehouse đang có ca được duyệt), service lọc kết quả theo danh sách đó. Áp dụng cho `GET /warehouses`, `/cold-rooms`, `/devices` (có điều kiện ca trực cho Staff), `/batches`, `/work-shifts` (Staff chỉ thấy ca của mình), `/commands`, `/alerts`, `/audit-logs`. Thiết bị chưa claim (không thuộc cold room nào) chỉ Admin thấy.
 - Xem trạng thái tổng quan của phòng lạnh (`GET /cold-rooms/status`, sự kiện WebSocket trong room `warehouse:{id}`) **không cần đang trong ca**: mọi người được phân công vào kho, kể cả Staff, đều xem được. Telemetry chi tiết theo thiết bị (`/devices/:id/telemetry/*`) và danh sách thiết bị thì Staff vẫn chỉ xem được khi đang trong ca.
-- Chatbot dùng chung `WarehouseAccessService` với các route REST: mỗi tool có `allowedRoles` (và `requireShift`) khớp với route REST tương ứng, và chỉ được dùng khi role của caller thuộc `allowedRoles`, trên các warehouse caller được phân công — Staff không xem được log chi tiết thiết bị (`get_device_status_history`, `get_telemetry_raw`), Technician không xem được lô hàng và lịch ca, Staff chỉ xem thiết bị/telemetry theo giờ khi đang trong ca. `get_product_types` và `search_docs` không thuộc warehouse nào nên chỉ xét role.
+- Chatbot dùng chung `WarehouseAccessService` với các route REST: mỗi tool có `allowedRoles` (và `requireShift`) khớp với route REST tương ứng, và chỉ được dùng khi role của caller thuộc `allowedRoles`, trên các warehouse caller được phân công — Staff không xem được log chi tiết thiết bị (`get_device_status_history`, `get_telemetry_raw`), Technician không xem được lô hàng và lịch ca, Staff chỉ xem thiết bị/telemetry theo giờ khi đang trong ca. `get_product_types` và `search_docs` không thuộc warehouse nào nên chỉ xét role. Tham số kho/phòng/thiết bị/lô của tool nhận cả tên hoặc mã (vd "Phòng A1", `WH-HCM-01`), nhưng chỉ được tìm trong các kho caller được đọc: tên thuộc kho khác được coi như không tồn tại.
 - Khoá hoặc xoá tài khoản có hiệu lực ngay: ngoài xoá phiên refresh, hệ thống đặt key `blocked:<userId>` trong Redis — `JwtStrategy` từ chối access token còn hạn và WebSocket bị ngắt/từ chối kết nối.
 
 ---
@@ -123,12 +123,12 @@ Ký hiệu: `✓` = toàn quyền · `Phạm vi` = trong warehouse được gán
 | **Duyệt / từ chối chấm công** | Toàn quyền | Phạm vi | – | – |
 | **Chấm công vào ca / check-out** | – | – | – | ✓ (chính mình, kho được gán) |
 | **Lô hàng (batches) — nhập/xuất** | Toàn quyền | Phạm vi (thao tác cơ bản) | – | Phạm vi + Ca trực |
-| **Vòng đời kỹ thuật thiết bị** (provision, claim, bảo trì, khoá, decommission, kênh relay/actuator) | Toàn quyền, mọi warehouse | Chỉ xem (Phạm vi) | Toàn quyền (Phạm vi) | – |
+| **Vòng đời kỹ thuật thiết bị** (provision, claim, bảo trì, khoá, decommission, kênh relay/actuator) | Toàn quyền, mọi warehouse | Chỉ xem (Phạm vi) | Toàn quyền (Phạm vi) | Chỉ xem danh sách kênh (Phạm vi + Ca trực — để chọn kênh khi gửi lệnh) |
 | **Trạng thái & thông tin thiết bị** | Toàn quyền | Phạm vi | Phạm vi | Cơ bản (Phạm vi + Ca trực) |
 | **Log chi tiết thiết bị** (lịch sử trạng thái, telemetry theo giờ và tức thời) | Toàn quyền | Phạm vi (log chi tiết cho kho) | Phạm vi (log chi tiết cho device) | – (chỉ có cảnh báo cơ bản) |
 | **Cảnh báo (alerts) — xem** | Toàn quyền | Phạm vi (chi tiết) | Phạm vi (chi tiết) | Cơ bản (Phạm vi + Ca trực) |
 | **Cảnh báo — acknowledge** | Toàn quyền | Phạm vi | Phạm vi | Phạm vi + Ca trực |
 | **Cảnh báo — resolve** | Toàn quyền | Phạm vi | Phạm vi | – |
-| **Điều khiển thiết bị (commands)** | Toàn quyền, mọi lệnh | Chỉ xem lịch sử (Phạm vi) | Phạm vi (điều khiển chủ động, toàn bộ tập lệnh) | Cơ bản (Phạm vi + Ca trực, tập lệnh an toàn giới hạn) |
+| **Điều khiển thiết bị (commands)** | Toàn quyền, mọi lệnh | Chỉ xem lịch sử (Phạm vi) | Phạm vi (điều khiển chủ động, toàn bộ tập lệnh) | Phạm vi + Ca trực (bật/tắt các kênh điều khiển; hiện chưa giới hạn tập lệnh riêng cho Staff) |
 | **Audit log** (chỉ xem — log do hệ thống tự ghi, không ai ghi/sửa/xoá qua API) | Chỉ xem (toàn hệ thống) | Chỉ xem (Phạm vi — warehouse mình là Manager) | – | – |
 | **Thông báo (notifications)** | Tự thân | Tự thân | Tự thân | Tự thân |

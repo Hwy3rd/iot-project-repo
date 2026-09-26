@@ -5,9 +5,8 @@ import type { User } from '@/api/types'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { AuthContext, type AuthContextValue } from './auth-context'
+import { AuthContext, ME_KEY, type AuthContextValue } from './auth-context'
 
-const ME_KEY = ['auth', 'me'] as const
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()

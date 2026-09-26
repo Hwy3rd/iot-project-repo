@@ -268,6 +268,52 @@ export interface DeviceChannel {
 }
 
 /** A user assigned to a warehouse; they work there with their account role. */
+export type DeviceStatusChangeTrigger = 'manual' | 'automated'
+
+/** GET /devices/:id/status-history — one status transition. */
+export interface DeviceStatusChange {
+  id: string
+  deviceId: string
+  oldStatus: DeviceStatus | null
+  newStatus: DeviceStatus
+  /** Null for a change the system made on its own. */
+  changedBy: string | null
+  trigger: DeviceStatusChangeTrigger
+  reason: string | null
+  changedAt: string
+}
+
+/** GET /devices/:id/telemetry/hourly — one hour of one device. */
+export interface TelemetryHourly {
+  deviceId: string
+  coldRoomId: string
+  /** Start of the hour. */
+  hourBucket: string
+  sampleCount: number
+  avgTemp: number | null
+  minTemp: number | null
+  maxTemp: number | null
+  outOfRangeCount: number
+  sensorErrorCount: number
+}
+
+/** GET /devices/:id/telemetry/raw — one sample, kept only briefly. */
+export interface TelemetryRaw {
+  deviceId: string
+  coldRoomId: string
+  ts: string
+  temperature: number | null
+  doorOpen: boolean
+  sensorFault: boolean
+  outOfRange: boolean
+}
+
+/** POST /devices/:id/claim-code — the code itself is only ever returned here. */
+export interface ClaimCode {
+  claimCode: string
+  claimCodeExpiresAt: string
+}
+
 export interface WarehouseStaff {
   userId: string
   warehouseId: string
@@ -321,4 +367,32 @@ export interface ColdRoomSeries {
     doorOpen: number
     sensorFault: number
   }[]
+}
+
+export type ChatMessageRole = 'user' | 'assistant' | 'tool' | 'system'
+
+/** One chatbot conversation; `title` is set from the first message. */
+export interface ChatConversation {
+  id: string
+  userId: string
+  title: string | null
+  createdAt: string
+  updatedAt: string
+  lastMessageAt: string | null
+}
+
+/**
+ * A stored chat message. Besides the user's questions and the assistant's
+ * replies, a turn also stores the assistant's tool calls and their results
+ * (role `tool`, or `assistant` with `toolCalls` and no content).
+ */
+export interface ChatMessage {
+  id: string
+  conversationId: string
+  role: ChatMessageRole
+  content: string | null
+  toolCalls: { id: string; name: string; arguments: unknown }[] | null
+  toolCallId: string | null
+  toolName: string | null
+  createdAt: string
 }

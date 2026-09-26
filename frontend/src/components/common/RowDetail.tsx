@@ -65,6 +65,7 @@ export function DetailDialog({
   title,
   description,
   onEdit,
+  actions,
   wide,
   children,
 }: {
@@ -73,6 +74,8 @@ export function DetailDialog({
   title: ReactNode
   description?: ReactNode
   onEdit?: () => void
+  /** Extra buttons for the row (e.g. "Tiếp nhận"), shown before "Sửa". */
+  actions?: ReactNode
   wide?: boolean
   children: ReactNode
 }) {
@@ -87,12 +90,13 @@ export function DetailDialog({
           </DialogDescription>
         </DialogHeader>
         {children}
-        <DialogFooter>
+        <DialogFooter className="flex-wrap">
           <DialogClose asChild>
             <Button type="button" variant="outline">
               Đóng
             </Button>
           </DialogClose>
+          {actions}
           {onEdit && (
             <Button type="button" onClick={onEdit}>
               <Pencil aria-hidden="true" />

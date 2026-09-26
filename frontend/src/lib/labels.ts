@@ -1,5 +1,7 @@
 import type {
   AlertStatus,
+  ChannelRole,
+  DeviceStatusChangeTrigger,
   AlertType,
   BatchStatus,
   ChannelType,
@@ -89,4 +91,14 @@ export const CHANNEL_TYPE_LABEL: Record<ChannelType, string> = {
   fan_motor: 'Quạt',
   indicator_light: 'Đèn báo',
   buzzer: 'Còi',
+}
+
+export const DEVICE_STATUS_TRIGGER_LABEL: Record<DeviceStatusChangeTrigger, string> = {
+  manual: 'Thủ công',
+  automated: 'Tự động',
+}
+
+export const CHANNEL_ROLE_LABEL: Record<ChannelRole, string> = {
+  sensor: 'Cảm biến',
+  actuator: 'Điều khiển',
 }

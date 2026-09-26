@@ -1,6 +1,8 @@
 import { usersApi, type UserQuery } from '@/api/endpoints'
 import type { User, UserRole, UserStatus } from '@/api/types'
 import { CreateUserDialog, EditUserDialog } from '@/components/users/UserFormDialog'
+import { UserLockActions } from '@/components/users/UserLockActions'
+import { UserAvatar } from '@/components/common/UserAvatar'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
@@ -152,9 +154,14 @@ export function UsersPage() {
                     <SelectRowCell selection={selection} id={u.id} label={`Chọn người dùng ${u.username}`} />
                   )}
                   <TableCell className="pl-4 min-w-48 whitespace-normal">
-                    <span className="font-medium">{u.fullName || u.username}</span>
-                    <span className="block text-muted-foreground" translate="no">
-                      {u.username}
+                    <span className="flex items-center gap-3">
+                      <UserAvatar user={u} className="size-9 shrink-0 text-sm" />
+                      <span className="min-w-0">
+                        <span className="block font-medium">{u.fullName || u.username}</span>
+                        <span className="block text-muted-foreground" translate="no">
+                          {u.username}
+                        </span>
+                      </span>
                     </span>
                   </TableCell>
                   <TableCell className="min-w-48 whitespace-normal">
@@ -193,9 +200,15 @@ export function UsersPage() {
           <DetailDialog
             open={rows.viewing}
             onClose={rows.close}
-            title={current.fullName || current.username}
+            title={
+              <span className="flex items-center gap-3">
+                <UserAvatar user={current} className="size-12 shrink-0 text-lg" />
+                {current.fullName || current.username}
+              </span>
+            }
             description={current.username}
             onEdit={canEdit ? () => rows.edit(current) : undefined}
+            actions={<UserLockActions user={current} isSelf={current.id === user?.id} onChanged={rows.view} />}
           >
             <DetailList
               fields={[

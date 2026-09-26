@@ -1,3 +1,4 @@
+import { QuickChat } from '@/components/chatbot/QuickChat'
 import { AttendanceGate } from '@/components/work-shifts/AttendanceGate'
 import { WorkShiftNotifier } from '@/components/work-shifts/WorkShiftNotifier'
 import { Separator } from '@/components/ui/separator'
@@ -47,6 +48,7 @@ export function AppShell() {
           {/* Staff must be on an approved shift to use anything. */}
           <AttendanceGate>
             <Outlet />
+            <QuickChat />
           </AttendanceGate>
         </div>
         <WorkShiftNotifier />
