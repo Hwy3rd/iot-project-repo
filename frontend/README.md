@@ -36,5 +36,5 @@ src/
 - Form dùng react-hook-form + component `Field` của shadcn, lỗi hiển thị ngay dưới field; thông báo sau thao tác dùng `toast` của sonner.
 - Ngày giờ format qua `src/lib/format.ts` (dayjs), không gọi `dayjs().format()` rải rác trong component.
 - Trạng thái danh sách (trang, bộ lọc) đặt trên URL query — xem `WarehousesPage` + `usePageParam`.
-- Ẩn/hiện UI theo role chỉ để tiện dùng; quyền thực sự do backend kiểm tra (`docs/RBAC.md`). Menu xét theo role **toàn cục**, trong khi role tại từng kho có thể khác — danh sách gắn kho đã được backend lọc theo role tại kho.
+- Ẩn/hiện UI theo role chỉ để tiện dùng; quyền thực sự do backend kiểm tra (`docs/RBAC.md`). Mỗi tài khoản chỉ có một role, dùng ở mọi kho; danh sách gắn kho đã được backend lọc theo các kho user được phân công. Admin phân công người vào kho trong dialog chi tiết kho (`WarehouseStaffSection`).
 - Review UI theo skill `web-design-guidelines` (`.agents/skills/`).

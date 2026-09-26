@@ -5,7 +5,6 @@ import { UserRole } from '../../libs/constants/user.constant';
 import { User } from '../users/entities/user.entity';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
 import { Warehouse } from './entities/warehouse.entity';
-import type { AssignWarehouseStaffDto } from './dto/assign-warehouse-staff.dto';
 import { WarehouseStaffService } from './warehouse-staff.service';
 
 describe('WarehouseStaffService', () => {
@@ -75,60 +74,49 @@ describe('WarehouseStaffService', () => {
     it('throws NotFoundException for an unknown user', async () => {
       usersRepo.findOne.mockResolvedValue(null);
 
-      await expect(
-        service.assign('w1', 'u9', { role: UserRole.STAFF }),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.assign('w1', 'u9')).rejects.toThrow(
+        NotFoundException,
+      );
       expect(staffRepo.save).not.toHaveBeenCalled();
     });
 
-    it.each<[UserRole, AssignWarehouseStaffDto['role']]>([
-      [UserRole.MANAGER, UserRole.STAFF],
-      [UserRole.TECHNICIAN, UserRole.STAFF],
-      [UserRole.STAFF, UserRole.MANAGER],
-      [UserRole.STAFF, UserRole.TECHNICIAN],
-    ])('refuses a %s account as %s', async (accountRole, role) => {
-      usersRepo.findOne.mockResolvedValue({ id: 'u1', role: accountRole });
+    it('refuses an Admin account', async () => {
+      usersRepo.findOne.mockResolvedValue({ id: 'u1', role: UserRole.ADMIN });
 
-      await expect(service.assign('w1', 'u1', { role })).rejects.toThrow(
+      await expect(service.assign('w1', 'u1')).rejects.toThrow(
         BadRequestException,
       );
       expect(staffRepo.save).not.toHaveBeenCalled();
     });
 
-    it('assigns a Staff account as Staff', async () => {
-      usersRepo.findOne.mockResolvedValue({ id: 'u1', role: UserRole.STAFF });
-      staffRepo.findOne.mockResolvedValue(null);
+    it.each([UserRole.MANAGER, UserRole.TECHNICIAN, UserRole.STAFF])(
+      'creates a new assignment for a %s account, returned with its user',
+      async (role) => {
+        const user = { id: 'u1', role };
+        usersRepo.findOne.mockResolvedValue(user);
+        staffRepo.findOne.mockResolvedValue(null);
 
-      await expect(
-        service.assign('w1', 'u1', { role: UserRole.STAFF }),
-      ).resolves.toMatchObject({ role: UserRole.STAFF });
-    });
+        await expect(service.assign('w1', 'u1')).resolves.toEqual({
+          warehouseId: 'w1',
+          userId: 'u1',
+          user,
+        });
+        expect(staffRepo.create).toHaveBeenCalledWith({
+          warehouseId: 'w1',
+          userId: 'u1',
+        });
+        expect(staffRepo.save).toHaveBeenCalledTimes(1);
+      },
+    );
 
-    it('creates a new assignment', async () => {
-      staffRepo.findOne.mockResolvedValue(null);
+    it('returns an existing assignment instead of duplicating it', async () => {
+      staffRepo.findOne.mockResolvedValue({ warehouseId: 'w1', userId: 'u1' });
 
-      await expect(
-        service.assign('w1', 'u1', { role: UserRole.TECHNICIAN }),
-      ).resolves.toEqual({
-        warehouseId: 'w1',
-        userId: 'u1',
-        role: UserRole.TECHNICIAN,
-      });
-    });
-
-    it('changes the role of an existing assignment instead of duplicating it', async () => {
-      staffRepo.findOne.mockResolvedValue({
-        warehouseId: 'w1',
-        userId: 'u1',
-        role: UserRole.TECHNICIAN,
-      });
-
-      const result = await service.assign('w1', 'u1', {
-        role: UserRole.MANAGER,
-      });
+      const result = await service.assign('w1', 'u1');
 
       expect(staffRepo.create).not.toHaveBeenCalled();
-      expect(result).toMatchObject({ role: UserRole.MANAGER });
+      expect(staffRepo.save).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ warehouseId: 'w1', userId: 'u1' });
     });
   });
 

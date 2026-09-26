@@ -13,9 +13,9 @@
 | Kỹ thuật viên (Technician) | Các warehouse được gán | Không |
 | Nhân viên (Staff) | Warehouse được gán | Có — chỉ khi đang trong ca đã được duyệt chấm công |
 
-Mỗi tài khoản chỉ có **một** role toàn cục. Phạm vi theo từng warehouse được gán riêng cho từng user (một user có thể được gán vào nhiều warehouse, với role có thể khác nhau ở mỗi warehouse) — áp dụng cho Manager, Technician và Staff. Riêng **Staff chỉ là Staff**: role Staff tại warehouse chỉ gán cho tài khoản có role toàn cục Staff, và tài khoản Staff chỉ được gán role Staff (đổi role toàn cục sang/từ Staff phải gỡ khỏi các kho trước). Lý do: yêu cầu chấm công được quyết định theo role toàn cục.
+Mỗi tài khoản chỉ có **một** role, áp dụng như nhau ở mọi nơi. Việc phân công (`warehouse_staff`) chỉ xác định user làm việc ở **những warehouse nào** (một user có thể được gán vào nhiều warehouse) — không gán role riêng theo từng kho. Áp dụng cho Manager, Technician và Staff; Admin không được phân công vì vốn thấy mọi warehouse (nâng một tài khoản lên Admin sẽ gỡ các phân công cũ của họ).
 
-**Role nào quyết định quyền?** Với mọi người trừ Admin, trên các chức năng gắn với 1 warehouse, quyền được xét theo **role tại chính warehouse đó** (`warehouse_staff.role`), không theo role toàn cục. Ví dụ: một Manager toàn cục được gán Technician ở kho C thì tại kho C chỉ có quyền Technician. Role toàn cục chỉ còn dùng cho các chức năng không gắn warehouse (danh mục dùng chung, tài khoản) và để xác định Admin.
+**Quyền được xét thế nào?** Với mọi người trừ Admin, trên các chức năng gắn với 1 warehouse, cần **cả hai**: role của tài khoản nằm trong danh sách role của chức năng, và user được phân công vào chính warehouse đó. Đổi role của tài khoản có hiệu lực ở mọi kho họ được phân công (sau khi access token hiện tại hết hạn).
 
 Điểm khác biệt quan trọng giữa Technician và Staff: cả hai đều bị giới hạn theo warehouse được gán, nhưng chỉ **Staff** bị thêm điều kiện "đang trong ca trực" — Technician thao tác trên thiết bị của kho được gán không cần chấm công vào ca.
 
@@ -44,7 +44,7 @@ Mỗi tài khoản chỉ có **một** role toàn cục. Phạm vi theo từng w
 - Xem log chi tiết cho kho: lịch sử trạng thái thiết bị, telemetry chi tiết (theo giờ và tức thời), lịch sử alerts và commands trong phạm vi warehouse quản lý.
 - Xem (không tạo/sửa) danh sách devices, warehouses, product-types.
 - Xem và resolve alerts trong phạm vi; theo dõi lệnh điều khiển thiết bị do Technician/Staff gửi mà không trực tiếp gửi lệnh.
-- Xem (không ghi) audit log của các warehouse mình giữ vai trò Manager (`warehouse_staff.role = manager` tại chính warehouse đó) — chỉ các bản ghi có `warehouse_id` thuộc các warehouse này; log không gắn warehouse vẫn chỉ Admin xem được.
+- Xem (không ghi) audit log của các warehouse mình được phân công — chỉ các bản ghi có `warehouse_id` thuộc các warehouse này; log không gắn warehouse vẫn chỉ Admin xem được.
 
 **Tương tác với vai trò khác:** duyệt chấm công vào ca cho Staff; giám sát log chi tiết do Technician ghi nhận trên thiết bị; báo cáo lên Admin khi cần thao tác vượt phạm vi (thêm warehouse mới, decommission thiết bị, tạo tài khoản).
 
@@ -87,7 +87,7 @@ RBAC trong hệ thống không chỉ dựa vào role — quyền thực tế cò
 | Thực thể | Vai trò trong mô hình phân quyền |
 |---|---|
 | `User.role` | Role toàn cục, 1 giá trị/user |
-| `WarehouseStaff` (`user_id`, `warehouse_id`, `role`) | Gán 1 user vào 1 hoặc nhiều warehouse. Role tại đây có thể khác role toàn cục của user — là nguồn của "Phạm vi" trong ma trận quyền ở Mục 4, áp dụng cho Manager, Technician và Staff |
+| `WarehouseStaff` (`user_id`, `warehouse_id`) | Gán 1 user vào 1 hoặc nhiều warehouse (không mang role — user dùng role của tài khoản) — là nguồn của "Phạm vi" trong ma trận quyền ở Mục 4, áp dụng cho Manager, Technician và Staff |
 | `WorkShift` (`staff_id`, `warehouse_id`, `status`, `scheduled_end_at`, `check_out_at`) | Nguồn của điều kiện "Ca trực" — chỉ áp dụng cho Staff: `approved`, chưa check-out, chưa quá giờ kết thúc + 5 phút |
 | `Shift` | Mẫu ca có tên, giờ bắt đầu/kết thúc, không chồng giờ nhau, không gắn với user hay ngày cụ thể — `WorkShift` là 1 lượt chấm công của 1 staff vào 1 mẫu ca, 1 ngày, 1 warehouse |
 
@@ -100,10 +100,10 @@ device/batch → cold_room → warehouse → warehouse_staff (→ work_shift n�
 Việc kiểm tra quyền phải đi đủ các cấp này — chỉ kiểm tra `role` là không đủ, vì 2 Manager (hoặc 2 Technician) khác nhau có thể phụ trách 2 warehouse hoàn toàn khác nhau.
 
 **Cài đặt:**
-- Route thao tác trên 1 tài nguyên (`@WarehouseScope`): `WarehouseScopeGuard` suy ra warehouse, lấy bản ghi `warehouse_staff` của caller tại đó và kiểm tra `warehouse_staff.role` nằm trong `@Roles` của route; `RolesGuard` bỏ qua kiểm tra role toàn cục trên các route này (trừ Admin). Điều kiện ca trực / "chỉ ca của mình" áp dụng khi role **tại warehouse đó** là Staff.
-- Route danh sách (`@WarehouseListScope`): không chặn mà tính danh sách warehouse caller được đọc (các warehouse có `warehouse_staff.role` thuộc `@Roles`; với role Staff và route yêu cầu ca trực thì chỉ tính warehouse đang có ca được duyệt), service lọc kết quả theo danh sách đó. Áp dụng cho `GET /warehouses`, `/cold-rooms`, `/devices` (có điều kiện ca trực cho Staff), `/batches`, `/work-shifts` (Staff chỉ thấy ca của mình), `/commands`, `/alerts`, `/audit-logs`. Thiết bị chưa claim (không thuộc cold room nào) chỉ Admin thấy.
+- Route thao tác trên 1 tài nguyên (`@WarehouseScope`): `WarehouseScopeGuard` kiểm tra role của caller nằm trong `@Roles` của route, suy ra warehouse và kiểm tra caller có bản ghi `warehouse_staff` tại đó; `RolesGuard` nhường cả hai bước cho guard này trên các route này (trừ Admin). Điều kiện ca trực / "chỉ ca của mình" áp dụng khi caller là Staff.
+- Route danh sách (`@WarehouseListScope`): không chặn mà tính danh sách warehouse caller được đọc (các warehouse caller được phân công nếu role của họ thuộc `@Roles`, ngược lại là rỗng; với Staff và route yêu cầu ca trực thì chỉ tính warehouse đang có ca được duyệt), service lọc kết quả theo danh sách đó. Áp dụng cho `GET /warehouses`, `/cold-rooms`, `/devices` (có điều kiện ca trực cho Staff), `/batches`, `/work-shifts` (Staff chỉ thấy ca của mình), `/commands`, `/alerts`, `/audit-logs`. Thiết bị chưa claim (không thuộc cold room nào) chỉ Admin thấy.
 - Xem trạng thái tổng quan của phòng lạnh (`GET /cold-rooms/status`, sự kiện WebSocket trong room `warehouse:{id}`) **không cần đang trong ca**: mọi người được phân công vào kho, kể cả Staff, đều xem được. Telemetry chi tiết theo thiết bị (`/devices/:id/telemetry/*`) và danh sách thiết bị thì Staff vẫn chỉ xem được khi đang trong ca.
-- Chatbot dùng chung `WarehouseAccessService` với các route REST: mỗi tool có `allowedRoles` (và `requireShift`) khớp với route REST tương ứng, và chỉ thấy các warehouse có role tại kho thuộc `allowedRoles` — Staff không xem được log chi tiết thiết bị (`get_device_status_history`, `get_telemetry_raw`), Technician không xem được lô hàng và lịch ca, Staff chỉ xem thiết bị/telemetry theo giờ khi đang trong ca. Tool gắn warehouse không xét role toàn cục; chỉ `get_product_types` và `search_docs` (không thuộc warehouse nào) xét role toàn cục.
+- Chatbot dùng chung `WarehouseAccessService` với các route REST: mỗi tool có `allowedRoles` (và `requireShift`) khớp với route REST tương ứng, và chỉ được dùng khi role của caller thuộc `allowedRoles`, trên các warehouse caller được phân công — Staff không xem được log chi tiết thiết bị (`get_device_status_history`, `get_telemetry_raw`), Technician không xem được lô hàng và lịch ca, Staff chỉ xem thiết bị/telemetry theo giờ khi đang trong ca. `get_product_types` và `search_docs` không thuộc warehouse nào nên chỉ xét role.
 - Khoá hoặc xoá tài khoản có hiệu lực ngay: ngoài xoá phiên refresh, hệ thống đặt key `blocked:<userId>` trong Redis — `JwtStrategy` từ chối access token còn hạn và WebSocket bị ngắt/từ chối kết nối.
 
 ---

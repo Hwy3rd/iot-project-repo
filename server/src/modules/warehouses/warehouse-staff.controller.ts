@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Put,
-  Query,
-} from '@nestjs/common';
+import { Controller, Delete, Get, Param, Put, Query } from '@nestjs/common';
 import { PaginationQueryDto } from '../../common/pagination/pagination-query.dto';
 import { Audit } from '../../common/decorators/audit.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -14,7 +6,6 @@ import { Serialize } from '../../common/decorators/serialize.decorator';
 import { WarehouseScope } from '../../common/decorators/warehouse-scope.decorator';
 import { UserRole } from '../../libs/constants/user.constant';
 import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.constant';
-import { AssignWarehouseStaffDto } from './dto/assign-warehouse-staff.dto';
 import { WarehouseStaffResponseDto } from './dto/warehouse-staff-response.dto';
 import { WarehouseStaff } from './entities/warehouse-staff.entity';
 import { WarehouseStaffService } from './warehouse-staff.service';
@@ -52,9 +43,8 @@ export class WarehouseStaffController {
   assign(
     @Param('warehouseId') warehouseId: string,
     @Param('userId') userId: string,
-    @Body() dto: AssignWarehouseStaffDto,
   ) {
-    return this.warehouseStaffService.assign(warehouseId, userId, dto);
+    return this.warehouseStaffService.assign(warehouseId, userId);
   }
 
   @Roles(UserRole.ADMIN)

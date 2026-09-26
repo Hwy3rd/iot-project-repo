@@ -120,11 +120,11 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `DELETE /warehouses/:id` | A | — | `null` (soft delete) |
 | `POST /warehouses/:id/images` | A | `multipart/form-data` | `WarehouseResponseDto` |
 | `DELETE /warehouses/:id/images` | A | `{ url }` | `WarehouseResponseDto` |
-| `GET /warehouses/:warehouseId/staff` | A, M (**P**) | `page?`, `limit?` | `Paginated<WarehouseStaffResponseDto>` (`userId`, `warehouseId`, `role` tại kho, `user { id, username, fullName }`) |
-| `PUT /warehouses/:warehouseId/staff/:userId` | A | `{ role: manager \| technician \| staff }` | `WarehouseStaffResponseDto` — upsert: gán mới hoặc đổi role tại kho. `400` nếu role `staff` cho tài khoản không phải Staff, hoặc role khác `staff` cho tài khoản Staff |
+| `GET /warehouses/:warehouseId/staff` | A, M (**P**) | `page?`, `limit?` | `Paginated<WarehouseStaffResponseDto>` (`userId`, `warehouseId`, `createdAt`, `user { id, username, fullName, role }`) |
+| `PUT /warehouses/:warehouseId/staff/:userId` | A | — | `WarehouseStaffResponseDto` — gán vào kho; gán lại người đã có trong kho thì trả về bản ghi cũ. User làm việc với role của tài khoản. `400` nếu là tài khoản Admin |
 | `DELETE /warehouses/:warehouseId/staff/:userId` | A | — | `null` (`404` nếu user chưa được gán) |
 
-> Các endpoint `GET` liệt kê danh sách của tài nguyên gắn warehouse (`/warehouses`, `/cold-rooms`, `/devices`, `/batches`, `/work-shifts`, `/commands`, `/alerts`, `/audit-logs`) chỉ trả về bản ghi thuộc các warehouse caller được đọc, xét theo **role tại từng warehouse** (`warehouse_staff.role`) — Admin thấy toàn bộ. Chi tiết mô hình: `docs/RBAC.md` §1, §3.
+> Các endpoint `GET` liệt kê danh sách của tài nguyên gắn warehouse (`/warehouses`, `/cold-rooms`, `/devices`, `/batches`, `/work-shifts`, `/commands`, `/alerts`, `/audit-logs`) chỉ trả về bản ghi thuộc các warehouse caller được đọc, xét theo phân công (`warehouse_staff`) và role của tài khoản — Admin thấy toàn bộ. Chi tiết mô hình: `docs/RBAC.md` §1, §3.
 
 ---
 

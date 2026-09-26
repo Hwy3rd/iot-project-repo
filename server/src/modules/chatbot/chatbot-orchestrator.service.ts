@@ -12,7 +12,6 @@ import {
 } from '@google/genai';
 import { plainToInstance } from 'class-transformer';
 import type { Redis } from 'ioredis';
-import { WarehouseAccessService } from '../../common/rbac/warehouse-access.service';
 import { LlmService } from '../../libs/llm/llm.service';
 import {
   CHATBOT_EVENTS,
@@ -84,7 +83,6 @@ export class ChatbotOrchestratorService {
     private readonly chatbotService: ChatbotService,
     private readonly llmService: LlmService,
     private readonly toolExecutor: ChatbotToolExecutorService,
-    private readonly warehouseAccess: WarehouseAccessService,
     private readonly realtime: RealtimeGateway,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
@@ -166,7 +164,7 @@ export class ChatbotOrchestratorService {
     const contents: Content[] = mergeConsecutiveRoles(
       history.map((message) => this.toGeminiContent(message)),
     );
-    const toolDeclarations = await this.toolDeclarationsFor(caller);
+    const toolDeclarations = this.toolDeclarationsFor(caller);
     const systemInstruction = buildChatbotSystemInstruction(
       new Date(),
       CHATBOT_TIMEZONE,
@@ -281,22 +279,16 @@ export class ChatbotOrchestratorService {
     );
   }
 
-  // Offers a tool if the caller's global role or any role they hold in a
-  // warehouse is allowed for it — same gate as ChatbotToolExecutorService.
-  // execute(), which still filters the data per warehouse on every call.
-  private async toolDeclarationsFor(
+  // Offers a tool if the caller's role is allowed for it — same gate as
+  // ChatbotToolExecutorService.execute(), which still filters the data per
+  // warehouse on every call.
+  private toolDeclarationsFor(
     caller: ChatbotToolCaller,
-  ): Promise<FunctionDeclaration[]> {
-    const roles =
-      caller.role === UserRole.ADMIN
-        ? null
-        : new Set([
-            caller.role,
-            ...(await this.warehouseAccess.assignedRoles(caller.id)),
-          ]);
+  ): FunctionDeclaration[] {
     return CHATBOT_TOOLS.filter(
       (tool) =>
-        (roles === null || tool.allowedRoles.some((r) => roles.has(r))) &&
+        (caller.role === UserRole.ADMIN ||
+          tool.allowedRoles.includes(caller.role)) &&
         !CHATBOT_TOOLS_NOT_IMPLEMENTED.has(tool.name),
     ).map((tool) => ({
       name: tool.name,

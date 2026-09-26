@@ -36,10 +36,10 @@ interface RequestWithAuth {
 }
 
 // Enforces "Phạm vi" (warehouse scope) and "Ca trực" (shift scope) from
-// docs/rbac.md §3-4. Admin always bypasses. For everyone else the role that
-// counts on a warehouse-scoped route is their role *in that warehouse*
-// (warehouse_staff.role), checked here against @Roles — RolesGuard skips
-// its global-role check on these routes (see roles.guard.ts).
+// docs/rbac.md §3-4. Admin always bypasses. Everyone else must be assigned
+// to the warehouse (warehouse_staff) and their account role must be in
+// @Roles — both checked here once the warehouse is known, so RolesGuard
+// skips these routes (see roles.guard.ts).
 //   - @WarehouseScope():     one resource; rejects unless allowed.
 //   - @WarehouseListScope(): a list; never rejects, attaches the readable
 //                            warehouses as request.warehouseAccess.
@@ -102,18 +102,17 @@ export class WarehouseScopeGuard implements CanActivate {
       );
     }
 
-    const assignment = await this.warehouseStaffRepo.findOne({
-      where: { userId: user.id, warehouseId },
+    if (requiredRoles?.length && !requiredRoles.includes(user.role)) {
+      throw new ForbiddenException('Access denied');
+    }
+    const assigned = await this.warehouseStaffRepo.existsBy({
+      userId: user.id,
+      warehouseId,
     });
-    if (!assignment) {
+    if (!assigned) {
       throw new ForbiddenException('Not assigned to this warehouse');
     }
-    if (requiredRoles?.length && !requiredRoles.includes(assignment.role)) {
-      throw new ForbiddenException(
-        'Your role in this warehouse does not allow this action',
-      );
-    }
-    const actsAsStaff = assignment.role === UserRole.STAFF;
+    const actsAsStaff = user.role === UserRole.STAFF;
 
     if (meta.ownStaffOnly && actsAsStaff) {
       const params = request.params ?? {};

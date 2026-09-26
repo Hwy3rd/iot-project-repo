@@ -1,4 +1,3 @@
-import { ApiError } from '@/api/client'
 import { usersApi } from '@/api/endpoints'
 import type { User, UserRole } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
@@ -41,7 +40,7 @@ const toValues = (u: User): FormValues => ({
   role: u.role,
 })
 
-/** Admin only. Per-warehouse roles are assigned separately, from the warehouse. */
+/** Admin only. Warehouses are assigned separately, from the warehouse's detail. */
 export function CreateUserDialog() {
   const [open, setOpen] = useState(false)
   return <UserFormDialog open={open} onOpenChange={setOpen} />
@@ -110,13 +109,7 @@ function UserFormDialog({
     },
     onError: (err) =>
       setError('root.server', {
-        message: mutationErrorText(err, {
-          // 409 has two causes; the backend message tells them apart.
-          409:
-            err instanceof ApiError && err.message.includes('to or from Staff')
-              ? 'Nhân viên chỉ làm Nhân viên ở mọi kho: gỡ người này khỏi các kho đang được phân công trước khi đổi vai trò sang/từ Nhân viên.'
-              : 'Tên đăng nhập hoặc email đã được dùng.',
-        }),
+        message: mutationErrorText(err, { 409: 'Tên đăng nhập hoặc email đã được dùng.' }),
       }),
   })
 
@@ -127,7 +120,7 @@ function UserFormDialog({
       onClosed={() => reset(initial)}
       triggerLabel={user ? undefined : 'Tạo tài khoản'}
       title={user ? `Sửa tài khoản ${user.username}` : 'Tạo tài khoản mới'}
-      description="Vai trò ở đây là vai trò hệ thống; quyền trong từng kho được gán riêng khi phân công vào kho."
+      description="Vai trò áp dụng ở mọi kho mà người này được phân công. Đổi sang Quản trị viên sẽ gỡ họ khỏi các kho, vì quản trị viên thấy mọi kho."
       onSubmit={handleSubmit((v) => save.mutate(v))}
       pending={save.isPending}
       submitLabel={user ? 'Lưu thay đổi' : 'Tạo tài khoản'}

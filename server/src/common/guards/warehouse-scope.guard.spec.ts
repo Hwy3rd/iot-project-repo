@@ -13,7 +13,7 @@ import { WarehouseAccessService } from '../rbac/warehouse-access.service';
 import { WarehouseScopeGuard } from './warehouse-scope.guard';
 
 describe('WarehouseScopeGuard', () => {
-  let warehouseStaffRepo: { findOne: jest.Mock; find: jest.Mock };
+  let warehouseStaffRepo: { existsBy: jest.Mock; find: jest.Mock };
   let workShiftRepo: { find: jest.Mock; findOne: jest.Mock };
   let metadata: Record<string, unknown>;
   let guard: WarehouseScopeGuard;
@@ -43,7 +43,7 @@ describe('WarehouseScopeGuard', () => {
 
   beforeEach(() => {
     metadata = {};
-    warehouseStaffRepo = { findOne: jest.fn(), find: jest.fn() };
+    warehouseStaffRepo = { existsBy: jest.fn(), find: jest.fn() };
     workShiftRepo = {
       find: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(),
@@ -76,57 +76,60 @@ describe('WarehouseScopeGuard', () => {
       await expect(run(UserRole.ADMIN, { id: 'w1' })).resolves.toMatchObject({
         allowed: true,
       });
-      expect(warehouseStaffRepo.findOne).not.toHaveBeenCalled();
+      expect(warehouseStaffRepo.existsBy).not.toHaveBeenCalled();
     });
 
     it('rejects a user not assigned to the warehouse', async () => {
       metadata[WAREHOUSE_SCOPE_KEY] = scope();
-      warehouseStaffRepo.findOne.mockResolvedValue(null);
+      warehouseStaffRepo.existsBy.mockResolvedValue(false);
 
       await expect(run(UserRole.MANAGER, { id: 'w1' })).rejects.toThrow(
+        'Not assigned to this warehouse',
+      );
+    });
+
+    it('rejects an assigned user whose role is not in @Roles, before any lookup', async () => {
+      metadata[WAREHOUSE_SCOPE_KEY] = scope();
+      metadata[ROLES_KEY] = [UserRole.ADMIN, UserRole.MANAGER];
+      warehouseStaffRepo.existsBy.mockResolvedValue(true);
+
+      await expect(run(UserRole.STAFF, { id: 'w1' })).rejects.toThrow(
         ForbiddenException,
       );
+      expect(warehouseStaffRepo.existsBy).not.toHaveBeenCalled();
     });
 
-    it('judges by the per-warehouse role, not the global one: global Manager, Staff here', async () => {
+    it('allows an assigned user whose role is in @Roles', async () => {
       metadata[WAREHOUSE_SCOPE_KEY] = scope();
       metadata[ROLES_KEY] = [UserRole.ADMIN, UserRole.MANAGER];
-      warehouseStaffRepo.findOne.mockResolvedValue({ role: UserRole.STAFF });
+      warehouseStaffRepo.existsBy.mockResolvedValue(true);
 
-      await expect(run(UserRole.MANAGER, { id: 'w1' })).rejects.toThrow(
-        'Your role in this warehouse does not allow this action',
-      );
-    });
-
-    it('allows a global Staff who is Manager of this warehouse', async () => {
-      metadata[WAREHOUSE_SCOPE_KEY] = scope();
-      metadata[ROLES_KEY] = [UserRole.ADMIN, UserRole.MANAGER];
-      warehouseStaffRepo.findOne.mockResolvedValue({ role: UserRole.MANAGER });
-
-      await expect(run(UserRole.STAFF, { id: 'w1' })).resolves.toMatchObject({
+      await expect(run(UserRole.MANAGER, { id: 'w1' })).resolves.toMatchObject({
         allowed: true,
+      });
+      expect(warehouseStaffRepo.existsBy).toHaveBeenCalledWith({
+        userId: 'u1',
+        warehouseId: 'w1',
       });
     });
 
-    it('requires an active shift when the per-warehouse role is Staff', async () => {
+    it('requires an active shift for Staff', async () => {
       metadata[WAREHOUSE_SCOPE_KEY] = scope({ requireShift: true });
-      warehouseStaffRepo.findOne.mockResolvedValue({ role: UserRole.STAFF });
+      warehouseStaffRepo.existsBy.mockResolvedValue(true);
       workShiftRepo.find.mockResolvedValue([]);
 
-      await expect(run(UserRole.MANAGER, { id: 'w1' })).rejects.toThrow(
+      await expect(run(UserRole.STAFF, { id: 'w1' })).rejects.toThrow(
         'Requires an approved work shift in progress for this warehouse',
       );
     });
 
-    it('skips the shift check when the per-warehouse role is not Staff', async () => {
+    it('skips the shift check for roles other than Staff', async () => {
       metadata[WAREHOUSE_SCOPE_KEY] = scope({ requireShift: true });
-      warehouseStaffRepo.findOne.mockResolvedValue({
-        role: UserRole.TECHNICIAN,
-      });
+      warehouseStaffRepo.existsBy.mockResolvedValue(true);
 
-      await expect(run(UserRole.STAFF, { id: 'w1' })).resolves.toMatchObject({
-        allowed: true,
-      });
+      await expect(
+        run(UserRole.TECHNICIAN, { id: 'w1' }),
+      ).resolves.toMatchObject({ allowed: true });
       expect(workShiftRepo.find).not.toHaveBeenCalled();
     });
   });
@@ -170,7 +173,7 @@ describe('WarehouseScopeGuard', () => {
       metadata[WAREHOUSE_SCOPE_KEY] = scope({
         source: WarehouseScopeSource.COMMAND_PARAM,
       });
-      warehouseStaffRepo.findOne.mockResolvedValue({ role: UserRole.MANAGER });
+      warehouseStaffRepo.existsBy.mockResolvedValue(true);
 
       await run(UserRole.MANAGER, { id: 'cmd1' });
 
@@ -182,8 +185,9 @@ describe('WarehouseScopeGuard', () => {
       ]);
       expect(qb.select).toHaveBeenCalledWith('hop2.warehouseId', 'warehouseId');
       expect(qb.where).toHaveBeenCalledWith('target.id = :id', { id: 'cmd1' });
-      expect(warehouseStaffRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 'u1', warehouseId: 'w1' },
+      expect(warehouseStaffRepo.existsBy).toHaveBeenCalledWith({
+        userId: 'u1',
+        warehouseId: 'w1',
       });
     });
 
@@ -216,7 +220,7 @@ describe('WarehouseScopeGuard', () => {
       await expect(run(UserRole.TECHNICIAN, { id: 'd1' })).rejects.toThrow(
         'Resource is not assigned to any warehouse you can access',
       );
-      expect(warehouseStaffRepo.findOne).not.toHaveBeenCalled();
+      expect(warehouseStaffRepo.existsBy).not.toHaveBeenCalled();
     });
   });
 
@@ -229,13 +233,16 @@ describe('WarehouseScopeGuard', () => {
       expect(request.warehouseAccess?.warehouseIds).toBeNull();
     });
 
-    it('keeps only warehouses whose per-warehouse role is in @Roles', async () => {
+    it('gives every assigned warehouse when the role is in @Roles', async () => {
       metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: false };
-      metadata[ROLES_KEY] = [UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF];
+      metadata[ROLES_KEY] = [
+        UserRole.ADMIN,
+        UserRole.MANAGER,
+        UserRole.TECHNICIAN,
+      ];
       warehouseStaffRepo.find.mockResolvedValue([
-        { warehouseId: 'w1', role: UserRole.MANAGER },
-        { warehouseId: 'w2', role: UserRole.TECHNICIAN },
-        { warehouseId: 'w3', role: UserRole.STAFF },
+        { warehouseId: 'w1' },
+        { warehouseId: 'w2' },
       ]);
 
       const { allowed, request } = await run(UserRole.TECHNICIAN);
@@ -244,16 +251,39 @@ describe('WarehouseScopeGuard', () => {
       expect(request.warehouseAccess).toEqual({
         userId: 'u1',
         role: UserRole.TECHNICIAN,
-        warehouseIds: ['w1', 'w3'],
-        staffWarehouseIds: ['w3'],
+        warehouseIds: ['w1', 'w2'],
+        staffWarehouseIds: [],
       });
+    });
+
+    it('gives nothing, without a lookup, when the role is not in @Roles', async () => {
+      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: false };
+      metadata[ROLES_KEY] = [UserRole.ADMIN, UserRole.MANAGER];
+
+      const { allowed, request } = await run(UserRole.STAFF);
+
+      expect(allowed).toBe(true);
+      expect(request.warehouseAccess?.warehouseIds).toEqual([]);
+      expect(warehouseStaffRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('marks every warehouse of a Staff caller as a Staff warehouse', async () => {
+      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: false };
+      warehouseStaffRepo.find.mockResolvedValue([
+        { warehouseId: 'w1' },
+        { warehouseId: 'w2' },
+      ]);
+
+      const { request } = await run(UserRole.STAFF);
+
+      expect(request.warehouseAccess?.staffWarehouseIds).toEqual(['w1', 'w2']);
     });
 
     it('drops Staff warehouses without an active shift when requireShift is set', async () => {
       metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: true };
       warehouseStaffRepo.find.mockResolvedValue([
-        { warehouseId: 'w1', role: UserRole.STAFF },
-        { warehouseId: 'w2', role: UserRole.STAFF },
+        { warehouseId: 'w1' },
+        { warehouseId: 'w2' },
       ]);
       workShiftRepo.find.mockResolvedValue([{ warehouseId: 'w2' }]);
 

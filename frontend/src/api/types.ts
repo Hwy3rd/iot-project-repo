@@ -267,13 +267,12 @@ export interface DeviceChannel {
   updatedAt: string
 }
 
+/** A user assigned to a warehouse; they work there with their account role. */
 export interface WarehouseStaff {
   userId: string
   warehouseId: string
-  /** The user's role inside this warehouse. */
-  role: UserRole
   createdAt: string
-  user?: { id: string; username: string; fullName: string | null }
+  user?: { id: string; username: string; fullName: string | null; role: UserRole }
 }
 
 /** Response of every `POST /<resource>/bulk-delete` (best effort, per row). */

@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { LastUpdated } from '@/components/common/LastUpdated'
 import { ViewToggle } from '@/components/common/ViewToggle'
 import { WarehouseGrid } from '@/components/warehouses/WarehouseGrid'
+import { WarehouseStaffSection } from '@/components/warehouses/WarehouseStaffSection'
 import {
   DetailDialog,
   DetailList,
@@ -130,6 +131,8 @@ export function WarehousesPage() {
   const isAdmin = hasRole(user?.role, ['admin'])
   const canDelete = isAdmin
   const canEdit = isAdmin
+  // GET /warehouses/:id/staff: Admin, or a Manager of that warehouse.
+  const canViewStaff = hasRole(user?.role, ['admin', 'manager'])
   const rows = useRowDialogs<WarehouseItem>()
   const current = rows.item
   const list = useListParams(FILTER_KEYS)
@@ -289,6 +292,7 @@ export function WarehousesPage() {
             title={current.name}
             description={current.code}
             onEdit={canEdit ? () => rows.edit(current) : undefined}
+            wide={canViewStaff}
           >
             <DetailList
               fields={[
@@ -299,6 +303,7 @@ export function WarehousesPage() {
                 { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
               ]}
             />
+            {canViewStaff && <WarehouseStaffSection warehouse={current} canManage={isAdmin} />}
           </DetailDialog>
           {canEdit && (
             <EditWarehouseDialog

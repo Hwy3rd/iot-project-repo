@@ -88,6 +88,12 @@ export const warehousesApi = {
   /** Admin, or Manager of that warehouse. */
   staff: (warehouseId: string, q: PageQuery = {}) =>
     api.get<Paginated<WarehouseStaff>>(`/warehouses/${warehouseId}/staff`, { ...q }),
+  /** Admin only; not for Admin accounts. Assigning someone already there is a no-op. */
+  assignStaff: (warehouseId: string, userId: string) =>
+    api.put<WarehouseStaff>(`/warehouses/${warehouseId}/staff/${userId}`),
+  /** Admin only. */
+  unassignStaff: (warehouseId: string, userId: string) =>
+    api.delete<null>(`/warehouses/${warehouseId}/staff/${userId}`),
 }
 
 export interface ColdRoomQuery extends SearchQuery, CreatedRangeQuery {

@@ -71,7 +71,7 @@ erDiagram
   WAREHOUSE_STAFF {
     varchar36 user_id PK
     varchar36 warehouse_id PK
-    enum role "admin | manager | staff | technician"
+    timestamp created_at
   }
   COLD_ROOMS {
     varchar36 id PK
@@ -252,13 +252,12 @@ Master data cấp hệ thống, chỉ Admin quản lý (xem `docs/RBAC.md`).
 
 ### `warehouse_staff`
 
-Bảng gán user vào warehouse — nguồn của "Phạm vi" trong mô hình RBAC. Không có cột `id` riêng: **khoá chính composite** `(user_id, warehouse_id)`, nên một user chỉ có đúng một bản ghi gán cho mỗi warehouse.
+Bảng gán user vào warehouse — nguồn của "Phạm vi" trong mô hình RBAC. Không mang role: user làm việc ở mọi kho được gán với `users.role` của mình. Không có cột `id` riêng: **khoá chính composite** `(user_id, warehouse_id)`, nên một user chỉ có đúng một bản ghi gán cho mỗi warehouse.
 
 | Cột | Kiểu | Ghi chú |
 |---|---|---|
 | `user_id` | `varchar(36)` PK, FK → `users.id` (CASCADE) | |
 | `warehouse_id` | `varchar(36)` PK, FK → `warehouses.id` (CASCADE) | |
-| `role` | `enum` | **Có thể khác `users.role` toàn cục của chính user đó** — một user có thể là Manager ở warehouse A nhưng Staff ở warehouse B |
 | `created_at` | `timestamp` | |
 
 ---
@@ -493,7 +492,7 @@ Nhật ký append-only mọi hành động quan trọng trong hệ thống — A
 |---|---|
 | Xác thực (ghi trong `AuthService`) | `auth.login`, `auth.login_failed` (`metadata.reason`: `unknown_username` \| `wrong_password` \| `locked`; với `unknown_username` thì `user_id = NULL` và `metadata.username` là username đã thử) |
 | Tài khoản | `user.create`, `user.update`, `user.role_change` (khi `role` đổi), `user.lock`, `user.unlock`, `user.delete` |
-| Phân công kho | `warehouse_staff.assign` (gán mới hoặc đổi role tại kho), `warehouse_staff.unassign` |
+| Phân công kho | `warehouse_staff.assign` (gán vào kho), `warehouse_staff.unassign` |
 | Danh mục | `warehouse.*`, `product_type.*`, `shift.*` (`create`/`update`/`delete`) |
 | Phòng lạnh | `cold_room.create`, `cold_room.update`, `cold_room.delete` |
 | Lô hàng | `batch.create`, `batch.update`, `batch.remove` (xuất kho) |
@@ -571,7 +570,7 @@ Redis không lưu dữ liệu nghiệp vụ, chỉ phục vụ 2 việc:
 
 | Bảng.cột | Giá trị |
 |---|---|
-| `users.role` / `warehouse_staff.role` | `admin`, `manager`, `staff`, `technician` |
+| `users.role` | `admin`, `manager`, `staff`, `technician` |
 | `users.status` | `active`, `locked` |
 | `product_types.unit` | `kg`, `liter`, `piece`, `box` |
 | `batches.status` | `in_stock`, `expired`, `removed` |

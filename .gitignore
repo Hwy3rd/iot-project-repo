@@ -1,3 +1,4 @@
 .specstory
+.playwright-mcp
 # Root env for docker compose (Cloudflare Tunnel token)
 .env

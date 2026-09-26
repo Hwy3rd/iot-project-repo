@@ -276,8 +276,8 @@ const COLD_ROOMS: {
   { wh: 14, name: 'Phòng P1 – Mát', profile: 'cool', pallets: 45 },
 ];
 
-// `warehouses` indexes WAREHOUSES; the user gets their own global role in
-// each (a Manager manages, Staff works shifts, a Technician services devices).
+// `warehouses` indexes WAREHOUSES; the user works in each with their account
+// role (a Manager manages, Staff works shifts, a Technician services devices).
 const USERS: {
   username: string;
   fullName: string;
@@ -538,7 +538,7 @@ async function seedMasterData(): Promise<void> {
             m,
             WarehouseStaff,
             { userId: user.id, warehouseId: warehouses[wh].id },
-            () => ({ role: u.role }),
+            () => ({}),
             counter('warehouse_staff'),
           );
         }

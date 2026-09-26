@@ -47,9 +47,8 @@ export class AuditLogsService {
     return this.auditLogsRepository.save(auditLog);
   }
 
-  // Admin sees everything. A Manager only sees entries scoped to warehouses
-  // where they hold the Manager role *in that warehouse* (warehouse_staff.role,
-  // not just their global account role) — entries with no warehouse_id
+  // Admin sees everything. A Manager only sees entries scoped to the
+  // warehouses they're assigned to — entries with no warehouse_id
   // (account/master-data actions) stay Admin-only.
   async findAll(
     queryAuditLogDto: QueryAuditLogDto = {},
@@ -124,8 +123,9 @@ export class AuditLogsService {
     viewer?: AuditLogViewer,
   ): Promise<string[] | null> {
     if (!viewer || viewer.role === UserRole.ADMIN) return null;
+    if (viewer.role !== UserRole.MANAGER) return [];
     const assignments = await this.warehouseStaffRepository.find({
-      where: { userId: viewer.id, role: UserRole.MANAGER },
+      where: { userId: viewer.id },
     });
     return assignments.map((assignment) => assignment.warehouseId);
   }

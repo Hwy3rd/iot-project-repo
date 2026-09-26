@@ -7,11 +7,10 @@ import { UserRole } from '../../libs/constants/user.constant';
 export interface WarehouseAccess {
   userId: string;
   role: UserRole;
-  // null = unrestricted (Admin). Otherwise the warehouses where the caller's
-  // role *in that warehouse* (warehouse_staff.role) is one of the route's
-  // @Roles — possibly empty.
+  // null = unrestricted (Admin). Otherwise the warehouses the caller is
+  // assigned to, or none when their role isn't one of the route's @Roles.
   warehouseIds: string[] | null;
-  // Subset of warehouseIds where that per-warehouse role is Staff, for
+  // warehouseIds again when the caller is Staff (else empty), for
   // resources Staff may only see their own rows of (e.g. work shifts).
   staffWarehouseIds: string[];
 }

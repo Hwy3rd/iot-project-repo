@@ -64,7 +64,7 @@ Việc gửi push nằm trong `worker` chứ không trong request/luồng MQTT, 
 
 Hiện chỉ có `TEMPERATURE_OUT_OF_RANGE` thực sự được raise (từ `TelemetryService.ingest()`). Các `AlertType` khác đã có nhãn tiếng Việt sẵn (mục 4) nhưng chưa có code nào sinh ra chúng.
 
-**Cho ai:** mọi user có dòng trong `warehouse_staff` của warehouse chứa cold room phát sinh alert, **không phân biệt role tại warehouse** (Manager, Technician, Staff đều nhận).
+**Cho ai:** mọi user có dòng trong `warehouse_staff` của warehouse chứa cold room phát sinh alert, **không phân biệt role** (Manager, Technician, Staff đều nhận).
 
 Hệ quả cần biết:
 - **Admin không được gán vào warehouse thì không nhận** — dù Admin có quyền xem mọi alert qua API.
