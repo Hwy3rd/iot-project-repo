@@ -30,6 +30,21 @@ docker compose ps        # chờ tất cả ở trạng thái healthy
 
 **Không** tạo file `.env` ở root. File đó dành cho production: nếu có, Compose sẽ đọc nó để điền `${MYSQL_PASSWORD:-password}`…, khiến datastore nhận credential khác với `server/.env`.
 
+### Cách khác: dùng stack production (`./run.sh dev`)
+
+Nếu máy đã chạy `./init.sh` (có `.env` ở root), có thể dùng luôn stack production thay cho lệnh `docker compose up` ở trên. Stack này dùng chung dữ liệu với production.
+
+```bash
+./run.sh stop    # nếu app/cloudflared đang chạy, `dev` không tự dừng chúng
+./run.sh dev     # up worker + datastore + broker, không up app/cloudflared
+```
+
+Datastore ở production chỉ bind `127.0.0.1` nhưng dùng cùng cổng với dev (mục 7), nên `server/.env` vẫn trỏ `localhost`. Khác biệt:
+
+- Credential trong `server/.env` (MySQL, Mongo, MinIO) phải khớp `.env` ở root, không dùng giá trị mặc định của `server/.env.example`.
+- `worker` đã chạy trong container, **bỏ qua mục 5**. Container này chạy image đã build, không phải code đang sửa. Muốn nó nhận code mới thì `./run.sh rebuild worker`.
+- Backend thì vẫn tự chạy trên host như mục 4.
+
 ## 4. Backend (NestJS)
 
 ```bash
@@ -60,6 +75,8 @@ Hai lệnh seed chạy lại nhiều lần vẫn an toàn: chúng chỉ tạo d�
 
 ## 5. Worker (tuỳ chọn)
 
+Bỏ qua mục này nếu dùng `./run.sh dev` (worker đã chạy trong container).
+
 Worker tiêu thụ job BullMQ (alert, push notification). Chỉ cần chạy khi test các tính năng đó. Chạy ở terminal khác:
 
 ```bash
@@ -88,7 +105,7 @@ Mở http://localhost:5173 và đăng nhập bằng `SEED_ADMIN_USERNAME` / `SEE
 | --------------------- | --------------------------------------------------- |
 | Frontend              | http://localhost:5173                               |
 | API + WebSocket       | http://localhost:3000                               |
-| MinIO console         | http://localhost:9001 (`minioadmin` / `minioadmin`) |
+| MinIO console         | http://localhost:9001 (`minioadmin` / `minioadmin`, hoặc `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` trong `.env` root nếu dùng `./run.sh dev`) |
 | MySQL / Mongo / Redis | `3306` / `27017` / `6379`                           |
 | MQTT                  | `1883`                                              |
 

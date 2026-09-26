@@ -30,7 +30,7 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
 │   ├── DATABASE_DESIGN.md        # Schema, quan hệ, entity
 │   └── RBAC.md                   # Vai trò, phạm vi, ma trận quyền
 ├── docker-compose.yml            # Dev: full stack, publish port ra localhost, credential mặc định
-├── docker-compose.production.yml # Production (độc lập): bắt buộc credential, không publish port, cloudflared
+├── docker-compose.production.yml # Production (độc lập): bắt buộc credential, port chỉ bind 127.0.0.1, cloudflared
 ├── init.sh                       # Khởi tạo hệ thống lần đầu (build, migrate, seed admin)
 └── run.sh                        # Start/stop/restart hệ thống đã khởi tạo
 ```
@@ -44,11 +44,12 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
    ```bash
    ./init.sh
    ```
-   Production không publish port nào ra host ngoài MQTT `1883`: API và MinIO được truy cập qua hostname của Cloudflare Tunnel (xem [.env.example](.env.example)).
+   Production chỉ publish MQTT `1883` ra ngoài; API, MinIO và datastore chỉ bind `127.0.0.1` (dùng client ngay trên máy chủ). Từ bên ngoài, API và MinIO được truy cập qua hostname của Cloudflare Tunnel (xem [.env.example](.env.example)).
 3. Các lần sau, không cần chạy lại `init.sh` — dùng `run.sh` để bật/tắt:
    ```bash
    ./run.sh stop      # tắt, giữ nguyên dữ liệu
    ./run.sh start      # bật lại
+   ./run.sh dev        # bật mọi thứ trừ app + cloudflared, để tự chạy backend trên host
    ./run.sh status      # xem trạng thái container
    ./run.sh logs app    # xem log
    ```
@@ -64,6 +65,16 @@ npm install && npm run migration:run && npm run seed:admin && npm run start:dev
 # terminal khác, từ root repo:
 cd frontend && cp .env.example .env && npm install && npm run dev
 ```
+
+Hoặc dùng luôn stack production đã `init.sh` (chung dữ liệu với production) thay cho `docker compose up -d ...` ở trên:
+
+```bash
+./run.sh stop     # nếu app/cloudflared đang chạy — `dev` không tự dừng chúng
+./run.sh dev      # up worker + datastore + broker, không up app/cloudflared
+cd server && npm run start:dev   # tự chạy backend trên host
+```
+
+Khi đó `server/.env` phải dùng đúng credential trong `.env` ở root (không phải giá trị mặc định của dev). `worker` đã chạy trong container nên không chạy thêm worker trên host.
 
 Hướng dẫn đầy đủ (cách tạo secret, seed dữ liệu mẫu, worker, cổng, lỗi thường gặp) xem [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 

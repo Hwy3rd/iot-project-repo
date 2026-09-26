@@ -11,7 +11,7 @@ Toàn bộ hệ thống chạy bằng **Docker Compose trên một máy chủ du
 | File                                                              | Dùng khi                                                             | Khác biệt chính                                                                                 |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | [docker-compose.yml](../docker-compose.yml)                       | Dev trên máy cá nhân                                                 | Publish mọi cổng ra `localhost`, credential có giá trị mặc định, `.env` ở root là tuỳ chọn      |
-| [docker-compose.production.yml](../docker-compose.production.yml) | Production, được gọi qua [init.sh](../init.sh) / [run.sh](../run.sh) | Bắt buộc `.env` và credential, chỉ publish MQTT `1883`, có thêm service `cloudflared`           |
+| [docker-compose.production.yml](../docker-compose.production.yml) | Production, được gọi qua [init.sh](../init.sh) / [run.sh](../run.sh) | Bắt buộc `.env` và credential, API/datastore chỉ publish trên `127.0.0.1`, MQTT `1883` publish ra ngoài, có thêm service `cloudflared` |
 
 Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng **không kế thừa nhau**. Khi sửa phần chung, phải sửa **cả hai file** bằng tay.
 
@@ -38,7 +38,7 @@ Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng *
   │   │ worker │ │ mysql │ │ mongo │ │  redis   │                    │
   │   └────────┘ └───────┘ └───────┘ └──────────┘                    │
   │              ┌───────────┐                                       │
-  │              │ mosquitto │◀──── host:1883 (cổng duy nhất publish)│
+  │              │ mosquitto │◀──── host:1883 (publish ra ngoài host)│
   │              └───────────┘                                       │
   └──────────────────────────────────────────────────────────────────┘
                       ▲
@@ -99,17 +99,19 @@ Tất cả service nằm trong network mặc định của compose project và g
 
 ### Cổng publish ra host
 
-| Cổng host | Service     | Dev | Production | Mục đích                               |
-| --------- | ----------- | :-: | :--------: | -------------------------------------- |
-| 8080      | `app`       | ✅  |     —      | API + WebSocket (`8080 → 3000`)        |
-| 3306      | `mysql`     | ✅  |     —      | Client DB trên máy dev                 |
-| 27017     | `mongo`     | ✅  |     —      | Client DB trên máy dev                 |
-| 6379      | `redis`     | ✅  |     —      | Client Redis trên máy dev              |
-| 9000      | `minio`     | ✅  |     —      | S3 API / tải ảnh                       |
-| 9001      | `minio`     | ✅  |     —      | MinIO web console                      |
-| 1883      | `mosquitto` | ✅  |     ✅     | Thiết bị ESP32 gửi telemetry           |
+| Cổng host | Service     | Dev | Production          | Mục đích                               |
+| --------- | ----------- | :-: | :-----------------: | -------------------------------------- |
+| 8080      | `app`       | ✅  | `127.0.0.1`         | API + WebSocket (`8080 → 3000`)        |
+| 3306      | `mysql`     | ✅  | `127.0.0.1`         | Client DB trên máy chủ                 |
+| 27017     | `mongo`     | ✅  | `127.0.0.1`         | Client DB trên máy chủ                 |
+| 6379      | `redis`     | ✅  | `127.0.0.1`         | Client Redis trên máy chủ              |
+| 9000      | `minio`     | ✅  | `127.0.0.1`         | S3 API / tải ảnh                       |
+| 9001      | `minio`     | ✅  | `127.0.0.1`         | MinIO web console                      |
+| 1883      | `mosquitto` | ✅  | ✅ (mọi interface)  | Thiết bị ESP32 gửi telemetry           |
 
-Ở production, API và ảnh MinIO **chỉ** đi qua Cloudflare Tunnel, còn datastore chỉ truy cập được từ bên trong mạng compose. Muốn quản trị DB thì dùng `docker exec` (xem mục 8).
+Ở production, truy cập từ bên ngoài máy chủ: API và ảnh MinIO **chỉ** đi qua Cloudflare Tunnel, datastore thì không có đường nào. Các cổng `127.0.0.1` chỉ để dùng client (DBeaver, `redis-cli`, MinIO console...) ngay trên máy chủ, xem mục 8.
+
+**Đừng bỏ tiền tố `127.0.0.1:`** trong `ports` ở production. Viết `"3306:3306"` sẽ bind ra `0.0.0.0`, tức mọi máy tới được IP của host đều kết nối được, và Docker tự thêm rule iptables vượt qua `ufw`/`firewalld` nên firewall trên host không chặn được. Redis lại không có mật khẩu.
 
 ---
 
@@ -248,6 +250,7 @@ Yêu cầu: Docker + Docker Compose v2. Máy chủ **không cần** cài Node/pn
 | Lệnh                         | Tác dụng                                                                        |
 | ---------------------------- | ------------------------------------------------------------------------------- |
 | `./run.sh start`             | Bật lại container. Nếu container đã bị `down` thì tạo lại từ volume sẵn có      |
+| `./run.sh dev`               | `up` mọi service trừ `app` và `cloudflared`. Backend thì tự chạy trên host (ví dụ `pnpm start:dev` trong `server/`). Datastore truy cập qua cổng `127.0.0.1` (mục 4) |
 | `./run.sh stop`              | Dừng mọi container, giữ dữ liệu                                                 |
 | `./run.sh restart [svc]`     | Restart toàn bộ hoặc một service                                                |
 | `./run.sh status`            | `compose ps -a`                                                                 |
@@ -270,7 +273,7 @@ Lệnh này build lại image `app`/`worker` từ `./server` và chỉ thay hai 
 
 ### Truy cập datastore ở production
 
-Datastore không publish cổng, nên thao tác qua `docker exec`:
+Datastore chỉ publish trên `127.0.0.1` (cổng giống dev, xem mục 4), nên dùng client trên chính máy chủ kết nối tới `localhost:3306` / `27017` / `6379`, MinIO console ở `http://localhost:9001`. Từ máy khác thì dùng SSH port-forward (ví dụ `ssh -L 3306:localhost:3306 <host>`). Hoặc thao tác qua `docker exec`:
 
 ```bash
 docker exec -it mysql_db mysql -u <MYSQL_USER> -p <MYSQL_DATABASE>
@@ -278,7 +281,7 @@ docker exec -it mongo_db mongosh -u <MONGO_ROOT_USERNAME> -p --authenticationDat
 docker exec -it redis_db redis-cli
 ```
 
-Muốn mở MinIO console (cổng 9001) thì tạm dùng SSH port-forward, hoặc thêm một public hostname riêng trên tunnel có bảo vệ bằng Cloudflare Access.
+Muốn mở MinIO console từ xa lâu dài thì thêm một public hostname riêng trên tunnel có bảo vệ bằng Cloudflare Access.
 
 ### Dev trên máy cá nhân
 
@@ -321,7 +324,7 @@ Script chạy lại an toàn. Khi chuyển sang WiFi hoặc hotspot mới thì c
 
 Đã có:
 
-- Không publish cổng datastore/API ra host ở production. Truy cập public đi qua Cloudflare (HTTPS, ẩn IP gốc).
+- Cổng datastore/API ở production chỉ bind `127.0.0.1`, không lộ ra mạng. Truy cập public đi qua Cloudflare (HTTPS, ẩn IP gốc).
 - Credential datastore là bắt buộc ở production, không có giá trị mặc định.
 - Container `app`/`worker` chạy bằng user `node` (không phải root), có `tini` làm PID 1 để forward signal và dọn zombie process.
 - Image runner chỉ chứa `dist/` và production dependencies, không có source hay devDependencies.
