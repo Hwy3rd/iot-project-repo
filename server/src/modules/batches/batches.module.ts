@@ -10,5 +10,7 @@ import { BatchesService } from './batches.service';
   imports: [TypeOrmModule.forFeature([Batch, ColdRoom, ProductType])],
   controllers: [BatchesController],
   providers: [BatchesService],
+  // GET /cold-rooms/:id/inventory is served by ColdRoomsController.
+  exports: [BatchesService],
 })
 export class BatchesModule {}

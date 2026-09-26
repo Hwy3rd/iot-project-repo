@@ -10,6 +10,8 @@ export interface WorkShiftChangedEvent {
   warehouseId: string
   staffId: string
   status: WorkShiftStatus
+  /** Minutes the check-in came after the shift start (0 = on time). */
+  lateMinutes: number | null
 }
 
 /**

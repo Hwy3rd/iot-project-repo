@@ -17,6 +17,7 @@ import type {
   ChatMessage,
   BatchStatus,
   ColdRoom,
+  ColdRoomInventory,
   ColdRoomSeries,
   ColdRoomStatus,
   Command,
@@ -148,6 +149,9 @@ export interface UpdateColdRoomBody {
 
 export const coldRoomsApi = {
   list: (q: ColdRoomQuery = {}) => api.get<Paginated<ColdRoom>>('/cold-rooms', { ...q }),
+  get: (id: string) => api.get<ColdRoom>(`/cold-rooms/${id}`),
+  /** Stock grouped by product type; Admin, Manager, Staff (no shift needed). */
+  inventory: (id: string) => api.get<ColdRoomInventory>(`/cold-rooms/${id}/inventory`),
   create: (body: CreateColdRoomBody) => api.post<ColdRoom>('/cold-rooms', body),
   update: (id: string, body: UpdateColdRoomBody) => api.patch<ColdRoom>(`/cold-rooms/${id}`, body),
   remove: (id: string) => api.delete<null>(`/cold-rooms/${id}`),
@@ -453,6 +457,12 @@ export const usersApi = {
   /** Admin, or the user themself (their avatar). */
   addImages: (id: string, files: File[]) => uploadImages<User>(`/users/${id}`, files),
   removeImage: (id: string, url: string) => removeImage<User>(`/users/${id}`, url),
+  /** Your own password; 400 if `currentPassword` is wrong. The session stays. */
+  changeMyPassword: (body: { currentPassword: string; newPassword: string }) =>
+    api.post<User>('/users/me/password', body),
+  /** Admin, another account: sets a new password and ends that user's session. */
+  resetPassword: (id: string, newPassword: string) =>
+    api.post<User>(`/users/${id}/password`, { newPassword }),
 }
 
 export interface ChatMessagesQuery {

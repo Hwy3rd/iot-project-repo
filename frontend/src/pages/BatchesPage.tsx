@@ -5,7 +5,7 @@ import { hasRole } from '@/auth/permissions'
 import { CreateBatchDialog, EditBatchDialog } from '@/components/batches/BatchFormDialog'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
-import { DateRangeFilter, LocationFilter, SelectFilter } from '@/components/common/filter-fields'
+import { ColdRoomFilter, DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import {
   DetailDialog,
@@ -30,12 +30,12 @@ import { BATCH_STATUS_LABEL, PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { useColdRoomLookup, useProductTypeLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
 import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { useRowSelection } from '@/lib/useRowSelection'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = [
   'status',
-  'warehouseId',
   'coldRoomId',
   'productTypeId',
   'expiryFrom',
@@ -70,7 +70,7 @@ function BatchFilterDialog({
         )
       }
     >
-      {(draft, set, patch) => (
+      {(draft, set) => (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectFilter
@@ -88,11 +88,7 @@ function BatchFilterDialog({
               onChange={(v) => set('productTypeId', v)}
             />
           </div>
-          <LocationFilter
-            warehouseId={draft.warehouseId}
-            coldRoomId={draft.coldRoomId}
-            onChange={patch}
-          />
+          <ColdRoomFilter value={draft.coldRoomId} onChange={(v) => set('coldRoomId', v)} />
           <DateRangeFilter
             id="f-expiry"
             fromLabel="Hết hạn từ ngày"
@@ -129,13 +125,14 @@ export function BatchesPage() {
   const f = list.filters
   const coldRooms = useColdRoomLookup()
   const productTypes = useProductTypeLookup()
+  const scope = useCurrentWarehouse()
 
   const params: BatchQuery = {
     page: list.page,
     limit: list.limit,
     search: param(list.search),
     status: param(f.status) as BatchStatus | undefined,
-    warehouseId: param(f.warehouseId),
+    warehouseId: param(scope.warehouseId),
     coldRoomId: param(f.coldRoomId),
     productTypeId: param(f.productTypeId),
     expiryFrom: param(f.expiryFrom),
@@ -147,6 +144,7 @@ export function BatchesPage() {
     queryKey: ['batches', params],
     queryFn: () => batchesApi.list(params),
     placeholderData: keepPreviousData,
+    enabled: scope.ready,
   })
   const selection = useRowSelection(
     canDelete

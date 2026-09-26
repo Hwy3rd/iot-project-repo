@@ -1,7 +1,7 @@
 import { alertsApi, batchesApi, devicesApi, type AlertQuery } from '@/api/endpoints'
 import type { Alert, AlertStatus, AlertType } from '@/api/types'
 import { FilterDialog } from '@/components/common/FilterDialog'
-import { DateRangeFilter, LocationFilter, SelectFilter } from '@/components/common/filter-fields'
+import { ColdRoomFilter, DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import {
   DetailDialog,
@@ -29,6 +29,7 @@ import { formatDateTime, formatRelative, formatTemp } from '@/lib/format'
 import { ALERT_STATUS_LABEL, ALERT_TYPE_LABEL } from '@/lib/labels'
 import { shortId, useColdRoomLookup, useUserLookup } from '@/lib/lookups'
 import { useAlertActions } from '@/lib/useAlertActions'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { param, useListParams } from '@/lib/useListParams'
 import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -38,7 +39,6 @@ import { BellRing, CheckCheck, Loader2, Siren } from 'lucide-react'
 const FILTER_KEYS = [
   'status',
   'type',
-  'warehouseId',
   'coldRoomId',
   'createdFrom',
   'createdTo',
@@ -64,7 +64,7 @@ function AlertFilterDialog({
       description="Thu hẹp cảnh báo theo trạng thái, loại, vị trí và thời điểm phát sinh."
       validate={(d) => rangeError([d.createdFrom, d.createdTo, 'Thời điểm'])}
     >
-      {(draft, set, patch) => (
+      {(draft, set) => (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectFilter
@@ -82,11 +82,7 @@ function AlertFilterDialog({
               onChange={(v) => set('type', v)}
             />
           </div>
-          <LocationFilter
-            warehouseId={draft.warehouseId}
-            coldRoomId={draft.coldRoomId}
-            onChange={patch}
-          />
+          <ColdRoomFilter value={draft.coldRoomId} onChange={(v) => set('coldRoomId', v)} />
           <DateRangeFilter
             id="f-created"
             fromLabel="Phát sinh từ ngày"
@@ -105,13 +101,17 @@ function AlertFilterDialog({
 const COUNT = { limit: 1 } as const
 
 function AlertStats() {
+  const { warehouseId, ready } = useCurrentWarehouse()
+  const q = { warehouseId: param(warehouseId), ...COUNT }
   const open = useQuery({
-    queryKey: ['alerts', { status: 'open', ...COUNT }],
-    queryFn: () => alertsApi.list({ status: 'open', ...COUNT }),
+    queryKey: ['alerts', { status: 'open', ...q }],
+    queryFn: () => alertsApi.list({ status: 'open', ...q }),
+    enabled: ready,
   })
   const acknowledged = useQuery({
-    queryKey: ['alerts', { status: 'acknowledged', ...COUNT }],
-    queryFn: () => alertsApi.list({ status: 'acknowledged', ...COUNT }),
+    queryKey: ['alerts', { status: 'acknowledged', ...q }],
+    queryFn: () => alertsApi.list({ status: 'acknowledged', ...q }),
+    enabled: ready,
   })
   return (
     <StatGrid>
@@ -176,6 +176,7 @@ function useActorName() {
 
 export function AlertsPage() {
   const list = useListParams(FILTER_KEYS)
+  const scope = useCurrentWarehouse()
   const f = list.filters
   const coldRooms = useColdRoomLookup()
   const rows = useRowDialogs<Alert>()
@@ -201,7 +202,7 @@ export function AlertsPage() {
     limit: list.limit,
     status: param(f.status) as AlertStatus | undefined,
     type: param(f.type) as AlertType | undefined,
-    warehouseId: param(f.warehouseId),
+    warehouseId: param(scope.warehouseId),
     coldRoomId: param(f.coldRoomId),
     createdFrom: param(f.createdFrom),
     createdTo: param(f.createdTo),
@@ -210,6 +211,7 @@ export function AlertsPage() {
     queryKey: ['alerts', params],
     queryFn: () => alertsApi.list(params),
     placeholderData: keepPreviousData,
+    enabled: scope.ready,
   })
 
   return (

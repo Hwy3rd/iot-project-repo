@@ -28,3 +28,11 @@ export function formatNumber(n: number | null | undefined) {
 export function formatTemp(c: number | null | undefined) {
   return c === null || c === undefined ? '—' : `${number.format(c)}\u00a0°C`
 }
+
+/** A duration in whole minutes: "12 phút", "1 giờ", "1 giờ 5 phút". */
+export function formatMinutes(minutes: number) {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${formatNumber(m)} phút`
+  return m === 0 ? `${formatNumber(h)} giờ` : `${formatNumber(h)} giờ ${formatNumber(m)} phút`
+}

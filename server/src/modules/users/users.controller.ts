@@ -28,6 +28,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { QueryUserDto } from './dto/query-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UsersService } from './users.service';
 import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
 
@@ -48,6 +50,24 @@ export class UsersController {
   @Get()
   findAll(@Query() query: QueryUserDto) {
     return this.usersService.findAll(query);
+  }
+
+  // Declared before the ':id' routes so "me" isn't taken for an id. Every
+  // role; always your own account, and the current password is required.
+  @Serialize(UserResponseDto)
+  @Audit({
+    action: 'user.password_change',
+    targetType: 'user',
+    entity: User,
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('me/password')
+  changePassword(@GetUserId() userId: string, @Body() dto: ChangePasswordDto) {
+    return this.usersService.changePassword(
+      userId,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 
   @UseGuards(SelfScopeGuard)
@@ -79,6 +99,20 @@ export class UsersController {
       id: actorId,
       role: actorRole,
     });
+  }
+
+  // Admin sets a new password for another account; ends its session.
+  @Roles(UserRole.ADMIN)
+  @Audit({ action: 'user.password_reset', targetType: 'user', entity: User })
+  @Serialize(UserResponseDto)
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/password')
+  resetPassword(
+    @Param('id') id: string,
+    @Body() dto: ResetPasswordDto,
+    @GetUserId() actorId: string,
+  ) {
+    return this.usersService.resetPassword(id, dto.newPassword, actorId);
   }
 
   // Offboarding: keeps the account and all its history, just blocks login

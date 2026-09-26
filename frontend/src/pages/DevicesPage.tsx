@@ -7,7 +7,7 @@ import { DeviceDetailTabs } from '@/components/devices/DeviceDetailPanels'
 import { DeviceLifecycleActions } from '@/components/devices/DeviceLifecycle'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
-import { LocationFilter, SelectFilter } from '@/components/common/filter-fields'
+import { ColdRoomFilter, SelectFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
 import {
   DetailDialog,
@@ -33,9 +33,10 @@ import { useColdRoomLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
 import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-const FILTER_KEYS = ['status', 'warehouseId', 'coldRoomId', 'unassigned'] as const
+const FILTER_KEYS = ['status', 'coldRoomId', 'unassigned'] as const
 type Filters = Record<(typeof FILTER_KEYS)[number], string>
 const NO_FILTERS = emptyFilters(FILTER_KEYS)
 
@@ -76,16 +77,12 @@ function DeviceFilterDialog({
               anyLabel="Tất cả thiết bị"
               options={[{ value: 'true', label: 'Chưa gán phòng lạnh nào' }]}
               onChange={(v) =>
-                patch(v ? { unassigned: v, warehouseId: '', coldRoomId: '' } : { unassigned: '' })
+                patch(v ? { unassigned: v, coldRoomId: '' } : { unassigned: '' })
               }
             />
           )}
           {!draft.unassigned && (
-            <LocationFilter
-              warehouseId={draft.warehouseId}
-              coldRoomId={draft.coldRoomId}
-              onChange={patch}
-            />
+            <ColdRoomFilter value={draft.coldRoomId} onChange={(v) => set('coldRoomId', v)} />
           )}
         </>
       )}
@@ -106,20 +103,24 @@ export function DevicesPage() {
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
   const coldRooms = useColdRoomLookup()
+  const scope = useCurrentWarehouse()
+  const unassigned = f.unassigned === 'true'
 
   const params: DeviceQuery = {
     page: list.page,
     limit: list.limit,
     search: param(list.search),
     status: param(f.status) as DeviceStatus | undefined,
-    warehouseId: param(f.warehouseId),
+    // Unclaimed devices belong to no warehouse yet.
+    warehouseId: unassigned ? undefined : param(scope.warehouseId),
     coldRoomId: param(f.coldRoomId),
-    unassigned: f.unassigned === 'true' || undefined,
+    unassigned: unassigned || undefined,
   }
   const query = useQuery({
     queryKey: ['devices', params],
     queryFn: () => devicesApi.list(params),
     placeholderData: keepPreviousData,
+    enabled: scope.ready,
   })
   const selection = useRowSelection(
     canDelete

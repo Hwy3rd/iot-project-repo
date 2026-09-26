@@ -4,6 +4,7 @@ import { AppShell } from './components/layout/AppShell'
 import { AlertsPage } from './pages/AlertsPage'
 import { AuditLogsPage } from './pages/AuditLogsPage'
 import { BatchesPage } from './pages/BatchesPage'
+import { ColdRoomDetailPage } from './pages/ColdRoomDetailPage'
 import { ColdRoomsPage } from './pages/ColdRoomsPage'
 import { CommandsPage } from './pages/CommandsPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -36,6 +37,7 @@ export const router = createBrowserRouter([
           { path: 'commands', element: <CommandsPage /> },
           { path: 'warehouses', element: <WarehousesPage /> },
           { path: 'cold-rooms', element: <ColdRoomsPage /> },
+          { path: 'cold-rooms/:id', element: <ColdRoomDetailPage /> },
           { path: 'product-types', element: <ProductTypesPage /> },
           { path: 'shifts', element: <ShiftsPage /> },
           { path: 'notifications', element: <NotificationsPage /> },

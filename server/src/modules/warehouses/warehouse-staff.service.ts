@@ -51,7 +51,15 @@ export class WarehouseStaffService {
     await this.assertWarehouseExists(warehouseId);
     const user = await this.usersRepository.findOne({
       where: { id: userId },
-      select: { id: true, username: true, fullName: true, role: true },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        imageUrls: true,
+        role: true,
+      },
     });
     if (!user) {
       throw new NotFoundException(`User ${userId} not found`);

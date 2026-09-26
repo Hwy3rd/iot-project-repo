@@ -3,15 +3,22 @@ import { UserAvatar } from '@/components/common/UserAvatar'
 import { Button } from '@/components/ui/button'
 import { mutationErrorText } from '@/lib/forms'
 import { imageFilesError } from '@/lib/images'
-import { useProfile } from '@/lib/useProfile'
+import { useAuth } from '@/auth/auth-context'
+import type { User } from '@/api/types'
+import { useUserAvatar } from '@/lib/useUserAvatar'
 import { avatarUrl } from '@/lib/users'
 import { Camera, Loader2, Trash2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-/** Your avatar, large, with "Đổi ảnh" / "Xoá ảnh". */
-export function AvatarEditor() {
-  const { user, setAvatar, removeAvatar } = useProfile()
+/**
+ * An avatar, large, with "Đổi ảnh" / "Xoá ảnh" — yours by default, or
+ * `user`'s (Admin editing another account). Changes apply at once.
+ */
+export function AvatarEditor({ user: target, className }: { user?: User; className?: string }) {
+  const { user: me } = useAuth()
+  const user = target ?? me
+  const { setAvatar, removeAvatar } = useUserAvatar(user)
   const inputRef = useRef<HTMLInputElement>(null)
   const [confirmRemove, setConfirmRemove] = useState(false)
   if (!user) return null
@@ -34,7 +41,7 @@ export function AvatarEditor() {
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="relative">
-        <UserAvatar user={user} className="size-28 text-4xl" />
+        <UserAvatar user={user} className={className ?? 'size-28 text-4xl'} />
         {busy && (
           <span className="absolute inset-0 grid place-items-center rounded-full bg-background/60" role="status">
             <Loader2 className="size-6 animate-spin" aria-hidden="true" />

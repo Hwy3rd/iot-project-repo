@@ -16,18 +16,44 @@ import {
 import { QueryBatchDto } from './dto/query-batch.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
-import { BatchStatus } from '../../libs/constants/batch.constant';
+import {
+  FindOptionsWhere,
+  In,
+  Not,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
+import {
+  BatchStatus,
+  EXPIRING_SOON_DAYS,
+} from '../../libs/constants/batch.constant';
+import { SHIFT_UTC_OFFSET_MINUTES } from '../../libs/constants/work-shift.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { ProductType } from '../product-types/entities/product-type.entity';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
 import { Batch } from './entities/batch.entity';
 import {
+  ColdRoomInventory,
+  ColdRoomInventoryItem,
+} from './dto/cold-room-inventory.dto';
+import {
   assertInScope,
   bulkDelete,
   BulkDeleteResult,
 } from '../../common/bulk/bulk-delete';
+
+// YYYY-MM-DD in the business timezone (fixed UTC+7, same one shift
+// templates use), `offsetDays` from today — comparable with `expiryDate`.
+const businessDay = (offsetDays: number) =>
+  new Date(
+    Date.now() + (SHIFT_UTC_OFFSET_MINUTES + offsetDays * 24 * 60) * 60_000,
+  )
+    .toISOString()
+    .slice(0, 10);
+
+// Quantities are decimal(10,2); summing floats can leave 0.30000000000000004.
+const roundQuantity = (n: number) => Math.round(n * 100) / 100;
 
 @Injectable()
 export class BatchesService {
@@ -146,6 +172,70 @@ export class BatchesService {
       take: pagination.take,
     });
     return Paginated.of(items, total, pagination);
+  }
+
+  // What a cold room holds right now, grouped by product type. "Now" = every
+  // batch not yet removed; EXPIRED ones still count as they're physically
+  // there. Expiry is also judged by date, since nothing marks batches
+  // EXPIRED yet (see BatchExpiryProcessor).
+  async inventoryOf(coldRoomId: string): Promise<ColdRoomInventory> {
+    const coldRoom = await this.coldRoomsRepository.findOne({
+      where: { id: coldRoomId },
+    });
+    if (!coldRoom) {
+      throw new NotFoundException(`Cold room ${coldRoomId} not found`);
+    }
+
+    const batches = await this.batchesRepository.find({
+      where: { coldRoomId, status: Not(BatchStatus.REMOVED) },
+      relations: { productType: true },
+    });
+
+    const asOf = businessDay(0);
+    const soonUntil = businessDay(EXPIRING_SOON_DAYS);
+    const byProduct = new Map<string, ColdRoomInventoryItem>();
+    for (const b of batches) {
+      let item = byProduct.get(b.productTypeId);
+      if (!item) {
+        item = {
+          productTypeId: b.productTypeId,
+          productTypeName: b.productType.name,
+          category: b.productType.category,
+          unit: b.productType.unit,
+          storageTempMin: b.productType.storageTempMin,
+          storageTempMax: b.productType.storageTempMax,
+          batchCount: 0,
+          totalQuantity: 0,
+          nearestExpiry: b.expiryDate,
+          expiredBatchCount: 0,
+          expiringSoonBatchCount: 0,
+        };
+        byProduct.set(b.productTypeId, item);
+      }
+      item.batchCount += 1;
+      item.totalQuantity += b.quantity;
+      if (b.expiryDate < item.nearestExpiry) item.nearestExpiry = b.expiryDate;
+      if (b.status === BatchStatus.EXPIRED || b.expiryDate < asOf) {
+        item.expiredBatchCount += 1;
+      } else if (b.expiryDate <= soonUntil) {
+        item.expiringSoonBatchCount += 1;
+      }
+    }
+
+    const items = [...byProduct.values()]
+      .map((i) => ({ ...i, totalQuantity: roundQuantity(i.totalQuantity) }))
+      .sort(
+        (a, b) =>
+          a.nearestExpiry.localeCompare(b.nearestExpiry) ||
+          a.productTypeName.localeCompare(b.productTypeName),
+      );
+    return {
+      coldRoomId,
+      asOf,
+      expiringSoonDays: EXPIRING_SOON_DAYS,
+      totalBatches: batches.length,
+      items,
+    };
   }
 
   async findOne(id: string) {

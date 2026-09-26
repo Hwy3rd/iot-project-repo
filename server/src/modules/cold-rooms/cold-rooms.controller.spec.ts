@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BatchesService } from '../batches/batches.service';
 import { ColdRoomsController } from './cold-rooms.controller';
 import { ColdRoomStatusService } from './cold-room-status.service';
 import { ColdRoomsService } from './cold-rooms.service';
@@ -12,6 +13,7 @@ describe('ColdRoomsController', () => {
     update: jest.fn(),
     remove: jest.fn(),
   };
+  const batchesService = { inventoryOf: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -24,6 +26,7 @@ describe('ColdRoomsController', () => {
           provide: ColdRoomStatusService,
           useValue: { findStatuses: jest.fn() },
         },
+        { provide: BatchesService, useValue: batchesService },
       ],
     }).compile();
 
@@ -46,5 +49,13 @@ describe('ColdRoomsController', () => {
     await controller.remove('1');
 
     expect(coldRoomsService.remove).toHaveBeenCalledWith('1');
+  });
+
+  it('delegates findInventory to the batches service', async () => {
+    batchesService.inventoryOf.mockResolvedValue({ items: [] });
+
+    await controller.findInventory('1');
+
+    expect(batchesService.inventoryOf).toHaveBeenCalledWith('1');
   });
 });

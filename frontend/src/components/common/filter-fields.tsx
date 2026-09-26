@@ -8,7 +8,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useColdRoomLookup, useWarehouseLookup, type Option } from '@/lib/lookups'
+import { useColdRoomLookup, type Option } from '@/lib/lookups'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 
 // Building blocks for FilterDialog bodies. Filter drafts are all strings,
 // with '' meaning "not filtered".
@@ -128,44 +129,28 @@ export function DateRangeFilter({
  * Warehouse + cold room pickers. The cold room list narrows to the chosen
  * warehouse, and picking another warehouse drops a cold room outside it.
  */
-export function LocationFilter({
-  warehouseId,
-  coldRoomId,
+/**
+ * Cold room filter limited to the header's current warehouse (see
+ * useCurrentWarehouse); with "Tất cả kho", every room, named with its
+ * warehouse.
+ */
+export function ColdRoomFilter({
+  value,
   onChange,
 }: {
-  warehouseId: string
-  coldRoomId: string
-  onChange: (patch: { warehouseId?: string; coldRoomId?: string }) => void
+  value: string
+  onChange: (coldRoomId: string) => void
 }) {
-  const warehouses = useWarehouseLookup()
+  const { warehouseId, warehouses } = useCurrentWarehouse()
   const coldRooms = useColdRoomLookup()
-  const roomOptions = coldRooms.items
+  const options = coldRooms.items
     .filter((r) => !warehouseId || r.warehouseId === warehouseId)
-    .map((r) => ({ value: r.id, label: r.name }))
+    .map((r) => ({
+      value: r.id,
+      label: warehouseId ? r.name : `${r.name} · ${warehouses.label(r.warehouseId)}`,
+    }))
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <SelectFilter
-        id="f-warehouse"
-        label="Kho"
-        value={warehouseId}
-        options={warehouses.options}
-        onChange={(v) => {
-          const room = coldRooms.get(coldRoomId)
-          onChange(
-            room && v && room.warehouseId !== v
-              ? { warehouseId: v, coldRoomId: '' }
-              : { warehouseId: v },
-          )
-        }}
-      />
-      <SelectFilter
-        id="f-cold-room"
-        label="Phòng lạnh"
-        value={coldRoomId}
-        options={roomOptions}
-        onChange={(v) => onChange({ coldRoomId: v })}
-      />
-    </div>
+    <SelectFilter id="f-cold-room" label="Phòng lạnh" value={value} options={options} onChange={onChange} />
   )
 }

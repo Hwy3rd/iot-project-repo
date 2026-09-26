@@ -55,6 +55,19 @@ export function openShiftAt(shifts: Shift[], now: Date): OpenShift | null {
   return best;
 }
 
+// Whole minutes a check-in came after the shift's scheduled start; 0 when on
+// time or early (check-in opens CHECK_IN_EARLY_MINUTES before), null when
+// there's no check-in.
+export function lateMinutes(
+  checkInAt: Date | string | null | undefined,
+  scheduledStartAt: Date | string,
+): number | null {
+  if (!checkInAt) return null;
+  const late =
+    new Date(checkInAt).getTime() - new Date(scheduledStartAt).getTime();
+  return Math.max(0, Math.floor(late / MINUTE_MS));
+}
+
 // An approved shift gives Staff their permissions until it ends plus
 // SHIFT_END_GRACE_MINUTES: it is active while scheduledEndAt > this cutoff.
 export const activeShiftCutoff = (now: Date): Date =>

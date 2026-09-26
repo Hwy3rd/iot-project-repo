@@ -27,6 +27,8 @@ interface AuditRequest {
 const REDACTED_KEYS = new Set([
   'password',
   'passwordHash',
+  'currentPassword',
+  'newPassword',
   'claimCode',
   'claimCodeHash',
   'refreshToken',

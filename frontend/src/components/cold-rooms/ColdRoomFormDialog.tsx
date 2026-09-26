@@ -11,6 +11,7 @@ import {
   toInput,
 } from '@/lib/forms'
 import { useWarehouseLookup } from '@/lib/lookups'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -86,7 +87,10 @@ function ColdRoomFormDialog({
 }) {
   const qc = useQueryClient()
   const warehouses = useWarehouseLookup()
-  const initial = room ? toValues(room) : EMPTY
+  // A new room goes into the header's current warehouse unless changed.
+  const { warehouseId: currentWarehouseId } = useCurrentWarehouse()
+  const blank = { ...EMPTY, warehouseId: currentWarehouseId }
+  const initial = room ? toValues(room) : blank
   const {
     register,
     control,
@@ -125,7 +129,7 @@ function ColdRoomFormDialog({
       qc.invalidateQueries({ queryKey: ['cold-rooms'] })
       toast.success(room ? 'Đã lưu thay đổi' : 'Đã tạo phòng lạnh', { description: r.name })
       onOpenChange(false)
-      reset(room ? toValues(r) : EMPTY)
+      reset(room ? toValues(r) : blank)
     },
     onError: (err) =>
       setError('root.server', {
