@@ -328,6 +328,8 @@ describe('WorkShiftsService', () => {
         warehouseId: 'w1',
         staffId: 'u1',
         status: WorkShiftStatus.PENDING,
+        // `now` is 2 hours into the morning shift.
+        lateMinutes: 120,
       };
       expect(warehouseStaffRepository.find).toHaveBeenCalledWith(
         expect.objectContaining({

@@ -32,7 +32,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
     const response = ctx.getResponse<Response>();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let status: number = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'Internal server error';
     let errors: string[] | undefined;
 
@@ -57,10 +57,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     }
 
-    this.logger.error(
-      `${request.method} ${request.url} -> ${status} ${message}`,
-      exception instanceof Error ? exception.stack : undefined,
-    );
+    // 4xx are the client's doing and mostly routine (e.g. the 401 on
+    // GET /auth/me every time the 15-minute access token lapses, right
+    // before the frontend refreshes) — one line, no stack. Only 5xx are
+    // server bugs worth an ERROR with the stack trace.
+    const line = `${request.method} ${request.url} -> ${status} ${message}`;
+    if (status >= 500) {
+      this.logger.error(
+        line,
+        exception instanceof Error ? exception.stack : undefined,
+      );
+    } else {
+      this.logger.warn(line);
+    }
 
     response.status(status).json({
       success: false,

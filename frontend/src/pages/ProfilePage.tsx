@@ -2,6 +2,7 @@ import type { User } from '@/api/types'
 import { PageHeader } from '@/components/common/PageHeader'
 import { TextField } from '@/components/common/form-fields'
 import { AvatarEditor } from '@/components/profile/AvatarEditor'
+import { ChangePasswordCard } from '@/components/profile/ChangePasswordCard'
 import { AssignedWarehouses, ProfileInfo } from '@/components/profile/ProfileInfo'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -36,7 +37,7 @@ export function ProfilePage() {
   if (!user) return null
   return (
     <>
-      <PageHeader title="Hồ sơ cá nhân" description="Thông tin tài khoản và ảnh đại diện của bạn." />
+      <PageHeader title="Hồ sơ cá nhân" description="Thông tin tài khoản, ảnh đại diện và mật khẩu của bạn." />
       <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
         <Card>
           <CardContent className="flex flex-col items-center gap-4 text-center">
@@ -69,6 +70,7 @@ export function ProfilePage() {
               </div>
             </CardContent>
           </Card>
+          <ChangePasswordCard />
         </div>
       </div>
     </>

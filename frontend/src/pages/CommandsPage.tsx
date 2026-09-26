@@ -26,15 +26,15 @@ import {
 import { emptyFilters, labelOptions, rangeError } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { COMMAND_ACTION_LABEL, COMMAND_STATUS_LABEL } from '@/lib/labels'
-import { shortId, useUserLookup, useWarehouseLookup } from '@/lib/lookups'
+import { shortId, useUserLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = [
   'status',
   'action',
-  'warehouseId',
   'issuedBy',
   'createdFrom',
   'createdTo',
@@ -53,7 +53,6 @@ function CommandFilterDialog({
   onApply: (next: Filters) => void
   isAdmin: boolean
 }) {
-  const warehouses = useWarehouseLookup()
   const users = useUserLookup(isAdmin)
   return (
     <FilterDialog
@@ -61,7 +60,7 @@ function CommandFilterDialog({
       emptyValue={NO_FILTERS}
       activeCount={activeCount}
       onApply={onApply}
-      description="Thu hẹp lịch sử lệnh theo trạng thái, loại lệnh, kho, người gửi và thời điểm."
+      description="Thu hẹp lịch sử lệnh theo trạng thái, loại lệnh, người gửi và thời điểm."
       validate={(d) => rangeError([d.createdFrom, d.createdTo, 'Thời điểm gửi'])}
     >
       {(draft, set) => (
@@ -82,13 +81,6 @@ function CommandFilterDialog({
               onChange={(v) => set('action', v)}
             />
           </div>
-          <SelectFilter
-            id="f-warehouse"
-            label="Kho"
-            value={draft.warehouseId}
-            options={warehouses.options}
-            onChange={(v) => set('warehouseId', v)}
-          />
           {/* User names come from GET /users, which only Admin may call. */}
           {isAdmin && (
             <SelectFilter
@@ -119,6 +111,7 @@ export function CommandsPage() {
   const canCreate = hasRole(user?.role, ['admin', 'technician', 'staff'])
   const isAdmin = hasRole(user?.role, ['admin'])
   const list = useListParams(FILTER_KEYS)
+  const scope = useCurrentWarehouse()
   const f = list.filters
   const users = useUserLookup(isAdmin)
   const rows = useRowDialogs<Command>()
@@ -129,7 +122,7 @@ export function CommandsPage() {
     limit: list.limit,
     status: param(f.status) as CommandStatus | undefined,
     action: param(f.action) as CommandAction | undefined,
-    warehouseId: param(f.warehouseId),
+    warehouseId: param(scope.warehouseId),
     issuedBy: param(f.issuedBy),
     createdFrom: param(f.createdFrom),
     createdTo: param(f.createdTo),
@@ -138,6 +131,7 @@ export function CommandsPage() {
     queryKey: ['commands', params],
     queryFn: () => commandsApi.list(params),
     placeholderData: keepPreviousData,
+    enabled: scope.ready,
   })
 
   const issuer = (id: string | null) => {

@@ -104,6 +104,8 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `DELETE /users/:id` | A | — | `null` (soft delete) |
 | `POST /users/:id/lock` | A | — | `UserResponseDto` — `status → locked`, có hiệu lực ngay: xoá phiên refresh, access token đang có bị từ chối (key `blocked:<id>` trong Redis), WebSocket bị ngắt; không tự khoá chính mình (`400`). `DELETE /users/:id` cũng thu hồi quyền truy cập ngay theo cách này |
 | `POST /users/:id/unlock` | A | — | `UserResponseDto` — `status → active` |
+| `POST /users/me/password` | mọi role (tài khoản của chính mình) | `{ currentPassword, newPassword }` (`newPassword` ≥ 6 ký tự) | `UserResponseDto`; `400` nếu mật khẩu hiện tại sai hoặc mật khẩu mới trùng mật khẩu cũ. Phiên đăng nhập hiện tại được giữ. Audit `user.password_change` |
+| `POST /users/:id/password` | A (tài khoản khác) | `{ newPassword }` (≥ 6 ký tự) | `UserResponseDto` — đặt lại mật khẩu (vd. người dùng quên mật khẩu): xoá phiên refresh và ngắt WebSocket của người đó (access token đã cấp còn dùng được tới khi hết hạn, mặc định 15 phút); không dùng cho chính mình (`400`). Audit `user.password_reset` |
 | `POST /users/:id/images` | TT | `multipart/form-data` | `UserResponseDto` |
 | `DELETE /users/:id/images` | TT | `{ url }` | `UserResponseDto` |
 
@@ -120,7 +122,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `DELETE /warehouses/:id` | A | — | `null` (soft delete) |
 | `POST /warehouses/:id/images` | A | `multipart/form-data` | `WarehouseResponseDto` |
 | `DELETE /warehouses/:id/images` | A | `{ url }` | `WarehouseResponseDto` |
-| `GET /warehouses/:warehouseId/staff` | A, M (**P**) | `page?`, `limit?` | `Paginated<WarehouseStaffResponseDto>` (`userId`, `warehouseId`, `createdAt`, `user { id, username, fullName, role }`) |
+| `GET /warehouses/:warehouseId/staff` | A, M (**P**) | `page?`, `limit?` | `Paginated<WarehouseStaffResponseDto>` (`userId`, `warehouseId`, `createdAt`, `user { id, username, fullName, email, phone, imageUrls, role }` — thông tin liên hệ để Manager liên lạc với nhân viên, ví dụ khi duyệt chấm công) |
 | `PUT /warehouses/:warehouseId/staff/:userId` | A | — | `WarehouseStaffResponseDto` — gán vào kho; gán lại người đã có trong kho thì trả về bản ghi cũ. User làm việc với role của tài khoản. `400` nếu là tài khoản Admin |
 | `DELETE /warehouses/:warehouseId/staff/:userId` | A | — | `null` (`404` nếu user chưa được gán) |
 
@@ -136,6 +138,7 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `GET /cold-rooms` | mọi role | `search?` (`name`), `warehouseId?`, `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<ColdRoomResponseDto>` |
 | `GET /cold-rooms/status` | A, M, T, S | `coldRoomIds?` hoặc `warehouseIds?` (danh sách id cách nhau bằng dấu phẩy, ≤ 100, bắt buộc có một trong hai) | `ColdRoomStatus[]`: mỗi phòng có `latest` (mẫu telemetry mới nhất: `ts`, `temperature`, `doorOpen`, `sensorFault`, `outOfRange`; `null` nếu chưa có), `devices` (`total` + số thiết bị theo từng trạng thái), `activeAlerts` (cảnh báo `open`/`acknowledged`). Phòng ngoài phạm vi của caller bị bỏ qua, không báo lỗi. Staff xem được **kể cả khi không trong ca**. Cập nhật trực tiếp qua WebSocket: sự kiện `coldroom:reading` và `alerts:changed` trong room `warehouse:{id}` |
 | `GET /cold-rooms/:id/telemetry` | A, M, T, S (**P**) | `range?` = `1h` \| `6h` (mặc định) \| `24h` | `{ coldRoomId, from, to, bucketMinutes, tempMin, tempMax, points[] }`: nhiệt độ của phòng (gộp mẫu của mọi thiết bị trong phòng) theo từng khoảng 1, 5 hoặc 15 phút, mỗi điểm có `t`, `avg`/`min`/`max` (bỏ qua mẫu lỗi cảm biến), `samples`, và số mẫu `outOfRange`/`doorOpen`/`sensorFault`. Khoảng thời gian không có mẫu thì không có điểm. Staff xem được kể cả khi không trong ca. Dùng cho biểu đồ của màn Giám sát trực tiếp |
+| `GET /cold-rooms/:id/inventory` | A, M, S (**P**) | — | `{ coldRoomId, asOf, expiringSoonDays, totalBatches, items[] }`: hàng đang lưu trong phòng (mọi lô chưa xuất kho, kể cả lô đã hết hạn) gộp theo loại sản phẩm. Mỗi item có `productTypeId`, `productTypeName`, `category`, `unit`, `storageTempMin`/`storageTempMax`, `batchCount`, `totalQuantity`, `nearestExpiry`, `expiredBatchCount` (status `expired` hoặc `expiryDate` < `asOf`), `expiringSoonBatchCount` (hết hạn trong `expiringSoonDays` = 7 ngày tới). `asOf` là ngày hôm nay theo giờ Việt Nam (UTC+7). Sắp xếp theo `nearestExpiry` tăng dần. Staff xem được kể cả khi không trong ca (giống `GET /batches`). Dùng cho màn chi tiết phòng lạnh |
 | `GET /cold-rooms/:id` | mọi role, **P** | — | `ColdRoomResponseDto` |
 | `PATCH /cold-rooms/:id` | A, M, **P** | các field như create (trừ `warehouseId`) | `ColdRoomResponseDto` |
 | `DELETE /cold-rooms/:id` | A | — | `null` (soft delete) |
@@ -179,7 +182,8 @@ Mỗi bản ghi là một lượt chấm công: Staff tự gửi yêu cầu vào
 - **Ca được hệ thống tự chọn** theo thời điểm gửi: mẫu ca có khung `[giờ bắt đầu − 15 phút, giờ kết thúc)` chứa thời điểm đó (giờ theo múi giờ Việt Nam, UTC+7). Hai khung chồng nhau → chọn ca bắt đầu muộn hơn (ca sắp tới). Ca đêm sau 0h thuộc `workDate` của ngày bắt đầu.
 - **Vòng đời**: `pending` → `approved` | `rejected`; `pending` chưa ai duyệt khi ca kết thúc → `expired` (sweep). Bị từ chối/quá hạn thì Staff gửi lại trên chính bản ghi đó (unique `(staff, workDate, shift)`).
 - **Ca đang hoạt động** (điều kiện "Ca trực" của RBAC): `approved`, chưa `checkOutAt`, và `scheduledEndAt` + 5 phút > hiện tại. Staff được thao tác thêm 5 phút sau giờ kết thúc; frontend tự đăng xuất + check-out khi hết 5 phút, sweep check-out các ca còn sót.
-- Mỗi thay đổi đẩy sự kiện `workshift:changed` (`{ workShiftId, warehouseId, staffId, status }`) tới room của Staff đó, các Manager của kho và mọi Admin.
+- **Đi trễ**: `WorkShiftResponseDto.lateMinutes` được tính khi trả về (không lưu DB) = số phút nguyên `checkInAt` sau `scheduledStartAt`; `0` nếu chấm công đúng giờ hoặc sớm, `null` nếu chưa có `checkInAt`.
+- Mỗi thay đổi đẩy sự kiện `workshift:changed` (`{ workShiftId, warehouseId, staffId, status, lateMinutes }`) tới room của Staff đó, các Manager của kho và mọi Admin.
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|

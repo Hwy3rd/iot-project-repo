@@ -1,5 +1,6 @@
 import { usersApi, type UserQuery } from '@/api/endpoints'
 import type { User, UserRole, UserStatus } from '@/api/types'
+import { ResetPasswordAction } from '@/components/users/ResetPasswordAction'
 import { CreateUserDialog, EditUserDialog } from '@/components/users/UserFormDialog'
 import { UserLockActions } from '@/components/users/UserLockActions'
 import { UserAvatar } from '@/components/common/UserAvatar'
@@ -43,7 +44,6 @@ export function UsersPage() {
   // The page itself is Admin-only.
   const canEdit = canDelete
   const rows = useRowDialogs<User>()
-  const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const f = list.filters
 
@@ -59,6 +59,8 @@ export function UsersPage() {
     queryFn: () => usersApi.list(params),
     placeholderData: keepPreviousData,
   })
+  // As last fetched, so an avatar changed from the edit dialog shows at once.
+  const current = query.data?.items.find((u) => u.id === rows.item?.id) ?? rows.item
   const selection = useRowSelection(
     canDelete
       ? (query.data?.items ?? []).filter((u) => u.id !== user?.id).map((u) => ({ id: u.id, name: u.username }))
@@ -208,7 +210,12 @@ export function UsersPage() {
             }
             description={current.username}
             onEdit={canEdit ? () => rows.edit(current) : undefined}
-            actions={<UserLockActions user={current} isSelf={current.id === user?.id} onChanged={rows.view} />}
+            actions={
+              <>
+                <ResetPasswordAction user={current} isSelf={current.id === user?.id} />
+                <UserLockActions user={current} isSelf={current.id === user?.id} onChanged={rows.view} />
+              </>
+            }
           >
             <DetailList
               fields={[
@@ -228,7 +235,7 @@ export function UsersPage() {
           </DetailDialog>
           {canEdit && (
             <EditUserDialog
-              key={`${current.id}:${current.updatedAt}`}
+              key={current.id}
               user={current}
               open={rows.editing}
               onClose={rows.close}

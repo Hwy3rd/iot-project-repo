@@ -31,12 +31,14 @@ import { ColdRoomsService } from './cold-rooms.service';
 import { QueryColdRoomStatusDto } from './dto/query-cold-room-status.dto';
 import { QueryColdRoomTelemetryDto } from './dto/query-cold-room-telemetry.dto';
 import { BulkDeleteDto } from '../../common/bulk/bulk-delete';
+import { BatchesService } from '../batches/batches.service';
 
 @Controller('cold-rooms')
 export class ColdRoomsController {
   constructor(
     private readonly coldRoomsService: ColdRoomsService,
     private readonly coldRoomStatusService: ColdRoomStatusService,
+    private readonly batchesService: BatchesService,
   ) {}
 
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
@@ -91,6 +93,16 @@ export class ColdRoomsController {
     @Query() query: QueryColdRoomTelemetryDto,
   ) {
     return this.coldRoomStatusService.findSeries(id, query.range);
+  }
+
+  // Stock in the room grouped by product type, for the cold room detail
+  // screen. Same audience as GET /batches (Technician never sees stock);
+  // Staff don't need a shift to read it, as with GET /batches.
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)
+  @Get(':id/inventory')
+  findInventory(@Param('id') id: string) {
+    return this.batchesService.inventoryOf(id);
   }
 
   @WarehouseScope(WarehouseScopeSource.COLD_ROOM_PARAM)

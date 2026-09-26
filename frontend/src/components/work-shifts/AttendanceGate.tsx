@@ -21,9 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { dayjs, formatDate } from '@/lib/format'
+import { dayjs, formatDate, formatMinutes } from '@/lib/format'
 import { mutationErrorText } from '@/lib/forms'
 import { useShiftLookup } from '@/lib/lookups'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { useNow } from '@/lib/useNow'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleAlert, Clock, Loader2, LogOut } from 'lucide-react'
@@ -71,6 +72,16 @@ function StaffAttendance({ children }: { children: ReactNode }) {
       q.state.data?.request?.status === 'pending' ? PENDING_POLL_MS : IDLE_POLL_MS,
   })
   const active = me.data?.active ?? null
+
+  // Staff may only act where their shift is: work there by default.
+  const { value: currentWarehouse, select: selectWarehouse, ready } = useCurrentWarehouse()
+  const shiftWarehouse = active?.warehouseId
+  useEffect(() => {
+    if (ready && shiftWarehouse && shiftWarehouse !== currentWarehouse) selectWarehouse(shiftWarehouse)
+    // Only when the shift starts, so switching away to read another
+    // assigned warehouse sticks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, shiftWarehouse])
 
   const ending = useRef(false)
   const endSession = useCallback(
@@ -191,10 +202,13 @@ function ShiftSummary({
   open,
   warehouse,
   sentAt,
+  lateMinutes,
 }: {
   open: NonNullable<Attendance['open']>
   warehouse?: ReactNode
   sentAt: string
+  /** Minutes after the shift start (0 = on time), as sent or as it would be now. */
+  lateMinutes: number
 }) {
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 rounded-lg bg-muted/50 p-3">
@@ -214,6 +228,14 @@ function ShiftSummary({
       </dd>
       <dt className="text-muted-foreground">Thời gian chấm công</dt>
       <dd className="tabular-nums">{sentAt}</dd>
+      <dt className="text-muted-foreground">Đi trễ</dt>
+      <dd>
+        {lateMinutes > 0 ? (
+          <span className="font-medium text-warning">{formatMinutes(lateMinutes)}</span>
+        ) : (
+          <span className="text-success">Đúng giờ</span>
+        )}
+      </dd>
     </dl>
   )
 }
@@ -235,6 +257,8 @@ function CheckInForm({
       (warehouses.length === 1 ? warehouses[0].id : ''),
   )
   const [error, setError] = useState<string>()
+  // Same rule as the server's lateMinutes, so what's shown is what's saved.
+  const lateNow = Math.max(0, Math.floor((now - Date.parse(open.scheduledStartAt)) / 60_000))
 
   const send = useMutation({
     mutationFn: () => workShiftsApi.checkIn(warehouseId),
@@ -291,8 +315,15 @@ function CheckInForm({
           </SelectContent>
         </Select>
       </Field>
-      <ShiftSummary open={open} sentAt={dayjs(now).format('HH:mm, DD/MM/YYYY')} />
-      <p className="text-muted-foreground">Ca và giờ được hệ thống tự điền theo thời điểm bạn gửi yêu cầu.</p>
+      <ShiftSummary
+        open={open}
+        sentAt={dayjs(now).format('HH:mm, DD/MM/YYYY')}
+        lateMinutes={lateNow}
+      />
+      <p className="text-muted-foreground">
+        Ca và giờ được hệ thống tự điền theo thời điểm bạn gửi yêu cầu.
+        {lateNow > 0 && ' Thời gian đi trễ được ghi lại và hiển thị cho quản lý kho.'}
+      </p>
       <Button type="submit" size="lg" disabled={send.isPending}>
         {send.isPending && <Loader2 className="animate-spin" aria-hidden="true" />}
         {send.isPending ? 'Đang gửi…' : 'Gửi yêu cầu chấm công'}
@@ -315,6 +346,7 @@ function PendingRequest({ attendance, request }: { attendance: Attendance; reque
           open={attendance.open}
           warehouse={warehouse ? `${warehouse.name} (${warehouse.code})` : undefined}
           sentAt={request.checkInAt ? dayjs(request.checkInAt).format('HH:mm, DD/MM/YYYY') : '—'}
+          lateMinutes={request.lateMinutes ?? 0}
         />
       )}
       <p className="text-muted-foreground">Màn hình tự mở khi yêu cầu được duyệt.</p>

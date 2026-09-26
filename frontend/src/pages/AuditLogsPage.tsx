@@ -25,13 +25,13 @@ import { emptyFilters, rangeError } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
 import { shortId, useUserLookup, useWarehouseLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 const FILTER_KEYS = [
   'action',
   'targetType',
-  'warehouseId',
   'userId',
   'createdFrom',
   'createdTo',
@@ -50,7 +50,6 @@ function AuditLogFilterDialog({
   onApply: (next: Filters) => void
   isAdmin: boolean
 }) {
-  const warehouses = useWarehouseLookup()
   const users = useUserLookup(isAdmin)
   return (
     <FilterDialog
@@ -58,7 +57,7 @@ function AuditLogFilterDialog({
       emptyValue={NO_FILTERS}
       activeCount={activeCount}
       onApply={onApply}
-      description="Thu hẹp nhật ký theo thao tác, đối tượng, kho, người thực hiện và thời điểm."
+      description="Thu hẹp nhật ký theo thao tác, đối tượng, người thực hiện và thời điểm."
       validate={(d) => rangeError([d.createdFrom, d.createdTo, 'Thời điểm'])}
     >
       {(draft, set) => (
@@ -79,13 +78,6 @@ function AuditLogFilterDialog({
               onChange={(v) => set('targetType', v)}
             />
           </div>
-          <SelectFilter
-            id="f-warehouse"
-            label="Kho"
-            value={draft.warehouseId}
-            options={warehouses.options}
-            onChange={(v) => set('warehouseId', v)}
-          />
           {/* User names come from GET /users, which only Admin may call. */}
           {isAdmin && (
             <SelectFilter
@@ -114,6 +106,7 @@ export function AuditLogsPage() {
   const { user } = useAuth()
   const isAdmin = hasRole(user?.role, ['admin'])
   const list = useListParams(FILTER_KEYS)
+  const scope = useCurrentWarehouse()
   const f = list.filters
   const warehouses = useWarehouseLookup()
   const users = useUserLookup(isAdmin)
@@ -125,7 +118,7 @@ export function AuditLogsPage() {
     limit: list.limit,
     action: param(f.action),
     targetType: param(f.targetType),
-    warehouseId: param(f.warehouseId),
+    warehouseId: param(scope.warehouseId),
     userId: param(f.userId),
     createdFrom: param(f.createdFrom),
     createdTo: param(f.createdTo),
@@ -134,6 +127,7 @@ export function AuditLogsPage() {
     queryKey: ['audit-logs', params],
     queryFn: () => auditLogsApi.list(params),
     placeholderData: keepPreviousData,
+    enabled: scope.ready,
   })
 
   const actor = (id: string | null) => {

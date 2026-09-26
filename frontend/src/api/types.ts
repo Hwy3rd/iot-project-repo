@@ -182,6 +182,34 @@ export interface Batch {
   updatedAt: string
 }
 
+/** GET /cold-rooms/:id/inventory: one row per product type held in the room. */
+export interface ColdRoomInventoryItem {
+  productTypeId: string
+  productTypeName: string
+  category: string | null
+  unit: ProductUnit
+  storageTempMin: number | null
+  storageTempMax: number | null
+  /** Batches not yet taken out (in stock or expired). */
+  batchCount: number
+  totalQuantity: number
+  /** YYYY-MM-DD of the batch that expires first. */
+  nearestExpiry: string
+  expiredBatchCount: number
+  /** Not yet expired, but expiring within `expiringSoonDays`. */
+  expiringSoonBatchCount: number
+}
+
+export interface ColdRoomInventory {
+  coldRoomId: string
+  /** YYYY-MM-DD (business timezone) the expiry counts are relative to. */
+  asOf: string
+  expiringSoonDays: number
+  totalBatches: number
+  /** Soonest nearestExpiry first. */
+  items: ColdRoomInventoryItem[]
+}
+
 export interface Shift {
   id: string
   name: string
@@ -206,6 +234,8 @@ export interface WorkShift {
   status: WorkShiftStatus
   /** When the request was sent; null only on records older than check-in requests. */
   checkInAt: string | null
+  /** Computed by the server: whole minutes checkInAt came after scheduledStartAt (0 = on time); null without a check-in. */
+  lateMinutes: number | null
   checkOutAt: string | null
   reviewedBy: string | null
   reviewedAt: string | null
@@ -318,7 +348,15 @@ export interface WarehouseStaff {
   userId: string
   warehouseId: string
   createdAt: string
-  user?: { id: string; username: string; fullName: string | null; role: UserRole }
+  user?: {
+    id: string
+    username: string
+    fullName: string | null
+    email: string | null
+    phone: string | null
+    imageUrls: string[] | null
+    role: UserRole
+  }
 }
 
 /** Response of every `POST /<resource>/bulk-delete` (best effort, per row). */

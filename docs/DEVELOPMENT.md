@@ -67,11 +67,13 @@ Sau đó chạy:
 npm install
 npm run migration:run    # tạo schema MySQL
 npm run seed:admin       # tạo admin + manager/technician/staff, chung mật khẩu SEED_ADMIN_PASSWORD
-npm run seed:master      # (tuỳ chọn) dữ liệu mẫu: kho, phòng lạnh, thiết bị...
+npm run seed:master      # (tuỳ chọn) dữ liệu mẫu Hà Nội: 3 kho, 11 phòng lạnh, thực phẩm, lô hàng, thiết bị... (cần SEED_DEMO_PASSWORD)
 npm run start:dev        # API ở http://localhost:3000, hot-reload
 ```
 
 Hai lệnh seed chạy lại nhiều lần vẫn an toàn: chúng chỉ tạo dữ liệu còn thiếu, không sửa dữ liệu đã có.
+
+Muốn làm lại dữ liệu mẫu từ đầu: `npm run seed:master -- --reset`. Lệnh này **xoá sạch** mọi bảng MySQL (trừ `migrations`) và các tài khoản demo `@coldchain.local`, giữ tài khoản tạo bởi `seed:admin` và gán họ vào mọi kho mẫu. Telemetry trong MongoDB không bị đụng tới. Dev và prod dùng chung database nên lệnh này xoá dữ liệu của cả hai.
 
 ## 5. Worker (tuỳ chọn)
 

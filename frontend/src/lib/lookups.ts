@@ -40,6 +40,8 @@ function useLookup<T extends { id: string }>(
     const byId = new Map(items.map((item) => [item.id, item]))
     return {
       items,
+      /** False until the first page has loaded (or failed). */
+      settled: !query.isPending,
       options: items.map((item): Option => ({ value: item.id, label: toLabel(item) })),
       get: (id: string | null | undefined) => (id ? byId.get(id) : undefined),
       label: (id: string | null | undefined) => {
@@ -50,7 +52,7 @@ function useLookup<T extends { id: string }>(
     }
     // toLabel is a module-level function at every call site.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query.data])
+  }, [query.data, query.isPending])
 }
 
 const warehouseLabel = (w: { name: string; code: string }) => `${w.name} (${w.code})`

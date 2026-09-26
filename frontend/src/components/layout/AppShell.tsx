@@ -9,6 +9,7 @@ import { AppSidebar } from './AppSidebar'
 import { HeaderClock } from './HeaderClock'
 import { NotificationBell } from './NotificationBell'
 import { UserMenu } from './UserMenu'
+import { WarehouseSwitcher } from './WarehouseSwitcher'
 
 export function AppShell() {
   const { pathname } = useLocation()
@@ -34,6 +35,7 @@ export function AppShell() {
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur">
           <SidebarTrigger className="-ml-1" aria-label="Bật/tắt thanh điều hướng" />
           <Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
+          <WarehouseSwitcher />
           <div className="flex-1" />
           <HeaderClock />
           <NotificationBell />
@@ -43,7 +45,7 @@ export function AppShell() {
           id="main"
           ref={contentRef}
           tabIndex={-1}
-          className="mx-auto w-full max-w-7xl px-4 py-6 outline-none sm:px-6 [scroll-margin-top:3.5rem]"
+          className="mx-auto w-full max-w-7xl px-4 pt-6 pb-24 outline-none sm:px-6 [scroll-margin-top:3.5rem]"
         >
           {/* Staff must be on an approved shift to use anything. */}
           <AttendanceGate>

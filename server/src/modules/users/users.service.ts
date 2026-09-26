@@ -181,6 +181,54 @@ export class UsersService {
     return this.sanitize(saved);
   }
 
+  // Admin sets a new password for someone else (e.g. they forgot theirs).
+  // Their session ends — refresh token and open sockets — so the next
+  // refresh sends them to the login page; an access token already issued
+  // keeps working until it expires (JWT_EXPIRES_IN, 15 min by default).
+  // Not for your own account: use changePassword(), which checks the
+  // current one.
+  async resetPassword(id: string, newPassword: string, actorId: string) {
+    if (id === actorId) {
+      throw new BadRequestException(
+        'Use POST /users/me/password to change your own password',
+      );
+    }
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+    user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const saved = await this.saveUser(user);
+    await this.redis.del(refreshSessionKey(id));
+    await this.realtimeGateway.disconnectUser(id);
+    return this.sanitize(saved);
+  }
+
+  // The caller changes their own password. The current session stays (the
+  // single-session model means there's no other one to end).
+  async changePassword(
+    id: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) {
+      throw new NotFoundException(`User ${id} not found`);
+    }
+    // 400, not 401: a 401 would make the frontend try to refresh the session.
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException(
+        'New password must differ from the current one',
+      );
+    }
+    user.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const saved = await this.saveUser(user);
+    return this.sanitize(saved);
+  }
+
   // Takes effect immediately — see revokeAccess().
   async lock(id: string, actorId: string) {
     if (id === actorId) {

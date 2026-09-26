@@ -1,3 +1,4 @@
+import * as bcrypt from 'bcryptjs';
 import {
   BadRequestException,
   ConflictException,
@@ -329,6 +330,72 @@ describe('UsersService', () => {
       });
       expect(pipeline.set).toHaveBeenCalledWith('blocked:1', '1');
       expect(realtimeGateway.disconnectUser).toHaveBeenCalledWith('1');
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('refuses resetting your own password', async () => {
+      await expect(service.resetPassword('1', 'newpass', '1')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(repository.findOne).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException for an unknown user', async () => {
+      repository.findOne!.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword('9', 'newpass', 'admin'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('stores a new hash and ends the user session', async () => {
+      const user = { id: '2', passwordHash: 'old' } as User;
+      repository.findOne!.mockResolvedValue(user);
+      repository.save!.mockImplementation((u: User) => Promise.resolve(u));
+
+      const result = await service.resetPassword('2', 'newpass', 'admin');
+
+      const [[saved]] = repository.save!.mock.calls as [[User]];
+      expect(await bcrypt.compare('newpass', saved.passwordHash)).toBe(true);
+      expect(result).not.toHaveProperty('passwordHash');
+      expect(redis.del).toHaveBeenCalledWith('refresh:2');
+      expect(realtimeGateway.disconnectUser).toHaveBeenCalledWith('2');
+      // Not a lock: the account must be able to log in with the new password.
+      expect(pipeline.set).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('changePassword', () => {
+    const withPassword = async (password: string) =>
+      ({ id: '1', passwordHash: await bcrypt.hash(password, 4) }) as User;
+
+    it('rejects a wrong current password', async () => {
+      repository.findOne!.mockResolvedValue(await withPassword('secret1'));
+
+      await expect(
+        service.changePassword('1', 'wrong', 'secret2'),
+      ).rejects.toThrow(BadRequestException);
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects reusing the current password', async () => {
+      repository.findOne!.mockResolvedValue(await withPassword('secret1'));
+
+      await expect(
+        service.changePassword('1', 'secret1', 'secret1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('stores the new hash and keeps the session', async () => {
+      repository.findOne!.mockResolvedValue(await withPassword('secret1'));
+      repository.save!.mockImplementation((u: User) => Promise.resolve(u));
+
+      await service.changePassword('1', 'secret1', 'secret2');
+
+      const [[saved]] = repository.save!.mock.calls as [[User]];
+      expect(await bcrypt.compare('secret2', saved.passwordHash)).toBe(true);
+      expect(redis.del).not.toHaveBeenCalled();
     });
   });
 });

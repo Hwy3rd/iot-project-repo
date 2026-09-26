@@ -4,19 +4,15 @@ import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { DatePicker } from '@/components/common/date-time-pickers'
 import { PageHeader } from '@/components/common/PageHeader'
-import { DetailDialog, DetailList, RowActions } from '@/components/common/RowDetail'
+import { LateBadge } from '@/components/work-shifts/LateBadge'
+import { WorkShiftDetailDialog } from '@/components/work-shifts/WorkShiftDetailDialog'
+import { PickWarehouse } from '@/components/common/PickWarehouse'
+import { RowActions } from '@/components/common/RowDetail'
 import { EmptyState, ErrorState } from '@/components/common/States'
 import { ToneBadge, WorkShiftStatusBadge } from '@/components/common/StatusBadge'
 import { ReviewActions } from '@/components/work-shifts/ReviewActions'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -26,12 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { dayjs, formatDate, formatDateTime, formatNumber } from '@/lib/format'
+import { dayjs, formatDate, formatNumber } from '@/lib/format'
 import { shortId, useShiftLookup, useUserLookup, useWarehouseLookup } from '@/lib/lookups'
 import { patchParams } from '@/lib/useListParams'
 import { useNow } from '@/lib/useNow'
-import { usePreference } from '@/lib/usePreference'
-import { useRowDialogs } from '@/lib/useRowDialogs'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
+import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useSearchParams } from 'react-router'
@@ -70,18 +66,9 @@ export function WorkShiftsPage() {
   const users = useUserLookup(isAdmin)
   const rows = useRowDialogs<WorkShift>()
   const now = useNow(30_000)
-  const [savedWarehouse, setSavedWarehouse] = usePreference(
-    'work-shifts:warehouse',
-    '',
-    warehouses.items.map((w) => w.id),
-  )
 
-  const warehouseId = params.get('warehouseId') || savedWarehouse || warehouses.items[0]?.id || ''
+  const { warehouseId } = useCurrentWarehouse()
   const date = params.get('date') || today()
-  const selectWarehouse = (id: string) => {
-    setSavedWarehouse(id)
-    setParams((prev) => patchParams(prev, { warehouseId: id }))
-  }
   const selectDate = (next: string) =>
     setParams((prev) => patchParams(prev, { date: next === today() ? null : next }))
   const shiftDay = (days: number) => selectDate(dayjs(date).add(days, 'day').format('YYYY-MM-DD'))
@@ -103,6 +90,7 @@ export function WorkShiftsPage() {
     queryFn: () => warehousesApi.staff(warehouseId, DAY),
     enabled: canReview && !!warehouseId,
   })
+  const memberById = new Map((members.data?.items ?? []).map((m) => [m.userId, m.user]))
   const memberNames = new Map(
     (members.data?.items ?? []).map((m) => [
       m.userId,
@@ -126,8 +114,12 @@ export function WorkShiftsPage() {
   const orphans = items.filter((w) => !shifts.get(w.shiftId))
   if (orphans.length > 0) groups.push({ key: 'other', title: 'Mẫu ca đã xoá', items: orphans })
 
-  const current = rows.item
-  const noWarehouses = warehouses.items.length === 0 && !warehouseId
+  // The open request as last fetched, so reviewing it from the dialog
+  // (which refetches the list) updates what the dialog shows.
+  const current = items.find((w) => w.id === rows.item?.id) ?? rows.item
+  const isReviewable = (w: WorkShift) =>
+    canReview && w.status === 'pending' && now < Date.parse(w.scheduledEndAt)
+  const noWarehouses = warehouses.settled && warehouses.items.length === 0
 
   return (
     <>
@@ -140,18 +132,6 @@ export function WorkShiftsPage() {
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Select value={warehouseId} onValueChange={selectWarehouse} disabled={noWarehouses}>
-              <SelectTrigger aria-label="Chọn kho" className="w-full sm:w-72">
-                <SelectValue placeholder="Chọn kho…" />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.options.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <div className="flex items-center gap-1">
               <Button variant="outline" size="icon-lg" onClick={() => shiftDay(-1)} aria-label="Ngày trước">
                 <ChevronLeft aria-hidden="true" />
@@ -166,11 +146,16 @@ export function WorkShiftsPage() {
                 <ChevronRight aria-hidden="true" />
               </Button>
             </div>
-            {date !== today() && (
-              <Button variant="outline" size="lg" onClick={() => selectDate(today())}>
-                Hôm nay
-              </Button>
-            )}
+            {/* Always rendered (disabled on today) so the controls don't
+                shift when the date changes. */}
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => selectDate(today())}
+              disabled={date === today()}
+            >
+              Hôm nay
+            </Button>
           </div>
         }
       />
@@ -182,6 +167,8 @@ export function WorkShiftsPage() {
             description="Bạn cần được phân công vào ít nhất một kho để xem chấm công."
           />
         </Card>
+      ) : !warehouseId && warehouses.settled ? (
+        <PickWarehouse description="Chấm công được xem theo từng kho. Kho bạn chọn cũng áp dụng cho các màn khác." />
       ) : query.isError ? (
         <Card>
           <ErrorState error={query.error} onRetry={() => query.refetch()} />
@@ -235,15 +222,19 @@ export function WorkShiftsPage() {
                     <TableBody>
                       {g.items.map((w) => {
                         const staff = nameOf(w.staffId)
-                        const reviewable =
-                          canReview && w.status === 'pending' && now < Date.parse(w.scheduledEndAt)
+                        const reviewable = isReviewable(w)
                         return (
-                          <TableRow key={w.id}>
+                          <TableRow key={w.id} {...rowOpenProps(() => rows.view(w))}>
                             <TableCell className="pl-4 font-medium">{staff}</TableCell>
                             <TableCell>
                               <WorkShiftStatusBadge status={w.status} />
                             </TableCell>
-                            <TableCell className="tabular-nums">{time(w.checkInAt)}</TableCell>
+                            <TableCell className="tabular-nums">
+                              <span className="flex flex-wrap items-center gap-2">
+                                {time(w.checkInAt)}
+                                <LateBadge minutes={w.lateMinutes} />
+                              </span>
+                            </TableCell>
                             <TableCell className="min-w-40 whitespace-normal">
                               {w.reviewedBy ? (
                                 <>
@@ -276,28 +267,17 @@ export function WorkShiftsPage() {
       )}
 
       {current && (
-        <DetailDialog
+        <WorkShiftDetailDialog
+          workShift={current}
           open={rows.viewing}
           onClose={rows.close}
-          title={`${shifts.label(current.shiftId)} · ${formatDate(current.workDate)}`}
-          description={warehouses.label(current.warehouseId)}
-        >
-          <DetailList
-            fields={[
-              { label: 'Nhân viên', value: nameOf(current.staffId) },
-              { label: 'Trạng thái', value: <WorkShiftStatusBadge status={current.status} /> },
-              {
-                label: 'Giờ ca',
-                value: `${time(current.scheduledStartAt)} – ${time(current.scheduledEndAt)}`,
-              },
-              { label: 'Chấm công lúc', value: formatDateTime(current.checkInAt) },
-              { label: 'Người duyệt', value: current.reviewedBy && nameOf(current.reviewedBy) },
-              { label: 'Duyệt lúc', value: current.reviewedAt && formatDateTime(current.reviewedAt) },
-              { label: 'Ra ca lúc', value: current.checkOutAt && formatDateTime(current.checkOutAt) },
-              { label: 'Lý do từ chối', value: current.rejectReason, full: true },
-            ]}
-          />
-        </DetailDialog>
+          member={memberById.get(current.staffId)}
+          nameOf={nameOf}
+          shiftLabel={shifts.label}
+          warehouseLabel={warehouses.label}
+          reviewable={isReviewable(current)}
+          showStaff={canReview}
+        />
       )}
     </>
   )

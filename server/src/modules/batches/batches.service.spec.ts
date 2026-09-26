@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { Not, QueryFailedError, Repository } from 'typeorm';
 import { BatchStatus } from '../../libs/constants/batch.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { ProductType } from '../product-types/entities/product-type.entity';
@@ -201,6 +201,96 @@ describe('BatchesService', () => {
       expect(batch.status).toBe(BatchStatus.REMOVED);
       expect(batch.removedAt).not.toBeNull();
       expect(batchesRepository.save).toHaveBeenCalledWith(batch);
+    });
+  });
+
+  describe('inventoryOf', () => {
+    const product = (id: string, name: string) =>
+      ({
+        id,
+        name,
+        category: null,
+        unit: 'kg',
+        storageTempMin: -20,
+        storageTempMax: -15,
+      }) as ProductType;
+    const batch = (overrides: Partial<Batch>) =>
+      ({
+        productTypeId: 'p1',
+        productType: product('p1', 'Cá'),
+        quantity: 10,
+        status: BatchStatus.IN_STOCK,
+        expiryDate: '2026-12-31',
+        ...overrides,
+      }) as Batch;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      // 2026-03-10 20:00 UTC = 2026-03-11 03:00 in the business timezone.
+      jest.setSystemTime(new Date('2026-03-10T20:00:00Z'));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('throws NotFoundException when the cold room does not exist', async () => {
+      coldRoomsRepository.findOne!.mockResolvedValue(null);
+
+      await expect(service.inventoryOf('r1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(batchesRepository.find).not.toHaveBeenCalled();
+    });
+
+    it('groups non-removed batches by product type with expiry counts', async () => {
+      coldRoomsRepository.findOne!.mockResolvedValue({ id: 'r1' });
+      batchesRepository.find!.mockResolvedValue([
+        batch({ quantity: 0.1, expiryDate: '2026-03-10' }), // expired
+        batch({ quantity: 0.2, expiryDate: '2026-03-18' }), // soon (7 days)
+        batch({ quantity: 5, expiryDate: '2026-03-19' }), // not soon
+        batch({
+          productTypeId: 'p2',
+          productType: product('p2', 'Thịt'),
+          quantity: 3,
+          status: BatchStatus.EXPIRED,
+          expiryDate: '2026-03-01',
+        }),
+      ]);
+
+      const result = await service.inventoryOf('r1');
+
+      expect(batchesRepository.find).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { coldRoomId: 'r1', status: Not(BatchStatus.REMOVED) },
+        }),
+      );
+      expect(result).toMatchObject({
+        coldRoomId: 'r1',
+        asOf: '2026-03-11',
+        expiringSoonDays: 7,
+        totalBatches: 4,
+      });
+      expect(result.items).toEqual([
+        expect.objectContaining({
+          productTypeId: 'p2',
+          batchCount: 1,
+          totalQuantity: 3,
+          nearestExpiry: '2026-03-01',
+          expiredBatchCount: 1,
+          expiringSoonBatchCount: 0,
+        }),
+        expect.objectContaining({
+          productTypeId: 'p1',
+          productTypeName: 'Cá',
+          unit: 'kg',
+          batchCount: 3,
+          totalQuantity: 5.3,
+          nearestExpiry: '2026-03-10',
+          expiredBatchCount: 1,
+          expiringSoonBatchCount: 1,
+        }),
+      ]);
     });
   });
 });

@@ -32,7 +32,11 @@ import { Shift } from '../shifts/entities/shift.entity';
 import { User } from '../users/entities/user.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { WorkShift } from './entities/work-shift.entity';
-import { activeShiftCutoff, openShiftAt } from './work-shift-schedule';
+import {
+  activeShiftCutoff,
+  lateMinutes,
+  openShiftAt,
+} from './work-shift-schedule';
 import {
   assertInScope,
   bulkDelete,
@@ -350,6 +354,10 @@ export class WorkShiftsService {
         warehouseId: workShift.warehouseId,
         staffId: workShift.staffId,
         status: workShift.status,
+        lateMinutes: lateMinutes(
+          workShift.checkInAt,
+          workShift.scheduledStartAt,
+        ),
       };
       const recipients = new Set([
         workShift.staffId,

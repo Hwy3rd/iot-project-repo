@@ -1,5 +1,7 @@
-import { Expose } from 'class-transformer';
+import { Expose, Transform } from 'class-transformer';
 import { WorkShiftStatus } from '../../../libs/constants/work-shift.constant';
+import { lateMinutes } from '../work-shift-schedule';
+import type { WorkShift } from '../entities/work-shift.entity';
 
 export class WorkShiftResponseDto {
   @Expose()
@@ -28,6 +30,13 @@ export class WorkShiftResponseDto {
 
   @Expose()
   checkInAt!: Date | null;
+
+  // Computed: minutes checkInAt came after scheduledStartAt (0 = on time).
+  @Expose()
+  @Transform(({ obj }: { obj: WorkShift }) =>
+    lateMinutes(obj.checkInAt, obj.scheduledStartAt),
+  )
+  lateMinutes!: number | null;
 
   @Expose()
   checkOutAt!: Date | null;

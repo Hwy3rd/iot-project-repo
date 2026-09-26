@@ -1,9 +1,12 @@
+import { plainToInstance } from 'class-transformer';
+import { WorkShiftResponseDto } from './dto/work-shift-response.dto';
 import type { Shift } from '../shifts/entities/shift.entity';
 import {
   activeShiftCutoff,
   businessDate,
   openShiftAt,
   scheduleFor,
+  lateMinutes,
 } from './work-shift-schedule';
 
 // Template times are UTC+7 wall-clock times: 06:00 there is 23:00Z the day before.
@@ -93,5 +96,38 @@ describe('activeShiftCutoff', () => {
     expect(activeShiftCutoff(at('2026-09-25T07:05:00Z'))).toEqual(
       at('2026-09-25T07:00:00Z'),
     );
+  });
+});
+
+describe('lateMinutes', () => {
+  const start = new Date('2026-09-26T07:00:00Z');
+
+  it('is null without a check-in', () => {
+    expect(lateMinutes(null, start)).toBeNull();
+  });
+
+  it('is 0 when checking in early or on time', () => {
+    expect(lateMinutes(new Date('2026-09-26T06:50:00Z'), start)).toBe(0);
+    expect(lateMinutes(new Date('2026-09-26T07:00:59Z'), start)).toBe(0);
+  });
+
+  it('counts whole minutes after the scheduled start', () => {
+    expect(lateMinutes(new Date('2026-09-26T07:12:30Z'), start)).toBe(12);
+    expect(lateMinutes('2026-09-26T08:05:00.000Z', start)).toBe(65);
+  });
+});
+
+describe('WorkShiftResponseDto', () => {
+  it('exposes lateMinutes computed from checkInAt', () => {
+    const dto = plainToInstance(
+      WorkShiftResponseDto,
+      {
+        id: 'w1',
+        scheduledStartAt: new Date('2026-09-26T07:00:00Z'),
+        checkInAt: new Date('2026-09-26T07:20:00Z'),
+      },
+      { excludeExtraneousValues: true },
+    );
+    expect(dto.lateMinutes).toBe(20);
   });
 });

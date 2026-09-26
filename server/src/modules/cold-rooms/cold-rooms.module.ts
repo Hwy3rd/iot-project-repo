@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Alert } from '../alerts/entities/alert.entity';
+import { BatchesModule } from '../batches/batches.module';
 import { Device } from '../devices/entities/device.entity';
 import { TELEMETRY_MODELS } from '../telemetry/telemetry.models';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
@@ -17,6 +18,7 @@ import { ColdRoomsController } from './cold-rooms.controller';
     // registered here rather than importing TelemetryModule, which pulls in
     // AlertsModule and the ingest side.
     MongooseModule.forFeature(TELEMETRY_MODELS),
+    BatchesModule,
   ],
   controllers: [ColdRoomsController],
   providers: [ColdRoomsService, ColdRoomStatusService],

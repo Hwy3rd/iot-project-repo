@@ -15,6 +15,7 @@ import {
 } from '@/lib/forms'
 import { PRODUCT_UNIT_LABEL } from '@/lib/labels'
 import { useColdRoomLookup, useProductTypeLookup, useWarehouseLookup } from '@/lib/lookups'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -117,10 +118,14 @@ function BatchFormDialog({
   } = useForm<FormValues>({ defaultValues: initial() })
 
   const product = productTypes.get(useWatch({ control, name: 'productTypeId' }))
-  const roomOptions = coldRooms.items.map((r) => ({
-    value: r.id,
-    label: `${r.name} · ${warehouses.label(r.warehouseId)}`,
-  }))
+  // New stock goes into a room of the header's current warehouse.
+  const { warehouseId: currentWarehouseId } = useCurrentWarehouse()
+  const roomOptions = coldRooms.items
+    .filter((r) => batch || !currentWarehouseId || r.warehouseId === currentWarehouseId)
+    .map((r) => ({
+      value: r.id,
+      label: currentWarehouseId ? r.name : `${r.name} · ${warehouses.label(r.warehouseId)}`,
+    }))
 
   const save = useMutation({
     mutationFn: (v: FormValues) =>

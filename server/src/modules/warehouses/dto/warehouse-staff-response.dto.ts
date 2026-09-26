@@ -11,6 +11,17 @@ class WarehouseStaffUserDto {
   @Expose()
   fullName!: string | null;
 
+  // Contact details, so a Manager can reach the Staff whose attendance they
+  // review (only Admin/Manager of the warehouse may list its staff).
+  @Expose()
+  email!: string | null;
+
+  @Expose()
+  phone!: string | null;
+
+  @Expose()
+  imageUrls!: string[] | null;
+
   // What they may do in this warehouse — the same in all of theirs.
   @Expose()
   role!: UserRole;

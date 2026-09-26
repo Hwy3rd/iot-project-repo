@@ -2,6 +2,7 @@ import { usersApi } from '@/api/endpoints'
 import type { User, UserRole } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
 import { SelectField, TextField } from '@/components/common/form-fields'
+import { AvatarEditor } from '@/components/profile/AvatarEditor'
 import { labelOptions } from '@/lib/filters'
 import { mutationErrorText, nullableText, optionalText, toInput } from '@/lib/forms'
 import { ROLE_LABEL } from '@/lib/labels'
@@ -47,8 +48,9 @@ export function CreateUserDialog() {
 }
 
 /**
- * Admin only (the Users page is). Passwords aren't changed here.
- * Mount with key={`${id}:${updatedAt}`} so the form reloads fresh values.
+ * Admin only (the Users page is): profile fields, role and avatar (saved at
+ * once, apart from the form). Passwords aren't changed here.
+ * Mount with key={id}; `user` should stay current (the avatar changes it).
  */
 export function EditUserDialog({
   user,
@@ -127,6 +129,12 @@ function UserFormDialog({
       serverError={errors.root?.server?.message}
       wide
     >
+      {user && (
+        <div className="flex flex-col items-center gap-1 rounded-lg border bg-muted/40 p-3">
+          <AvatarEditor user={user} className="size-20 text-2xl" />
+          <p className="text-xs text-muted-foreground">Ảnh đại diện được lưu ngay khi chọn, không cần bấm lưu.</p>
+        </div>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id="user-username"

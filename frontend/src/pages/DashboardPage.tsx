@@ -1,4 +1,4 @@
-import { alertsApi, devicesApi, warehousesApi } from '@/api/endpoints'
+import { alertsApi, coldRoomsApi, devicesApi, warehousesApi } from '@/api/endpoints'
 import type { Alert } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { PageHeader } from '@/components/common/PageHeader'
@@ -17,8 +17,10 @@ import {
 } from '@/components/ui/table'
 import { formatDateTime, formatRelative, formatTemp } from '@/lib/format'
 import { ALERT_TYPE_LABEL } from '@/lib/labels'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
+import { param } from '@/lib/useListParams'
 import { useQuery } from '@tanstack/react-query'
-import { Cpu, Siren, TriangleAlert, Warehouse } from 'lucide-react'
+import { Cpu, Siren, Thermometer, TriangleAlert, Warehouse } from 'lucide-react'
 import { Link } from 'react-router'
 
 // Only `total` is needed for the tiles, so ask for a single row.
@@ -62,29 +64,51 @@ function RecentAlertsTable({ alerts }: { alerts: Alert[] }) {
 export function DashboardPage() {
   const { user } = useAuth()
 
+  const scope = useCurrentWarehouse()
+  const q = { warehouseId: param(scope.warehouseId) }
+  const enabled = scope.ready
+
   const openAlerts = useQuery({
-    queryKey: ['alerts', { status: 'open', ...COUNT }],
-    queryFn: () => alertsApi.list({ status: 'open', ...COUNT }),
+    queryKey: ['alerts', { status: 'open', ...q, ...COUNT }],
+    queryFn: () => alertsApi.list({ status: 'open', ...q, ...COUNT }),
+    enabled,
   })
   const ackAlerts = useQuery({
-    queryKey: ['alerts', { status: 'acknowledged', ...COUNT }],
-    queryFn: () => alertsApi.list({ status: 'acknowledged', ...COUNT }),
+    queryKey: ['alerts', { status: 'acknowledged', ...q, ...COUNT }],
+    queryFn: () => alertsApi.list({ status: 'acknowledged', ...q, ...COUNT }),
+    enabled,
   })
-  const devices = useQuery({ queryKey: ['devices', COUNT], queryFn: () => devicesApi.list(COUNT) })
+  const devices = useQuery({
+    queryKey: ['devices', { ...q, ...COUNT }],
+    queryFn: () => devicesApi.list({ ...q, ...COUNT }),
+    enabled,
+  })
+  // All warehouses: how many; one warehouse: how many rooms it has.
   const warehouses = useQuery({
     queryKey: ['warehouses', COUNT],
     queryFn: () => warehousesApi.list(COUNT),
+    enabled: enabled && !scope.warehouseId,
+  })
+  const rooms = useQuery({
+    queryKey: ['cold-rooms', { ...q, ...COUNT }],
+    queryFn: () => coldRoomsApi.list({ ...q, ...COUNT }),
+    enabled: enabled && !!scope.warehouseId,
   })
   const recent = useQuery({
-    queryKey: ['alerts', { status: 'open', limit: 10 }],
-    queryFn: () => alertsApi.list({ status: 'open', limit: 10 }),
+    queryKey: ['alerts', { status: 'open', ...q, limit: 10 }],
+    queryFn: () => alertsApi.list({ status: 'open', ...q, limit: 10 }),
+    enabled,
   })
 
   return (
     <>
       <PageHeader
         title={`Xin chào, ${user?.fullName || user?.username}`}
-        description="Tình trạng các kho lạnh trong phạm vi bạn được phân công."
+        description={
+          scope.warehouse
+            ? `Tình trạng ${scope.warehouse.name}.`
+            : 'Tình trạng các kho lạnh trong phạm vi bạn được phân công.'
+        }
       />
 
       <StatGrid>
@@ -103,7 +127,11 @@ export function DashboardPage() {
           tone="text-warning bg-warning/15"
         />
         <StatTile label="Thiết bị" value={devices.data?.meta.total} icon={Cpu} to="/devices" />
-        <StatTile label="Kho" value={warehouses.data?.meta.total} icon={Warehouse} to="/warehouses" />
+        {scope.warehouseId ? (
+          <StatTile label="Phòng lạnh" value={rooms.data?.meta.total} icon={Thermometer} to="/cold-rooms" />
+        ) : (
+          <StatTile label="Kho" value={warehouses.data?.meta.total} icon={Warehouse} to="/warehouses" />
+        )}
       </StatGrid>
 
       <Card className="gap-0 pb-0">

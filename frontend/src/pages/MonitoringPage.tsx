@@ -1,6 +1,7 @@
 import { coldRoomsApi, devicesApi } from '@/api/endpoints'
 import type { Device } from '@/api/types'
 import { PageHeader } from '@/components/common/PageHeader'
+import { PickWarehouse } from '@/components/common/PickWarehouse'
 import { EmptyState, ErrorState } from '@/components/common/States'
 import { ToneBadge } from '@/components/common/StatusBadge'
 import { AlertStream } from '@/components/monitoring/AlertStream'
@@ -9,19 +10,12 @@ import { RoomDetailSheet } from '@/components/monitoring/RoomDetailSheet'
 import { RoomTile } from '@/components/monitoring/RoomTile'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatNumber } from '@/lib/format'
-import { useWarehouseLookup } from '@/lib/lookups'
 import { TEMP_STATE, TEMP_STATE_ORDER, tempState, type TempState } from '@/lib/room-status'
 import { patchParams } from '@/lib/useListParams'
 import { useNow } from '@/lib/useNow'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { usePreference } from '@/lib/usePreference'
 import { useWarehouseLive } from '@/lib/useWarehouseLive'
 import { cn } from '@/lib/utils'
@@ -41,30 +35,16 @@ const CLOCK_MS = 15_000
 /**
  * Real-time board for one warehouse: every cold room's live reading and
  * device states, a collapsible alert stream, and a per-room detail panel
- * with a temperature chart. Warehouse and room live in the URL
- * (?warehouseId=…&room=…) so a view can be shared; the last warehouse is
- * remembered as the default.
+ * with a temperature chart. The warehouse is the header's current one; the
+ * open room lives in the URL (?room=…).
  */
 export function MonitoringPage() {
   const [params, setParams] = useSearchParams()
-  const warehouses = useWarehouseLookup()
-  const [savedWarehouse, setSavedWarehouse] = usePreference(
-    'monitoring:warehouse',
-    '',
-    warehouses.items.map((w) => w.id),
-  )
+  const { warehouseId, warehouse, warehouses } = useCurrentWarehouse()
   const [panel, setPanel] = usePreference('monitoring:alerts', 'open', ['open', 'closed'] as const)
   const now = useNow(CLOCK_MS)
 
-  const warehouseId =
-    params.get('warehouseId') || savedWarehouse || warehouses.items[0]?.id || ''
   const roomId = params.get('room')
-  const warehouse = warehouses.get(warehouseId)
-
-  const selectWarehouse = (id: string) => {
-    setSavedWarehouse(id)
-    setParams((prev) => patchParams(prev, { warehouseId: id, room: null }))
-  }
   const selectRoom = (id: string | null) =>
     setParams((prev) => patchParams(prev, { room: id }), { replace: !id })
 
@@ -103,7 +83,7 @@ export function MonitoringPage() {
     byState[s] = (byState[s] ?? 0) + 1
   }
 
-  if (warehouses.items.length === 0 && !warehouseId) {
+  if (warehouses.settled && warehouses.items.length === 0) {
     return (
       <>
         <PageHeader title="Giám sát trực tiếp" />
@@ -113,6 +93,17 @@ export function MonitoringPage() {
             description="Bạn cần được phân công vào ít nhất một kho."
           />
         </Card>
+      </>
+    )
+  }
+
+  if (!warehouseId) {
+    return (
+      <>
+        <PageHeader title="Giám sát trực tiếp" />
+        {warehouses.settled && (
+          <PickWarehouse description="Màn giám sát hiển thị từng kho một. Kho bạn chọn cũng áp dụng cho các màn khác." />
+        )}
       </>
     )
   }
@@ -127,18 +118,6 @@ export function MonitoringPage() {
         actions={
           <div className="flex flex-wrap items-center gap-3">
             <LiveBadge live={live} />
-            <Select value={warehouseId} onValueChange={selectWarehouse}>
-              <SelectTrigger aria-label="Chọn kho" className="w-72">
-                <SelectValue placeholder="Chọn kho…" />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.options.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Button
               variant="outline"
               size="lg"

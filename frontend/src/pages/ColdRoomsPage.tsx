@@ -5,14 +5,9 @@ import { hasRole } from '@/auth/permissions'
 import { CreateColdRoomDialog, EditColdRoomDialog } from '@/components/cold-rooms/ColdRoomFormDialog'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
-import { DateRangeFilter, SelectFilter } from '@/components/common/filter-fields'
+import { DateRangeFilter } from '@/components/common/filter-fields'
 import { ListCard } from '@/components/common/ListCard'
-import {
-  DetailDialog,
-  DetailList,
-  RowActionsCell,
-  RowActionsHead,
-} from '@/components/common/RowDetail'
+import { RowActionsCell, RowActionsHead } from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
 import { LastUpdated } from '@/components/common/LastUpdated'
 import { ViewToggle } from '@/components/common/ViewToggle'
@@ -27,16 +22,18 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { emptyFilters, rangeError } from '@/lib/filters'
-import { formatDate, formatDateTime, formatNumber, formatTemp } from '@/lib/format'
+import { formatDate, formatNumber, formatTemp } from '@/lib/format'
 import { useWarehouseLookup } from '@/lib/lookups'
 import { STATUS_REFRESH_MS } from '@/lib/room-status'
 import { param, useListParams } from '@/lib/useListParams'
 import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
 import { useRowSelection } from '@/lib/useRowSelection'
+import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { useViewMode } from '@/lib/useViewMode'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
 
-const FILTER_KEYS = ['warehouseId', 'createdFrom', 'createdTo'] as const
+const FILTER_KEYS = ['createdFrom', 'createdTo'] as const
 type Filters = Record<(typeof FILTER_KEYS)[number], string>
 const NO_FILTERS = emptyFilters(FILTER_KEYS)
 
@@ -49,25 +46,17 @@ function ColdRoomFilterDialog({
   activeCount: number
   onApply: (next: Filters) => void
 }) {
-  const warehouses = useWarehouseLookup()
   return (
     <FilterDialog
       value={value}
       emptyValue={NO_FILTERS}
       activeCount={activeCount}
       onApply={onApply}
-      description="Thu hẹp phòng lạnh theo kho và ngày tạo."
+      description="Thu hẹp phòng lạnh theo ngày tạo."
       validate={(d) => rangeError([d.createdFrom, d.createdTo, 'Ngày tạo'])}
     >
       {(draft, set) => (
         <>
-          <SelectFilter
-            id="f-warehouse"
-            label="Kho"
-            value={draft.warehouseId}
-            options={warehouses.options}
-            onChange={(v) => set('warehouseId', v)}
-          />
           <DateRangeFilter
             id="f-created"
             fromLabel="Tạo từ ngày"
@@ -88,18 +77,25 @@ export function ColdRoomsPage() {
   const canDelete = hasRole(user?.role, ['admin'])
   // Manager scope is checked per room by the backend.
   const canEdit = canCreate
+  // "Xem chi tiết" opens the room's own page (stock, config); only editing
+  // stays a dialog here.
+  const navigate = useNavigate()
+  const openRoom = (r: ColdRoom) => navigate(`/cold-rooms/${r.id}`)
   const rows = useRowDialogs<ColdRoom>()
   const current = rows.item
   const list = useListParams(FILTER_KEYS)
   const [view, setView] = useViewMode('cold-rooms')
   const f = list.filters
   const warehouses = useWarehouseLookup()
+  const scope = useCurrentWarehouse()
+  // One warehouse picked in the header: its name on every row says nothing.
+  const showWarehouse = !scope.warehouseId
 
   const params: ColdRoomQuery = {
     page: list.page,
     limit: list.limit,
     search: param(list.search),
-    warehouseId: param(f.warehouseId),
+    warehouseId: param(scope.warehouseId),
     createdFrom: param(f.createdFrom),
     createdTo: param(f.createdTo),
   }
@@ -107,6 +103,7 @@ export function ColdRoomsPage() {
     queryKey: ['cold-rooms', params],
     queryFn: () => coldRoomsApi.list(params),
     placeholderData: keepPreviousData,
+    enabled: scope.ready,
   })
   // Room status only matters (and is only polled) in the grid.
   const pageRoomIds = (query.data?.items ?? []).map((r) => r.id)
@@ -186,7 +183,7 @@ export function ColdRoomsPage() {
               statusError={status.isError}
               warehouseLabel={warehouses.label}
               selection={canDelete ? selection : undefined}
-              onView={rows.view}
+              onView={openRoom}
               onEdit={canEdit ? rows.edit : undefined}
             />
           ) : (
@@ -197,7 +194,7 @@ export function ColdRoomsPage() {
                     <SelectAllHead selection={selection} label="Chọn tất cả phòng lạnh trên trang" />
                   )}
                   <TableHead className="pl-4">Tên phòng</TableHead>
-                  <TableHead>Kho</TableHead>
+                  {showWarehouse && <TableHead>Kho</TableHead>}
                   <TableHead className="text-right">Ngưỡng nhiệt độ</TableHead>
                   <TableHead className="text-right">Sức chứa (pallet)</TableHead>
                   <TableHead>Ngày tạo</TableHead>
@@ -206,16 +203,14 @@ export function ColdRoomsPage() {
               </TableHeader>
               <TableBody>
                 {items.map((r) => (
-                  <TableRow key={r.id} {...rowOpenProps(() => rows.view(r))}>
+                  <TableRow key={r.id} {...rowOpenProps(() => openRoom(r))}>
                     {canDelete && (
                       <SelectRowCell selection={selection} id={r.id} label={`Chọn phòng lạnh ${r.name}`} />
                     )}
                     <TableCell className="pl-4 min-w-48 whitespace-normal">
                       <span className="font-medium">{r.name}</span>
                     </TableCell>
-                    <TableCell>
-                      {warehouses.label(r.warehouseId)}
-                    </TableCell>
+                    {showWarehouse && <TableCell>{warehouses.label(r.warehouseId)}</TableCell>}
                     <TableCell className="text-right tabular-nums">
                       {formatTemp(r.tempMin)} – {formatTemp(r.tempMax)}
                     </TableCell>
@@ -227,7 +222,7 @@ export function ColdRoomsPage() {
                     </TableCell>
                     <RowActionsCell
                       label={`phòng lạnh ${r.name}`}
-                      onView={() => rows.view(r)}
+                      onView={() => openRoom(r)}
                       onEdit={canEdit ? () => rows.edit(r) : undefined}
                     />
                   </TableRow>
@@ -238,48 +233,13 @@ export function ColdRoomsPage() {
         }
       </ListCard>
 
-      {current && (
-        <>
-          <DetailDialog
-            open={rows.viewing}
-            onClose={rows.close}
-            title={current.name}
-            description={warehouses.label(current.warehouseId)}
-            onEdit={canEdit ? () => rows.edit(current) : undefined}
-          >
-            <DetailList
-              fields={[
-                { label: 'Tên phòng', value: current.name },
-                { label: 'Kho', value: warehouses.label(current.warehouseId) },
-                {
-                  label: 'Ngưỡng nhiệt độ',
-                  value: `${formatTemp(current.tempMin)} – ${formatTemp(current.tempMax)}`,
-                },
-                { label: 'Độ trễ', value: formatTemp(current.hysteresis) },
-                { label: 'Cửa mở tối đa', value: `${formatNumber(current.doorOpenMaxSeconds)} giây` },
-                { label: 'Sức chứa (pallet)', value: formatNumber(current.capacityPallets) },
-                {
-                  label: 'Tải trọng',
-                  value: current.capacityWeightKg === null ? null : `${formatNumber(current.capacityWeightKg)} kg`,
-                },
-                {
-                  label: 'Thể tích',
-                  value: current.capacityVolumeM3 === null ? null : `${formatNumber(current.capacityVolumeM3)} m³`,
-                },
-                { label: 'Ngày tạo', value: formatDateTime(current.createdAt) },
-                { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
-              ]}
-            />
-          </DetailDialog>
-          {canEdit && (
-            <EditColdRoomDialog
-              key={`${current.id}:${current.updatedAt}`}
-              room={current}
-              open={rows.editing}
-              onClose={rows.close}
-            />
-          )}
-        </>
+      {current && canEdit && (
+        <EditColdRoomDialog
+          key={`${current.id}:${current.updatedAt}`}
+          room={current}
+          open={rows.editing}
+          onClose={rows.close}
+        />
       )}
     </>
   )

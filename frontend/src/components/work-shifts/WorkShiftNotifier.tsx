@@ -1,4 +1,5 @@
 import { useAuth } from '@/auth/auth-context'
+import { formatMinutes } from '@/lib/format'
 import { useWorkShiftEvents } from '@/lib/useWorkShiftEvents'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -21,6 +22,7 @@ export function WorkShiftNotifier() {
     }
     if (event.status === 'pending') {
       toast.info('Có yêu cầu chấm công mới', {
+        description: event.lateMinutes ? `Đi trễ ${formatMinutes(event.lateMinutes)}` : undefined,
         action: {
           label: 'Xem',
           onClick: () => navigate(`/work-shifts?warehouseId=${event.warehouseId}`),
