@@ -11,6 +11,9 @@ export interface AuthContextValue {
   logout: () => Promise<void>
 }
 
+/** Query key of the signed-in user (GET /auth/me); update it after editing your own account. */
+export const ME_KEY = ['auth', 'me'] as const
+
 export const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function useAuth() {

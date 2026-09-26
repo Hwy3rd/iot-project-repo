@@ -19,10 +19,13 @@ import { CreateDeviceChannelDto } from './dto/create-device-channel.dto';
 import { DeviceChannelResponseDto } from './dto/device-channel-response.dto';
 import { UpdateDeviceChannelDto } from './dto/update-device-channel.dto';
 
+// Staff may send commands on their shift (CommandsController), so they need
+// to see a device's channels to pick one — also only while on shift.
 const CHANNEL_VIEW_ROLES = [
   UserRole.ADMIN,
   UserRole.MANAGER,
   UserRole.TECHNICIAN,
+  UserRole.STAFF,
 ];
 const CHANNEL_MANAGE_ROLES = [UserRole.ADMIN, UserRole.TECHNICIAN];
 
@@ -51,6 +54,7 @@ export class DeviceChannelsController {
   @Roles(...CHANNEL_VIEW_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
     paramName: 'deviceId',
+    requireShift: true,
   })
   @Serialize(DeviceChannelResponseDto)
   @Get()
@@ -61,6 +65,7 @@ export class DeviceChannelsController {
   @Roles(...CHANNEL_VIEW_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
     paramName: 'deviceId',
+    requireShift: true,
   })
   @Serialize(DeviceChannelResponseDto)
   @Get(':id')

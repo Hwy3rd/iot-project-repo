@@ -11,17 +11,14 @@ import { DevicesPage } from './pages/DevicesPage'
 import { LoginPage } from './pages/LoginPage'
 import { MonitoringPage } from './pages/MonitoringPage'
 import { NotificationsPage } from './pages/NotificationsPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
+import { ChatbotPage } from './pages/ChatbotPage'
+import { ProfilePage } from './pages/ProfilePage'
 import { ProductTypesPage } from './pages/ProductTypesPage'
 import { ShiftsPage } from './pages/ShiftsPage'
 import { NotFoundPage, RouteErrorPage } from './pages/StatusPages'
 import { UsersPage } from './pages/UsersPage'
 import { WarehousesPage } from './pages/WarehousesPage'
 import { WorkShiftsPage } from './pages/WorkShiftsPage'
-
-const placeholder = (title: string, description: string) => ({
-  element: <PlaceholderPage title={title} description={description} />,
-})
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage />, errorElement: <RouteErrorPage /> },
@@ -42,7 +39,8 @@ export const router = createBrowserRouter([
           { path: 'product-types', element: <ProductTypesPage /> },
           { path: 'shifts', element: <ShiftsPage /> },
           { path: 'notifications', element: <NotificationsPage /> },
-          { path: 'chatbot', ...placeholder('Trợ lý AI', 'Hỏi đáp về dữ liệu kho trong phạm vi của bạn.') },
+          { path: 'chatbot', element: <ChatbotPage /> },
+          { path: 'profile', element: <ProfilePage /> },
           {
             element: <RequireRole roles={['admin', 'manager', 'staff']} />,
             children: [

@@ -242,13 +242,16 @@ export class ChatbotOrchestratorService {
         tools: toolCalls.map((call) => call.name),
       });
 
+      // The calls of one step are independent reads — run them together,
+      // then store/replay the results in the model's order.
+      const execResults = await Promise.all(
+        toolCalls.map((call) =>
+          this.toolExecutor.execute(call.name, call.arguments, caller),
+        ),
+      );
       const responseParts: Part[] = [];
-      for (const call of toolCalls) {
-        const execResult = await this.toolExecutor.execute(
-          call.name,
-          call.arguments,
-          caller,
-        );
+      for (const [index, call] of toolCalls.entries()) {
+        const execResult = execResults[index];
         const payload = execResult.error
           ? { error: execResult.error }
           : { output: execResult.result ?? null };

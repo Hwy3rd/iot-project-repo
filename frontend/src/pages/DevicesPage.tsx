@@ -3,6 +3,8 @@ import type { Device, DeviceStatus } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { CreateDeviceDialog, EditDeviceDialog } from '@/components/devices/DeviceFormDialog'
+import { DeviceDetailTabs } from '@/components/devices/DeviceDetailPanels'
+import { DeviceLifecycleActions } from '@/components/devices/DeviceLifecycle'
 import { BulkDeleteDialog } from '@/components/common/BulkDeleteDialog'
 import { FilterDialog } from '@/components/common/FilterDialog'
 import { LocationFilter, SelectFilter } from '@/components/common/filter-fields'
@@ -96,7 +98,8 @@ export function DevicesPage() {
   // Registering devices and seeing unclaimed ones are Admin-only (docs/RBAC.md).
   const isAdmin = hasRole(user?.role, ['admin'])
   const canDelete = isAdmin
-  // PATCH /devices/:id is Admin or Technician (firmware version only).
+  // PATCH /devices/:id (firmware version) and the lifecycle (claim code,
+  // claim, decommission) are Admin or Technician.
   const canEdit = hasRole(user?.role, ['admin', 'technician'])
   const rows = useRowDialogs<Device>()
   const current = rows.item
@@ -233,31 +236,39 @@ export function DevicesPage() {
             title={<span className="font-mono" translate="no">{current.uniqueId}</span>}
             description={current.coldRoomId ? coldRooms.label(current.coldRoomId) : 'Chưa gán phòng lạnh'}
             onEdit={canEdit ? () => rows.edit(current) : undefined}
+            actions={canEdit && <DeviceLifecycleActions device={current} onChanged={rows.view} />}
+            wide
           >
-            <DetailList
-              fields={[
-                {
-                  label: 'Mã thiết bị',
-                  value: <span className="font-mono" translate="no">{current.uniqueId}</span>,
-                },
-                { label: 'Trạng thái', value: <DeviceStatusBadge status={current.status} /> },
-                {
-                  label: 'Phòng lạnh',
-                  value: current.coldRoomId ? coldRooms.label(current.coldRoomId) : 'Chưa gán',
-                },
-                {
-                  label: 'Firmware',
-                  value: current.firmwareVersion && (
-                    <span className="font-mono" translate="no">{current.firmwareVersion}</span>
-                  ),
-                },
-                { label: 'Tín hiệu cuối', value: formatDateTime(current.lastHeartbeatAt) },
-                { label: 'Gán vào phòng lúc', value: formatDateTime(current.claimedAt) },
-                { label: 'Mã claim hết hạn', value: formatDateTime(current.claimCodeExpiresAt) },
-                { label: 'Ngừng sử dụng lúc', value: formatDateTime(current.decommissionedAt) },
-                { label: 'Ngày đăng ký', value: formatDateTime(current.createdAt) },
-                { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
-              ]}
+            <DeviceDetailTabs
+              key={current.id}
+              device={current}
+              info={
+                <DetailList
+                  fields={[
+                    {
+                      label: 'Mã thiết bị',
+                      value: <span className="font-mono" translate="no">{current.uniqueId}</span>,
+                    },
+                    { label: 'Trạng thái', value: <DeviceStatusBadge status={current.status} /> },
+                    {
+                      label: 'Phòng lạnh',
+                      value: current.coldRoomId ? coldRooms.label(current.coldRoomId) : 'Chưa gán',
+                    },
+                    {
+                      label: 'Firmware',
+                      value: current.firmwareVersion && (
+                        <span className="font-mono" translate="no">{current.firmwareVersion}</span>
+                      ),
+                    },
+                    { label: 'Tín hiệu cuối', value: formatDateTime(current.lastHeartbeatAt) },
+                    { label: 'Gán vào phòng lúc', value: formatDateTime(current.claimedAt) },
+                    { label: 'Mã kích hoạt hết hạn', value: formatDateTime(current.claimCodeExpiresAt) },
+                    { label: 'Ngừng sử dụng lúc', value: formatDateTime(current.decommissionedAt) },
+                    { label: 'Ngày đăng ký', value: formatDateTime(current.createdAt) },
+                    { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
+                  ]}
+                />
+              }
             />
           </DetailDialog>
           {canEdit && (

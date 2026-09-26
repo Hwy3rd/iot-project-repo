@@ -218,7 +218,7 @@ Backend validate: khoảng nhiệt độ khuyến nghị của `product_type` (`
 | `PATCH /devices/:id` | A, T, **P** | `{ firmwareVersion? }` | `DeviceResponseDto` |
 | `POST /devices/:id/claim-code` | A, T, **P** | — | `ClaimCodeResponseDto { claimCode, claimCodeExpiresAt }` — **mã gốc chỉ trả về đúng lần này**, sau đó chỉ còn hash trong DB |
 | `POST /devices/:id/claim` | A, T (phạm vi tính theo `coldRoomId` đích trong body, không phải phòng hiện tại của thiết bị) | `{ claimCode, coldRoomId }` | `DeviceResponseDto` — gán `coldRoomId`, chuyển `status = active` |
-| `POST /devices/:id/decommission` | A, T, **P** | — | `DeviceResponseDto` — chuyển `status = decommissioned` (một chiều, không đảo ngược) |
+| `POST /devices/:id/decommission` | A, T, **P** | — | `DeviceResponseDto` — chuyển `status = decommissioned` (một chiều, không đảo ngược). Ghi audit `device.decommission` |
 | `DELETE /devices/:id` | A | — | `null` (soft delete — tách biệt với `decommission`, dùng cho xoá bản ghi hẳn) |
 
 ---
@@ -230,8 +230,8 @@ Cảm biến/cơ cấu chấp hành gắn trên 1 device.
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /devices/:deviceId/channels` | A, T, **P** (theo `deviceId`) | `{ channelType, label? }` | `DeviceChannelResponseDto` — `channelRole` (`sensor`/`actuator`) suy ra tự động từ `channelType`, không nhận từ client |
-| `GET /devices/:deviceId/channels` | A, M, T, **P** | — | `DeviceChannelResponseDto[]` |
-| `GET /devices/:deviceId/channels/:id` | A, M, T, **P** | — | `DeviceChannelResponseDto` |
+| `GET /devices/:deviceId/channels` | A, M, T, S (**C** cho Staff — để chọn kênh khi gửi lệnh) | — | `DeviceChannelResponseDto[]` |
+| `GET /devices/:deviceId/channels/:id` | A, M, T, S (**C** cho Staff) | — | `DeviceChannelResponseDto` |
 | `PATCH /devices/:deviceId/channels/:id` | A, T, **P** | `{ label? }` | `DeviceChannelResponseDto` |
 | `DELETE /devices/:deviceId/channels/:id` | A, T, **P** | — | `null` (hard delete) |
 
@@ -239,7 +239,7 @@ Cảm biến/cơ cấu chấp hành gắn trên 1 device.
 
 ## 12. Device Status History — `/devices/:deviceId/status-history`
 
-Chỉ đọc — nhật ký đổi trạng thái thiết bị, ghi nội bộ.
+Chỉ đọc — nhật ký đổi trạng thái thiết bị, ghi nội bộ. `DevicesService` ghi một dòng (`trigger = manual`, `changedBy` = người thao tác) trong cùng transaction với mỗi bước vòng đời làm đổi trạng thái: sinh mã kích hoạt (`registered → provisioned`; sinh lại mã khi đã `provisioned` thì không ghi), claim (`provisioned → active`), decommission. Các chuyển trạng thái tự động (mất kết nối, lỗi cảm biến) chưa được ghi.
 
 | Method & Path | Vai trò | Response |
 |---|---|---|

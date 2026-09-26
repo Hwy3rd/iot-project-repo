@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/common/PageHeader'
 import { LastUpdated } from '@/components/common/LastUpdated'
 import { ViewToggle } from '@/components/common/ViewToggle'
 import { WarehouseGrid } from '@/components/warehouses/WarehouseGrid'
+import { ImageGallery } from '@/components/common/ImageGallery'
 import { WarehouseStaffSection } from '@/components/warehouses/WarehouseStaffSection'
 import {
   DetailDialog,
@@ -302,6 +303,15 @@ export function WarehousesPage() {
                 { label: 'Ngày tạo', value: formatDateTime(current.createdAt) },
                 { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
               ]}
+            />
+            <ImageGallery
+              images={current.imageUrls}
+              canEdit={isAdmin}
+              upload={(files) => warehousesApi.addImages(current.id, files)}
+              remove={(url) => warehousesApi.removeImage(current.id, url)}
+              invalidate={[['warehouses']]}
+              onChanged={(updated) => rows.view(updated as WarehouseItem)}
+              noun="kho"
             />
             {canViewStaff && <WarehouseStaffSection warehouse={current} canManage={isAdmin} />}
           </DetailDialog>

@@ -176,7 +176,7 @@ Hệ quả của cách (2): ký tự `$` trong giá trị bị hiểu là tham c
 | Auth                | `JWT_SECRET`, `JWT_REFRESH_SECRET`, `*_EXPIRES_IN`, `COOKIE_NAME`, `REFRESH_COOKIE_NAME` | Hai secret phải khác nhau và khác bộ secret dev                                     |
 | Web Push            | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`                           | Sinh cặp khoá riêng cho production: `npx web-push generate-vapid-keys`                    |
 | Chatbot (LLM)       | `GEMINI_API_KEY`, `LLM_*`, `CHATBOT_RATE_LIMIT_*`, `CHATBOT_DOCS_DIR`              | `CHATBOT_DOCS_DIR=/app/docs` khớp với đường dẫn copy docs trong Dockerfile                |
-| Seed                | `SEED_ADMIN_USERNAME`, `SEED_ADMIN_PASSWORD`                                       | Chỉ dùng lúc `init.sh`; nên xoá/đổi khỏi `.env` sau lần đầu                                |
+| Seed                | `SEED_ADMIN_USERNAME`, `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_USERNAME`, `SEED_TECHNICIAN_USERNAME`, `SEED_STAFF_USERNAME` | Chỉ dùng lúc `init.sh`; cả 4 tài khoản dùng chung `SEED_ADMIN_PASSWORD`; nên xoá/đổi khỏi `.env` sau lần đầu |
 | Tunnel              | `CLOUDFLARE_TUNNEL_TOKEN`                                                          | Chỉ `cloudflared` đọc                                                                     |
 
 **Credential datastore chỉ có tác dụng ở lần khởi động đầu, khi volume còn rỗng.** Các biến `MYSQL_USER/PASSWORD/DATABASE`, `MONGO_ROOT_*` và `MINIO_ACCESS_KEY/SECRET_KEY` được container dùng để tạo user khi volume chưa có dữ liệu. Sửa chúng trong `.env` sau đó **không** đổi mật khẩu của DB đã có, mà chỉ làm `app` kết nối thất bại. Muốn đổi thì phải đổi trong DB trước (qua `docker exec`) rồi mới sửa `.env`.
@@ -243,7 +243,7 @@ Yêu cầu: Docker + Docker Compose v2. Máy chủ **không cần** cài Node/pn
 
 1. Kiểm tra `docker`, `docker compose` và file `.env`. Nếu thiếu `CLOUDFLARE_TUNNEL_TOKEN` thì chỉ cảnh báo, không dừng.
 2. `docker compose -f docker-compose.production.yml up -d --build`. Lệnh này chờ đến khi cả chuỗi `depends_on` ở mục 3 hoàn tất, bao gồm migration.
-3. Seed tài khoản admin: `compose run --rm app node dist/seeds/account.seed.js`. Nếu đã có admin thì bước này không làm gì.
+3. Seed tài khoản: `compose run --rm app node dist/seeds/account.seed.js`. Tạo admin nếu chưa có admin nào, và mỗi tài khoản Manager/Technician/Staff nếu username chưa tồn tại — cả 4 dùng chung `SEED_ADMIN_PASSWORD`. Các tài khoản này chưa được phân công vào kho nào — Admin gán trong dialog chi tiết kho.
 
 ### Vận hành hằng ngày: `./run.sh`
 

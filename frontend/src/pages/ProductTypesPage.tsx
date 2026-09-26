@@ -16,6 +16,7 @@ import {
   RowActionsCell,
   RowActionsHead,
 } from '@/components/common/RowDetail'
+import { ImageGallery } from '@/components/common/ImageGallery'
 import { PageHeader } from '@/components/common/PageHeader'
 import { SelectAllHead, SelectRowCell } from '@/components/common/row-selection'
 import {
@@ -187,6 +188,15 @@ export function ProductTypesPage() {
                 { label: 'Ngày tạo', value: formatDateTime(current.createdAt) },
                 { label: 'Cập nhật lần cuối', value: formatDateTime(current.updatedAt) },
               ]}
+            />
+            <ImageGallery
+              images={current.imageUrls}
+              canEdit={canEdit}
+              upload={(files) => productTypesApi.addImages(current.id, files)}
+              remove={(url) => productTypesApi.removeImage(current.id, url)}
+              invalidate={[['product-types']]}
+              onChanged={(updated) => rows.view(updated as ProductType)}
+              noun="loại sản phẩm"
             />
           </DetailDialog>
           {canEdit && (

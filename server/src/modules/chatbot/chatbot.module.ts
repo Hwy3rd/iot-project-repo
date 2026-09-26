@@ -3,7 +3,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RbacModule } from '../../common/rbac/rbac.module';
 import { LlmModule } from '../../libs/llm/llm.module';
 import { AlertsModule } from '../alerts/alerts.module';
+import { Alert } from '../alerts/entities/alert.entity';
 import { Batch } from '../batches/entities/batch.entity';
+import { ColdRoomsModule } from '../cold-rooms/cold-rooms.module';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { Command } from '../commands/entities/command.entity';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
@@ -41,6 +43,7 @@ import { ChatbotToolExecutorService } from './tools/chatbot-tool-executor.servic
       DeviceChannel,
       WorkShift,
       WarehouseStaff,
+      Alert,
     ]),
     LlmModule,
     // WarehouseAccessService — same scope rules as the REST guards.
@@ -48,6 +51,8 @@ import { ChatbotToolExecutorService } from './tools/chatbot-tool-executor.servic
     AlertsModule,
     TelemetryModule,
     DeviceStatusHistoryModule,
+    // ColdRoomStatusService — live room status for the health tools.
+    ColdRoomsModule,
     // emitToUser() — replies and progress are pushed over the socket.
     RealtimeModule,
   ],

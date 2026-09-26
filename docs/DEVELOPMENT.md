@@ -58,7 +58,7 @@ cp .env.example .env
 | --------------------------------------- | -------------------------------------------------------------- |
 | `JWT_SECRET`, `JWT_REFRESH_SECRET`      | `openssl rand -hex 32`, chạy 2 lần để có hai giá trị khác nhau |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | `npx web-push generate-vapid-keys`                             |
-| `SEED_ADMIN_PASSWORD`                   | Mật khẩu admin local tuỳ chọn                                  |
+| `SEED_ADMIN_PASSWORD`                   | Mật khẩu local tuỳ chọn, dùng chung cho admin/manager/technician/staff seed ra |
 | `GEMINI_API_KEY`                        | Để trống nếu không dùng chatbot                                |
 
 Sau đó chạy:
@@ -66,7 +66,7 @@ Sau đó chạy:
 ```bash
 npm install
 npm run migration:run    # tạo schema MySQL
-npm run seed:admin       # tạo tài khoản admin từ SEED_ADMIN_*
+npm run seed:admin       # tạo admin + manager/technician/staff, chung mật khẩu SEED_ADMIN_PASSWORD
 npm run seed:master      # (tuỳ chọn) dữ liệu mẫu: kho, phòng lạnh, thiết bị...
 npm run start:dev        # API ở http://localhost:3000, hot-reload
 ```
@@ -97,7 +97,7 @@ npm run dev             # http://localhost:5173
 
 Vite dev server chuyển `/api` và `/socket.io` sang `localhost:3000` (xem [vite.config.ts](../frontend/vite.config.ts)), nên cookie đăng nhập hoạt động trên `http://` mà không cần cấu hình CORS.
 
-Mở http://localhost:5173 và đăng nhập bằng `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD`.
+Mở http://localhost:5173 và đăng nhập bằng `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD` (hoặc `manager` / `technician` / `staff` với cùng mật khẩu). Tài khoản Manager/Technician/Staff seed ra chưa thuộc kho nào: đăng nhập admin, mở chi tiết một kho và thêm họ vào mục "Nhân sự phụ trách" thì họ mới thấy dữ liệu của kho đó.
 
 ## 7. Cổng
 

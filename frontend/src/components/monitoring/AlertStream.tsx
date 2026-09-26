@@ -1,19 +1,16 @@
 import { alertsApi } from '@/api/endpoints'
 import type { Alert } from '@/api/types'
-import { useAuth } from '@/auth/auth-context'
-import { hasRole } from '@/auth/permissions'
 import { EmptyState, ErrorState } from '@/components/common/States'
 import { AlertStatusBadge } from '@/components/common/StatusBadge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { dayjs, formatDateTime, formatTemp } from '@/lib/format'
-import { mutationErrorText } from '@/lib/forms'
 import { ALERT_TYPE_LABEL } from '@/lib/labels'
+import { useAlertActions } from '@/lib/useAlertActions'
 import { cn } from '@/lib/utils'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { toast } from 'sonner'
 
 const STREAM_SIZE = 30
 // How long a newly arrived alert stays highlighted.
@@ -32,26 +29,8 @@ function AlertItem({
   fresh: boolean
   onSelectRoom: () => void
 }) {
-  const { user } = useAuth()
-  const qc = useQueryClient()
-  const canResolve = hasRole(user?.role, ['admin', 'manager', 'technician'])
-
-  const act = useMutation({
-    mutationFn: (action: 'acknowledge' | 'resolve') =>
-      action === 'acknowledge' ? alertsApi.acknowledge(alert.id) : alertsApi.resolve(alert.id),
-    onSuccess: (_, action) => {
-      toast.success(action === 'acknowledge' ? 'Đã tiếp nhận cảnh báo' : 'Đã xử lý cảnh báo')
-      void qc.invalidateQueries({ queryKey: ['alerts'] })
-      void qc.invalidateQueries({ queryKey: ['cold-rooms', 'status'] })
-    },
-    onError: (error) =>
-      toast.error('Không thực hiện được', {
-        description: mutationErrorText(error, {
-          403: 'Bạn không có quyền với cảnh báo này (nhân viên cần đang trong ca để tiếp nhận).',
-          409: 'Cảnh báo vừa được người khác cập nhật.',
-        }),
-      }),
-  })
+  const actions = useAlertActions()
+  const busy = actions.pendingId === alert.id
 
   return (
     <li
@@ -83,13 +62,13 @@ function AlertItem({
       </div>
       {alert.status !== 'resolved' && (
         <div className="flex gap-2 pt-1">
-          {alert.status === 'open' && (
-            <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate('acknowledge')}>
+          {actions.canAcknowledge(alert) && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => actions.run(alert, 'acknowledge')}>
               Tiếp nhận
             </Button>
           )}
-          {canResolve && (
-            <Button size="sm" variant="outline" disabled={act.isPending} onClick={() => act.mutate('resolve')}>
+          {actions.canResolve(alert) && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => actions.run(alert, 'resolve')}>
               Xử lý xong
             </Button>
           )}
