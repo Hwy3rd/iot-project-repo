@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { FindOperator, In } from 'typeorm';
 import { WarehouseAccessService } from '../../../common/rbac/warehouse-access.service';
 import { DeviceStatus } from '../../../libs/constants/device.constant';
@@ -121,6 +122,9 @@ describe('ChatbotToolExecutorService', () => {
       find: jest.fn(({ where }: { where?: Record<string, unknown> }) =>
         Promise.resolve(inScope(WAREHOUSES, 'id', where, 'id')),
       ),
+      findOne: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve(WAREHOUSES.find((w) => w.id === where.id) ?? null),
+      ),
     };
     alertsService = {
       findAll: jest.fn().mockResolvedValue({ items: [], meta: { total: 0 } }),
@@ -155,6 +159,35 @@ describe('ChatbotToolExecutorService', () => {
       coldRoomStatus as never,
       alertsRepo as never,
     );
+  });
+
+  describe('resolveWorkingWarehouse', () => {
+    const caller = (role: UserRole) => ({ id: 'u1', role });
+
+    it('returns a warehouse the caller is assigned to, whatever their role', async () => {
+      assignments = [{ warehouseId: 'w1' }];
+
+      await expect(
+        service.resolveWorkingWarehouse(caller(UserRole.STAFF), 'w1'),
+      ).resolves.toMatchObject({ code: 'WH-HCM-01' });
+    });
+
+    it('refuses one they are not assigned to, like an unknown id', async () => {
+      assignments = [{ warehouseId: 'w1' }];
+
+      await expect(
+        service.resolveWorkingWarehouse(caller(UserRole.MANAGER), 'w2'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(
+        service.resolveWorkingWarehouse(caller(UserRole.MANAGER), 'nope'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('lets Admin pick any existing warehouse', async () => {
+      await expect(
+        service.resolveWorkingWarehouse(caller(UserRole.ADMIN), 'w3'),
+      ).resolves.toMatchObject({ code: 'WH-DN-01' });
+    });
   });
 
   describe('scoping', () => {
@@ -269,6 +302,28 @@ describe('ChatbotToolExecutorService', () => {
       expect(result.error).toContain('Phòng A1 – Cấp đông (WH-HCM-01)');
       expect(result.error).toContain('Phòng A1 – Rau quả (WH-DN-01)');
       expect(devicesRepo.findAndCount).not.toHaveBeenCalled();
+    });
+
+    it('matches the words of a room name said out of sequence', async () => {
+      assignments = [{ warehouseId: 'w3' }];
+
+      await run('get_devices', { coldRoomId: 'phòng rau' }, UserRole.MANAGER);
+
+      expect(devicesRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { coldRoomId: In(['cr4']) } }),
+      );
+    });
+
+    it("settles a shared room name on the header's warehouse", async () => {
+      await service.execute(
+        'get_devices',
+        { coldRoomId: 'Phòng A1' },
+        { id: 'u1', role: UserRole.ADMIN, workingWarehouseId: 'w3' },
+      );
+
+      expect(devicesRepo.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { coldRoomId: In(['cr4']) } }),
+      );
     });
 
     it('narrows an ambiguous room name by the warehouse given with it', async () => {

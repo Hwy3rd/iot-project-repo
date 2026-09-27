@@ -83,6 +83,11 @@ export class ChatbotController {
     @GetUserRole() role: UserRole,
     @Body() dto: CreateMessageDto,
   ) {
-    return this.orchestrator.sendMessage(id, { id: userId, role }, dto.content);
+    return this.orchestrator.sendMessage(
+      id,
+      { id: userId, role },
+      dto.content,
+      dto.warehouseId,
+    );
   }
 }

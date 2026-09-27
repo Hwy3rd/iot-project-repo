@@ -7,6 +7,11 @@ import { useCallback, useSyncExternalStore } from 'react'
 const PREFIX = 'pref:'
 const listeners = new Set<() => void>()
 
+/** Current stored value, for code outside React (null if unset or unavailable). */
+export function readPreference(key: string): string | null {
+  return read(key)
+}
+
 function read(key: string): string | null {
   try {
     return localStorage.getItem(PREFIX + key)

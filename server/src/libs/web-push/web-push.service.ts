@@ -10,6 +10,14 @@ export interface WebPushSubscriptionInfo {
   authKey: string;
 }
 
+// Alerts are time-critical: ask the push service to wake the device now
+// ('high' urgency), but drop a message it couldn't deliver within 6 hours —
+// by then the alert is better read in the app than popped up as news.
+const SEND_OPTIONS: webpush.RequestOptions = {
+  TTL: 6 * 60 * 60,
+  urgency: 'high',
+};
+
 @Injectable()
 export class WebPushService {
   constructor(
@@ -26,6 +34,7 @@ export class WebPushService {
         keys: { p256dh: subscription.p256dhKey, auth: subscription.authKey },
       },
       payload,
+      SEND_OPTIONS,
     );
   }
 

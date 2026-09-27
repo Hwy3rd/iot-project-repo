@@ -67,6 +67,7 @@ export class ChatbotGateway {
         dto.conversationId,
         { id: user.id, role: user.role },
         dto.content,
+        dto.warehouseId,
       );
       // The orchestrator already logged it and emitted CHATBOT_EVENTS.ERROR.
       turn.completion.catch(() => undefined);

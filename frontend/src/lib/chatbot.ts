@@ -41,16 +41,17 @@ export class ChatSendError extends Error {
 }
 
 const SEND_ERROR_TEXT: Record<number, string> = {
+  403: 'Bạn không được phân công vào kho đang chọn. Chọn kho khác ở đầu trang rồi gửi lại.',
   404: 'Cuộc trò chuyện không còn tồn tại.',
   409: 'Trợ lý đang trả lời tin nhắn trước, đợi một chút rồi gửi lại.',
   429: 'Bạn đã gửi quá nhiều tin nhắn. Thử lại sau ít phút.',
 }
 
-function emitSend(s: Socket, conversationId: string, content: string): Promise<SendAck> {
+function emitSend(s: Socket, conversationId: string, content: string, warehouseId?: string): Promise<SendAck> {
   return new Promise((resolve, reject) => {
     s.timeout(ACK_TIMEOUT_MS).emit(
       CHATBOT_EVENTS.SEND,
-      { conversationId, content },
+      { conversationId, content, ...(warehouseId ? { warehouseId } : {}) },
       (err: Error | null, ack: SendAck) => (err ? reject(err) : resolve(ack)),
     )
   })
@@ -69,14 +70,19 @@ function reconnect(s: Socket): Promise<void> {
  * A socket outlives its access token, so on 401 the session is refreshed
  * and the socket reconnected before one retry.
  */
-export async function sendChatMessage(conversationId: string, content: string): Promise<ChatMessage> {
+export async function sendChatMessage(
+  conversationId: string,
+  content: string,
+  /** The header's warehouse: answers default to it. Omit for "Tất cả kho". */
+  warehouseId?: string,
+): Promise<ChatMessage> {
   const s = getSocket()
   let ack: SendAck
   try {
-    ack = await emitSend(s, conversationId, content)
+    ack = await emitSend(s, conversationId, content, warehouseId)
     if (!ack.ok && ack.error.statusCode === 401 && (await refreshSession()) === 'refreshed') {
       await reconnect(s)
-      ack = await emitSend(s, conversationId, content)
+      ack = await emitSend(s, conversationId, content, warehouseId)
     }
   } catch {
     throw new ChatSendError(0, 'Không kết nối được tới máy chủ. Kiểm tra mạng rồi thử lại.')

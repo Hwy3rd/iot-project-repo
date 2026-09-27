@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Paginated } from '../../../common/pagination/paginated';
 import { PaginationQueryDto } from '../../../common/pagination/pagination-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -38,6 +38,10 @@ export interface ChatbotToolCaller {
   // allowedRoles/requireShift, so a tool never sees more than its REST
   // counterpart (docs/RBAC.md §3).
   access?: WarehouseAccess;
+  // The warehouse picked in the app header (see resolveWorkingWarehouse):
+  // breaks ties when a room name matches rooms in several warehouses. Not a
+  // filter — tools still reach every warehouse in `access`.
+  workingWarehouseId?: string;
 }
 
 // Tools reading data that belongs to no warehouse (shared catalogue,
@@ -90,6 +94,8 @@ interface Scope {
   assigned: string[] | null;
   warehouses: Map<string, Warehouse>;
   rooms: Map<string, ColdRoom>;
+  // ChatbotToolCaller.workingWarehouseId: wins ties between same-named rooms.
+  preferredWarehouseId?: string;
 }
 
 // Executes a tool call the LLM asked for, after enforcing the
@@ -196,6 +202,24 @@ export class ChatbotToolExecutorService {
     }
   }
 
+  // The header's warehouse for a chat turn, if the caller may read it —
+  // checked against their assignments (any role), like GET /warehouses/:id.
+  // Same 403 whether it doesn't exist or isn't theirs.
+  async resolveWorkingWarehouse(
+    caller: ChatbotToolCaller,
+    warehouseId: string,
+  ): Promise<Warehouse> {
+    const access = await this.warehouseAccess.resolve(caller, undefined);
+    const warehouse =
+      access.warehouseIds === null || access.warehouseIds.includes(warehouseId)
+        ? await this.warehousesRepo.findOne({ where: { id: warehouseId } })
+        : null;
+    if (!warehouse) {
+      throw new ForbiddenException('Bạn không được phân công vào kho này.');
+    }
+    return warehouse;
+  }
+
   private dispatch(
     name: string,
     args: Record<string, unknown>,
@@ -281,6 +305,7 @@ export class ChatbotToolExecutorService {
       assigned,
       warehouses: new Map(warehouses.map((w) => [w.id, w])),
       rooms: new Map(rooms.map((r) => [r.id, r])),
+      preferredWarehouseId: caller.workingWarehouseId,
     };
   }
 
@@ -325,6 +350,9 @@ export class ChatbotToolExecutorService {
       (r) => `${r.name} (${this.warehouseCode(scope, r.warehouseId)})`,
       'phòng lạnh',
       () => this.notFound('phòng lạnh', ref),
+      scope.preferredWarehouseId
+        ? (r) => r.warehouseId === scope.preferredWarehouseId
+        : undefined,
     );
   }
 
@@ -1163,17 +1191,29 @@ function pickByName<T>(
   label: (item: T) => string,
   kind: string,
   notFound: () => Error,
+  // Among several equally good matches, one this accepts wins (e.g. the
+  // room in the warehouse the user is working in).
+  preferred?: (item: T) => boolean,
 ): T {
   const needle = fold(ref);
   const folded = items.map((item) => ({ item, names: names(item).map(fold) }));
+  const words = needle.split(' ').filter(Boolean);
   const tiers = [
     (name: string) => name === needle,
     (name: string) => name.startsWith(needle),
     (name: string) => name.includes(needle),
+    // Every word said, in any order and with others between: "phòng rau
+    // quả" → "Phòng B4 – Rau quả & trứng".
+    (name: string) => {
+      const nameWords = name.split(' ');
+      return words.every((word) => nameWords.includes(word));
+    },
   ];
   for (const test of tiers) {
     const hits = folded.filter((f) => f.names.some(test)).map((f) => f.item);
     if (hits.length === 1) return hits[0];
+    const favoured = preferred ? hits.filter(preferred) : [];
+    if (favoured.length === 1) return favoured[0];
     if (hits.length > 1) {
       const shown = hits.slice(0, MAX_AMBIGUOUS).map(label).join('; ');
       throw new ChatbotToolError(

@@ -3,6 +3,7 @@ import { AttendanceGate } from '@/components/work-shifts/AttendanceGate'
 import { WorkShiftNotifier } from '@/components/work-shifts/WorkShiftNotifier'
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { usePushBridge } from '@/lib/usePushNotifications'
 import { useEffect, useRef } from 'react'
 import { Outlet, useLocation } from 'react-router'
 import { AppSidebar } from './AppSidebar'
@@ -14,6 +15,7 @@ import { WarehouseSwitcher } from './WarehouseSwitcher'
 export function AppShell() {
   const { pathname } = useLocation()
   const contentRef = useRef<HTMLDivElement>(null)
+  usePushBridge()
 
   // New page: move focus to the content so screen readers announce it and
   // keyboard users don't stay on the old nav link.

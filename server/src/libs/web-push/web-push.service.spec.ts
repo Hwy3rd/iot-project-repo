@@ -19,7 +19,7 @@ describe('WebPushService', () => {
   });
 
   describe('send', () => {
-    it('maps the flat subscription shape into the web-push endpoint/keys shape', async () => {
+    it('maps the flat subscription shape into the web-push endpoint/keys shape, sent as urgent with a TTL', async () => {
       client.sendNotification.mockResolvedValue(undefined);
 
       await service.send(
@@ -33,6 +33,7 @@ describe('WebPushService', () => {
           keys: { p256dh: 'p', auth: 'a' },
         },
         '{"title":"x"}',
+        { TTL: 6 * 60 * 60, urgency: 'high' },
       );
     });
   });

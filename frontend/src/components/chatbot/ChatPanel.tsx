@@ -6,7 +6,7 @@ import { CHAT_MESSAGE_MAX_LENGTH, toolActivityText } from '@/lib/chatbot'
 import { formatDateTime } from '@/lib/format'
 import { useChatConversation } from '@/lib/useChatConversation'
 import { cn } from '@/lib/utils'
-import { Bot, CircleAlert, Loader2, SendHorizontal } from 'lucide-react'
+import { Bot, CircleAlert, Loader2, SendHorizontal, Warehouse } from 'lucide-react'
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { ChatMarkdown } from './ChatMarkdown'
 
@@ -43,12 +43,13 @@ export function ChatPanel({
 
   const submit = async (text: string) => {
     const content = text.trim()
-    if (!content || chat.sending || chat.pending) return
+    if (!content || chat.sending || chat.pending || !chat.warehouseReady) return
     setDraft('')
     if (!(await chat.send(content))) setDraft(content)
   }
 
-  const busy = chat.sending || chat.pending !== null
+  const busy = chat.sending || chat.pending !== null || !chat.warehouseReady
+  const scopeLabel = chat.warehouse ? `${chat.warehouse.name} (${chat.warehouse.code})` : 'tất cả kho của bạn'
   const tooLong = draft.length > CHAT_MESSAGE_MAX_LENGTH
 
   return (
@@ -90,6 +91,13 @@ export function ChatPanel({
             <AlertDescription>{chat.error}</AlertDescription>
           </Alert>
         )}
+        {/* Answers default to the header's warehouse (see useChatConversation). */}
+        <p className="mb-1.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <Warehouse className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">
+            Đang hỏi về: <span className="font-medium text-foreground">{scopeLabel}</span>
+          </span>
+        </p>
         <form
           className="flex items-end gap-2"
           onSubmit={(e) => {
@@ -112,7 +120,7 @@ export function ChatPanel({
               }
             }}
             rows={1}
-            placeholder="Hỏi về kho, phòng lạnh, cảnh báo…"
+            placeholder={chat.warehouse ? `Hỏi về ${chat.warehouse.name}…` : 'Hỏi về kho, phòng lạnh, cảnh báo…'}
             aria-invalid={tooLong || undefined}
             aria-describedby={tooLong ? 'chat-too-long' : undefined}
             className="field-sizing-content max-h-40 min-h-9 w-full min-w-0 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-sm dark:bg-input/30"
@@ -133,7 +141,7 @@ export function ChatPanel({
         ) : (
           !compact && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Enter để gửi, Shift + Enter để xuống dòng. Trợ lý chỉ xem được dữ liệu trong phạm vi của bạn.
+              Enter để gửi, Shift + Enter để xuống dòng. Đổi kho ở đầu trang để hỏi về kho khác; trợ lý chỉ xem được dữ liệu trong phạm vi của bạn.
             </p>
           )
         )}
