@@ -19,6 +19,7 @@ import {
   TELEMETRY_RAW_MAX_RANGE_MS,
 } from '../../libs/constants/telemetry.constant';
 import { AlertsService } from '../alerts/alerts.service';
+import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { Device } from '../devices/entities/device.entity';
 import {
@@ -62,6 +63,7 @@ export class TelemetryService {
     private readonly devicesRepository: Repository<Device>,
     private readonly alertsService: AlertsService,
     private readonly realtime: RealtimeGateway,
+    private readonly aiPredictionService: AiPredictionService,
   ) {}
 
   // Not exposed over HTTP on purpose: it is meant to be called by the MQTT
@@ -128,6 +130,12 @@ export class TelemetryService {
         outOfRange,
         doorOpen: sample.doorOpen,
       });
+      await this.evaluatePredictedAlert({
+        deviceId: device.id,
+        coldRoom: device.coldRoom,
+        temperature,
+        ts: sample.ts,
+      });
     }
     this.announceReading({
       warehouseId: device.coldRoom.warehouseId,
@@ -187,6 +195,61 @@ export class TelemetryService {
         coldRoomId: coldRoom.id,
         warehouseId: coldRoom.warehouseId,
       });
+    }
+  }
+
+  // Evaluates AI 15-minute temperature forecast. Raises TEMPERATURE_PREDICTED
+  // when an upcoming breach is forecast; auto-resolves when forecast is safe.
+  private async evaluatePredictedAlert(input: {
+    deviceId: string;
+    coldRoom: ColdRoom;
+    temperature: number;
+    ts: Date;
+  }): Promise<void> {
+    const { deviceId, coldRoom, temperature, ts } = input;
+    const { tempMin, tempMax } = coldRoom;
+
+    try {
+      const prediction = await this.aiPredictionService.predict({
+        temperature,
+        temp_min: tempMin,
+        temp_max: tempMax,
+        hour_of_day: ts.getHours(),
+      });
+
+      if (!prediction) {
+        return;
+      }
+
+      if (prediction.will_exceed_threshold) {
+        await this.alertsService.raise({
+          coldRoomId: coldRoom.id,
+          deviceId,
+          type: AlertType.TEMPERATURE_PREDICTED,
+          triggerValue: prediction.predicted_temp_15m,
+          threshold:
+            prediction.violation_type === 'OVERHEAT' ? tempMax : tempMin,
+          details: {
+            predictedTemp15m: prediction.predicted_temp_15m,
+            violationType: prediction.violation_type,
+            riskLevel: prediction.risk_level,
+            recommendation: prediction.recommendation,
+          },
+        });
+      } else {
+        await this.alertsService.resolveAuto({
+          type: AlertType.TEMPERATURE_PREDICTED,
+          deviceId,
+          coldRoomId: coldRoom.id,
+          warehouseId: coldRoom.warehouseId,
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to evaluate AI predicted alert for device ${deviceId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 
