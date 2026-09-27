@@ -403,6 +403,13 @@ export const notificationsApi = {
       unreadOnly: flag(q.unreadOnly),
     }),
   markRead: (id: string) => api.post<AppNotification>(`/notifications/${id}/read`),
+  /** null when the server has no VAPID keypair configured. */
+  vapidPublicKey: () =>
+    api.get<{ publicKey: string | null }>('/notifications/vapid-public-key'),
+  /** This browser's PushSubscription.toJSON(); upserts on endpoint (moves it to the caller). */
+  subscribePush: (body: { endpoint: string; keys: { p256dh: string; auth: string }; userAgent?: string }) =>
+    api.post<unknown>('/notifications/subscriptions', body),
+  unsubscribePush: (endpoint: string) => api.delete<null>('/notifications/subscriptions', { endpoint }),
 }
 
 export interface AuditLogQuery extends PageQuery, CreatedRangeQuery {

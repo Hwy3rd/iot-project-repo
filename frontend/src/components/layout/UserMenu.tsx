@@ -13,7 +13,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ROLE_LABEL } from '@/lib/labels'
-import { ChevronDown, LogOut, Monitor, Moon, Sun, UserRound } from 'lucide-react'
+import { usePushActions } from '@/lib/usePushNotifications'
+import { BellOff, BellRing, ChevronDown, LogOut, Monitor, Moon, Sun, UserRound } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -65,6 +66,7 @@ export function UserMenu() {
             <UserRound aria-hidden="true" />
             Hồ sơ cá nhân
           </DropdownMenuItem>
+          <PushMenuItem />
           <DropdownMenuSeparator />
           <DropdownMenuLabel className="text-xs text-muted-foreground">Giao diện</DropdownMenuLabel>
           <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
@@ -84,5 +86,43 @@ export function UserMenu() {
       </DropdownMenu>
       <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
     </>
+  )
+}
+
+/** Turns push notifications on/off for this browser (same as the profile card). */
+function PushMenuItem() {
+  const push = usePushActions()
+  if (push.state === 'on') {
+    return (
+      <DropdownMenuItem onSelect={push.disable} disabled={push.busy}>
+        <BellOff aria-hidden="true" />
+        Tắt thông báo trên thiết bị
+      </DropdownMenuItem>
+    )
+  }
+  const blocked = push.state === 'unsupported' || push.state === 'denied'
+  return (
+    <DropdownMenuItem
+      // Runs Notification.requestPermission() within this click.
+      onSelect={push.enable}
+      disabled={blocked || push.busy || !push.ready}
+      title={
+        push.state === 'denied'
+          ? 'Thông báo đang bị chặn cho trang này, cho phép lại trong cài đặt trang của trình duyệt.'
+          : push.state === 'unsupported'
+            ? 'Trình duyệt này không hỗ trợ thông báo đẩy.'
+            : undefined
+      }
+    >
+      <BellRing aria-hidden="true" />
+      <span className="flex flex-col">
+        Bật thông báo trên thiết bị
+        {blocked && (
+          <span className="text-xs text-muted-foreground">
+            {push.state === 'denied' ? 'Đang bị chặn trong trình duyệt' : 'Trình duyệt không hỗ trợ'}
+          </span>
+        )}
+      </span>
+    </DropdownMenuItem>
   )
 }

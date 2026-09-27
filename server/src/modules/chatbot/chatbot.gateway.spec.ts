@@ -45,6 +45,21 @@ describe('ChatbotGateway', () => {
       'c1',
       { id: 'u1', role: UserRole.STAFF },
       'Xin chào',
+      undefined,
+    );
+  });
+
+  it("passes the header's warehouse on to the turn", async () => {
+    await gateway.handleSend(socketOf() as never, {
+      ...payload,
+      warehouseId: 'w1',
+    });
+
+    expect(orchestrator.startTurn).toHaveBeenCalledWith(
+      'c1',
+      { id: 'u1', role: UserRole.STAFF },
+      'Xin chào',
+      'w1',
     );
   });
 

@@ -1,5 +1,5 @@
 import { ApiError } from '@google/genai';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { MessageRole } from '../../libs/constants/chatbot.constant';
 import { UserRole } from '../../libs/constants/user.constant';
 import { ChatbotOrchestratorService } from './chatbot-orchestrator.service';
@@ -21,7 +21,7 @@ describe('ChatbotOrchestratorService', () => {
     appendToolMessage: jest.Mock;
   };
   let llmService: { generateContent: jest.Mock };
-  let toolExecutor: { execute: jest.Mock };
+  let toolExecutor: { execute: jest.Mock; resolveWorkingWarehouse: jest.Mock };
   let realtime: { emitToUser: jest.Mock };
   let redis: { set: jest.Mock; eval: jest.Mock };
   let orchestrator: ChatbotOrchestratorService;
@@ -44,7 +44,14 @@ describe('ChatbotOrchestratorService', () => {
       appendToolMessage: jest.fn(),
     };
     llmService = { generateContent: jest.fn() };
-    toolExecutor = { execute: jest.fn().mockResolvedValue({ result: [] }) };
+    toolExecutor = {
+      execute: jest.fn().mockResolvedValue({ result: [] }),
+      resolveWorkingWarehouse: jest.fn().mockResolvedValue({
+        id: 'w3',
+        code: 'WH-HN-03',
+        name: 'Kho lạnh Bắc Thăng Long',
+      }),
+    };
     realtime = { emitToUser: jest.fn() };
     redis = {
       set: jest.fn().mockResolvedValue('OK'),
@@ -173,6 +180,60 @@ describe('ChatbotOrchestratorService', () => {
     ];
     expect(params.config.systemInstruction).toContain('ngày 2026-09-25');
     expect(params.config.systemInstruction).toContain('+07:00');
+  });
+
+  describe("the header's warehouse", () => {
+    it('makes it the default for answers and tool calls', async () => {
+      llmService.generateContent
+        .mockResolvedValueOnce({
+          functionCalls: [
+            { id: 'call1', name: 'get_cold_room_detail', args: {} },
+          ],
+        })
+        .mockResolvedValueOnce(textResponse('ok'));
+
+      await orchestrator.sendMessage('c1', caller, 'Phòng A1 thế nào?', 'w3');
+
+      expect(toolExecutor.resolveWorkingWarehouse).toHaveBeenCalledWith(
+        caller,
+        'w3',
+      );
+      const [params] = llmService.generateContent.mock.calls[0] as [
+        { config: { systemInstruction: string } },
+      ];
+      expect(params.config.systemInstruction).toContain(
+        'Kho đang làm việc: Kho lạnh Bắc Thăng Long (mã WH-HN-03)',
+      );
+      expect(toolExecutor.execute).toHaveBeenCalledWith(
+        'get_cold_room_detail',
+        {},
+        { ...caller, workingWarehouseId: 'w3' },
+      );
+    });
+
+    it('falls back to all warehouses without one', async () => {
+      llmService.generateContent.mockResolvedValue(textResponse('ok'));
+
+      await orchestrator.sendMessage('c1', caller, 'Tình hình thế nào?');
+
+      expect(toolExecutor.resolveWorkingWarehouse).not.toHaveBeenCalled();
+      const [params] = llmService.generateContent.mock.calls[0] as [
+        { config: { systemInstruction: string } },
+      ];
+      expect(params.config.systemInstruction).toContain('TẤT CẢ các kho');
+    });
+
+    it('stores nothing for a warehouse the caller is not assigned to', async () => {
+      toolExecutor.resolveWorkingWarehouse.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        orchestrator.sendMessage('c1', caller, 'Xin chào', 'w9'),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(chatbotService.addUserMessage).not.toHaveBeenCalled();
+      expect(redis.set).not.toHaveBeenCalled();
+    });
   });
 
   it('ends the turn with a quota message when Gemini returns 429', async () => {

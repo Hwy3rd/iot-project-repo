@@ -326,7 +326,7 @@ Có 2 loại phòng (room):
 |---|---|---|
 | `join:warehouse` | `{ warehouseId }` | Admin join được mọi warehouse; role khác chỉ join được warehouse mình có mặt trong `warehouse_staff` (`WsException` nếu không hợp lệ). Trả về `{ warehouseId }` khi thành công. |
 | `leave:warehouse` | `{ warehouseId }` | Rời phòng, trả về `{ warehouseId }`. |
-| `chatbot:send` | `{ conversationId, content }` | Xem §18.1. |
+| `chatbot:send` | `{ conversationId, content, warehouseId? }` | Xem §18.1. |
 
 Chiều server → client theo warehouse (`emitToWarehouse(warehouseId, event, payload)`) đã có sẵn hạ tầng nhưng **chưa có module nghiệp vụ nào gọi tới**. Dự kiến dùng cho `alert:new`.
 
@@ -335,8 +335,10 @@ Chiều server → client theo warehouse (`emitToWarehouse(warehouseId, event, p
 Quản lý cuộc trò chuyện và đọc lịch sử vẫn dùng REST (`/chatbot/conversations` — `GET` trả `Paginated<ConversationResponseDto>`, nhận `page?`/`limit?`; `GET :id/messages` giữ phân trang cursor `before`/`limit`). **Gửi tin nhắn** thì dùng socket:
 
 ```js
-socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
+socket.emit('chatbot:send', { conversationId, content, warehouseId }, (ack) => { ... });
 ```
+
+- `warehouseId` (không bắt buộc) là kho đang chọn trên header. Trợ lý mặc định trả lời về kho này: gọi tool với bộ lọc kho đó, và khi tên phòng trùng giữa các kho thì hiểu là phòng của kho này. Người dùng vẫn hỏi được kho khác bằng cách nêu tên. Không gửi thì trợ lý xét mọi kho người dùng được đọc (Admin/Technician chọn "Tất cả kho"). Đây chỉ là ngữ cảnh, không mở rộng quyền: kho người dùng không được phân công trả `403` và tin nhắn không được lưu.
 
 - **Ack** trả về ngay khi tin nhắn của user đã được lưu, không đợi model:
   - Thành công: `{ ok: true, message: MessageResponseDto }`.
@@ -346,6 +348,7 @@ socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
   |---|---|
   | `400` | Payload sai. `content` tối đa 2000 ký tự. |
   | `401` | Access token của socket đã hết hạn. Client gọi `POST /auth/refresh` rồi kết nối lại. |
+  | `403` | `warehouseId` là kho người dùng không được phân công (hoặc không tồn tại). |
   | `404` | Cuộc trò chuyện không tồn tại hoặc không thuộc về mình. |
   | `409` | Cuộc trò chuyện đang có một lượt trả lời chưa xong. |
   | `429` | Vượt giới hạn tin nhắn. |
@@ -361,7 +364,7 @@ socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
 
 - **Mỗi cuộc trò chuyện chỉ chạy một lượt tại một thời điểm**, dùng khoá Redis `chatbot:turn:<conversationId>` (TTL 180s phòng khi process chết giữa lượt). Nhờ vậy gửi trùng hay gửi từ hai tab không làm lịch sử bị xen kẽ.
 - Giới hạn tin nhắn (`CHATBOT_RATE_LIMIT_PER_MINUTE` / `_PER_DAY`) dùng chung bộ đếm với REST.
-- `POST /chatbot/conversations/:id/messages` vẫn còn: chạy cùng một lượt, nhưng chỉ trả về câu trả lời cuối khi đã xong. Các sự kiện trên vẫn được phát. Endpoint này dùng khi test bằng REST Client, hoặc khi client không có socket.
+- `POST /chatbot/conversations/:id/messages` (body `{ content, warehouseId? }`) vẫn còn: chạy cùng một lượt, nhưng chỉ trả về câu trả lời cuối khi đã xong. Các sự kiện trên vẫn được phát. Endpoint này dùng khi test bằng REST Client, hoặc khi client không có socket.
 - Kịch bản test tay: `node http/chatbot-socket.mjs "câu hỏi" [conversationId]` (chạy trong `server/`).
 
 ---

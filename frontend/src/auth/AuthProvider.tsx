@@ -1,4 +1,5 @@
 import { ApiError, onSessionExpired } from '@/api/client'
+import { disablePush } from '@/lib/push'
 import { disconnectSocket } from '@/lib/socket'
 import { authApi } from '@/api/endpoints'
 import type { User } from '@/api/types'
@@ -62,6 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
+      // While the session still authenticates the DELETE; the opt-in is
+      // kept, so logging back in re-subscribes (lib/push.ts syncPush).
+      await disablePush().catch(() => undefined)
       await authApi.logout()
     } finally {
       resetCache()
