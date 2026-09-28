@@ -25,6 +25,7 @@ import { TEMP_STATE, tempState } from '@/lib/room-status'
 import { cn } from '@/lib/utils'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+import { Sparkles } from 'lucide-react'
 import { TemperatureChart } from './TemperatureChart'
 
 const RANGES: { value: TelemetryRange; label: string; refreshMs: number }[] = [
@@ -87,6 +88,47 @@ function RoomDetail({
         />
         <Stat label="Cập nhật" value={latest ? formatRelative(latest.ts) : '—'} />
       </section>
+
+      {series.data?.prediction && (
+        <section
+          className={cn(
+            'flex flex-col gap-2 rounded-xl border p-3.5 transition-colors',
+            series.data.prediction.willExceedThreshold
+              ? 'border-warning/50 bg-warning/10 dark:border-warning/40 dark:bg-warning/15'
+              : 'border-purple-500/20 bg-purple-50/50 dark:border-purple-500/30 dark:bg-purple-950/20'
+          )}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <span className="text-sm font-semibold">Dự báo AI (15 phút tới)</span>
+            </div>
+            {series.data.prediction.willExceedThreshold ? (
+              <ToneBadge tone="warning">
+                {series.data.prediction.violationType === 'OVERHEAT'
+                  ? 'Nguy cơ quá nhiệt'
+                  : 'Nguy cơ vượt sàn'}
+              </ToneBadge>
+            ) : (
+              <ToneBadge tone="success">Nhiệt độ ổn định</ToneBadge>
+            )}
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums">
+              {formatTemp(series.data.prediction.predictedTemp15m)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              (Mức độ rủi ro: {series.data.prediction.riskLevel})
+            </span>
+          </div>
+          {series.data.prediction.recommendation && (
+            <p className="border-t border-border/50 pt-2 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Khuyến nghị:</span>{' '}
+              {series.data.prediction.recommendation}
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
