@@ -4,7 +4,7 @@ import { FormDialog } from '@/components/common/FormDialog'
 import { TextField } from '@/components/common/form-fields'
 import { Button } from '@/components/ui/button'
 import { mutationErrorText } from '@/lib/forms'
-import { displayName } from '@/lib/users'
+import { displayName, newPasswordRules, PASSWORD_LENGTH_HINT, PASSWORD_MAX_LENGTH } from '@/lib/users'
 import { useMutation } from '@tanstack/react-query'
 import { KeyRound } from 'lucide-react'
 import { useState } from 'react'
@@ -68,12 +68,10 @@ export function ResetPasswordAction({ user, isSelf }: { user: User; isSelf: bool
           label="Mật khẩu mới"
           type="password"
           autoComplete="new-password"
-          description="Tối thiểu 6 ký tự."
+          description={PASSWORD_LENGTH_HINT}
           error={errors.newPassword}
-          {...register('newPassword', {
-            required: 'Nhập mật khẩu mới.',
-            minLength: { value: 6, message: 'Mật khẩu tối thiểu 6 ký tự.' },
-          })}
+          maxLength={PASSWORD_MAX_LENGTH}
+          {...register('newPassword', newPasswordRules)}
         />
         <TextField
           id="reset-confirm"

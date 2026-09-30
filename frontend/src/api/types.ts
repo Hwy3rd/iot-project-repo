@@ -78,6 +78,12 @@ export interface User {
   role: UserRole
   status: UserStatus
   lastLoginAt: string | null
+  /**
+   * End of a temporary block from too many failed logins (it may cover only
+   * the IPs the failures came from). Only on GET /users, GET /users/:id and
+   * POST /users/:id/unlock.
+   */
+  loginBlockedUntil?: string | null
   createdAt: string
   updatedAt: string
 }

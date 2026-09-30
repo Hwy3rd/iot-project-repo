@@ -31,7 +31,7 @@ Hai kênh này độc lập với nhau. MQTT **không** đi qua BullMQ: `app` nh
 
 ### Kết nối Redis
 
-Cả `app` (`app.module.ts`) và `worker` (`workers/worker.module.ts`) đều gọi `BullModule.forRoot()` với cùng `REDIS_HOST`/`REDIS_PORT`. Redis không đặt mật khẩu và chỉ truy cập được trong mạng compose.
+Cả `app` (`app.module.ts`) và `worker` (`workers/worker.module.ts`) đều gọi `BullModule.forRoot()` với cùng `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`. Redis bật `requirepass` (cùng giá trị `REDIS_PASSWORD`).
 
 Kết nối BullMQ **tách riêng** khỏi client `ioredis` toàn cục (`REDIS_CLIENT`, dùng lưu refresh token), dù cả hai trỏ tới **cùng một instance Redis**.
 
@@ -155,7 +155,7 @@ Tất cả trường đều bắt buộc. Nếu cảm biến lỗi, `temperature
 
 - Toàn tiến trình `app` dùng chung **một** kết nối (`libs/mqtt/mqtt.module.ts`, token `MQTT_CLIENT`). Kết nối này cũng dự kiến dùng cho chiều publish lệnh xuống thiết bị sau này.
 - `clientId` là `iot-app-<uuid ngẫu nhiên>` và `clean: true`, tức không giữ session qua các lần restart. **Message được publish trong lúc `app` đang offline sẽ không được giao lại.**
-- Client tự reconnect mỗi 5 giây. Có thể đặt `MQTT_USERNAME`/`MQTT_PASSWORD` nếu broker bật auth.
+- Client tự reconnect mỗi 5 giây, đăng nhập bằng `MQTT_USERNAME`/`MQTT_PASSWORD` (broker không cho anonymous). Theo ACL, tài khoản này chỉ được đọc `devices/+/telemetry` và `$SYS/#`; khi làm chiều gửi lệnh cần thêm quyền write trong `mosquitto/entrypoint.sh`.
 
 ### Xử lý message (`MqttIngestService`, chạy trong `app`)
 
@@ -173,7 +173,7 @@ Message hợp lệ được lưu vào `telemetry_raw`, rồi so sánh với ngư
 ### Chưa có
 
 - **Chiều server → thiết bị** (gửi lệnh bật/tắt actuator): `CommandsService` mới chỉ ghi `Command` vào MySQL, chưa publish gì lên MQTT.
-- Broker vẫn cho kết nối anonymous và chưa có TLS (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 10).
+- TLS cho broker; thiết bị vẫn dùng chung một tài khoản `MQTT_DEVICE_USERNAME` thay vì mỗi thiết bị một credential (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 10).
 
 ---
 
@@ -200,7 +200,7 @@ Xem các job scheduler đã đăng ký và thời điểm chạy kế tiếp (d�
 ```bash
 docker exec -it service_worker node -e "
 const { Queue } = require('bullmq');
-const q = new Queue('telemetry-rollup', { connection: { host: process.env.REDIS_HOST, port: +process.env.REDIS_PORT } });
+const q = new Queue('telemetry-rollup', { connection: { host: process.env.REDIS_HOST, port: +process.env.REDIS_PORT, password: process.env.REDIS_PASSWORD } });
 q.getJobSchedulers().then(s => { console.log(s); return q.close(); });
 "
 ```
@@ -212,7 +212,7 @@ Không có endpoint cho việc này. Enqueue thủ công từ bên trong contain
 ```bash
 docker exec -it service_worker node -e "
 const { Queue } = require('bullmq');
-const q = new Queue('telemetry-rollup', { connection: { host: process.env.REDIS_HOST, port: +process.env.REDIS_PORT } });
+const q = new Queue('telemetry-rollup', { connection: { host: process.env.REDIS_HOST, port: +process.env.REDIS_PORT, password: process.env.REDIS_PASSWORD } });
 q.add('rollup', { hour: '2026-09-24T08:00:00Z' }).then(j => { console.log('enqueued', j.id); return q.close(); });
 "
 ```
@@ -220,12 +220,12 @@ q.add('rollup', { hour: '2026-09-24T08:00:00Z' }).then(j => { console.log('enque
 ### Theo dõi MQTT
 
 ```bash
-# Xem telemetry đang đến broker
-docker exec mosquitto_broker mosquitto_sub -t 'devices/+/telemetry' -v
+# Xem telemetry đang đến broker (tài khoản backend — chỉ nó được đọc)
+docker exec mosquitto_broker sh -c 'mosquitto_sub -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "devices/+/telemetry" -v'
 
-# Giả lập một thiết bị gửi telemetry
-docker exec mosquitto_broker mosquitto_pub -t 'devices/<uniqueId>/telemetry' -q 1 \
-  -m '{"ts":"2026-09-24T08:15:00Z","temperature":-18.4,"doorOpen":false,"sensorFault":false}'
+# Giả lập một thiết bị gửi telemetry (tài khoản thiết bị)
+docker exec mosquitto_broker sh -c 'mosquitto_pub -u "$MQTT_DEVICE_USERNAME" -P "$MQTT_DEVICE_PASSWORD" -t "devices/<uniqueId>/telemetry" -q 1 \
+  -m "{\"ts\":\"2026-09-24T08:15:00Z\",\"temperature\":-18.4,\"doorOpen\":false,\"sensorFault\":false}"'
 ```
 
 ---

@@ -174,7 +174,7 @@ export function UsersPage() {
                   </TableCell>
                   <TableCell>{ROLE_LABEL[u.role]}</TableCell>
                   <TableCell>
-                    <UserStatusBadge status={u.status} />
+                    <UserStatusBadge user={u} />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {u.lastLoginAt ? (
@@ -225,7 +225,7 @@ export function UsersPage() {
                 },
                 { label: 'Họ và tên', value: current.fullName },
                 { label: 'Vai trò', value: ROLE_LABEL[current.role] },
-                { label: 'Trạng thái', value: <UserStatusBadge status={current.status} /> },
+                { label: 'Trạng thái', value: <UserStatusBadge user={current} /> },
                 { label: 'Email', value: current.email && <span className="break-all">{current.email}</span> },
                 { label: 'Số điện thoại', value: current.phone },
                 { label: 'Đăng nhập cuối', value: current.lastLoginAt ? formatDateTime(current.lastLoginAt) : 'Chưa đăng nhập' },

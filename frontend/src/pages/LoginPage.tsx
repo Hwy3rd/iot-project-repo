@@ -1,5 +1,6 @@
 import { ApiError } from '@/api/client'
 import { useAuth } from '@/auth/auth-context'
+import { PASSWORD_MAX_LENGTH, USERNAME_MAX_LENGTH } from '@/lib/users'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,6 +24,7 @@ function errorMessage(err: unknown) {
   if (err instanceof ApiError) {
     if (err.status === 401) return 'Sai tên đăng nhập hoặc mật khẩu. Kiểm tra lại rồi thử lại.'
     if (err.status === 403) return 'Tài khoản đã bị khoá. Liên hệ quản trị viên để mở khoá.'
+    // 429 carries the server's own "try again in N minutes" text.
     return err.message
   }
   return 'Đăng nhập thất bại. Thử lại sau ít phút.'
@@ -87,9 +89,14 @@ export function LoginPage() {
                     autoCapitalize="none"
                     placeholder="vd: nguyenvana…"
                     aria-invalid={!!errors.username}
+                    maxLength={USERNAME_MAX_LENGTH}
                     {...register('username', {
                       required: 'Nhập tên đăng nhập.',
                       minLength: { value: 3, message: 'Tên đăng nhập có ít nhất 3 ký tự.' },
+                      maxLength: {
+                        value: USERNAME_MAX_LENGTH,
+                        message: `Tên đăng nhập tối đa ${USERNAME_MAX_LENGTH} ký tự.`,
+                      },
                     })}
                   />
                   <FieldError errors={[errors.username]} />
@@ -102,7 +109,14 @@ export function LoginPage() {
                     type="password"
                     autoComplete="current-password"
                     aria-invalid={!!errors.password}
-                    {...register('password', { required: 'Nhập mật khẩu.' })}
+                    maxLength={PASSWORD_MAX_LENGTH}
+                    {...register('password', {
+                      required: 'Nhập mật khẩu.',
+                      maxLength: {
+                        value: PASSWORD_MAX_LENGTH,
+                        message: `Mật khẩu tối đa ${PASSWORD_MAX_LENGTH} ký tự.`,
+                      },
+                    })}
                   />
                   <FieldError errors={[errors.password]} />
                 </Field>

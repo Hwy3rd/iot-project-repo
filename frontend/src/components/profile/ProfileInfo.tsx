@@ -15,7 +15,7 @@ export function ProfileInfo({ user }: { user: User }) {
         { label: 'Vai trò', value: ROLE_LABEL[user.role] },
         { label: 'Email', value: user.email && <span className="break-all">{user.email}</span> },
         { label: 'Số điện thoại', value: user.phone },
-        { label: 'Trạng thái', value: <UserStatusBadge status={user.status} /> },
+        { label: 'Trạng thái', value: <UserStatusBadge user={user} /> },
         { label: 'Đăng nhập gần nhất', value: formatDateTime(user.lastLoginAt) },
         { label: 'Ngày tạo tài khoản', value: formatDateTime(user.createdAt) },
       ]}
