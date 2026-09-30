@@ -45,8 +45,18 @@ describe('UsersService', () => {
   let service: UsersService;
   let repository: MockRepository;
   let dataSource: ReturnType<typeof createMockDataSource>;
-  let redis: { del: jest.Mock; multi: jest.Mock };
-  let pipeline: { set: jest.Mock; del: jest.Mock; exec: jest.Mock };
+  let redis: {
+    del: jest.Mock;
+    multi: jest.Mock;
+    pipeline: jest.Mock;
+    scanStream: jest.Mock;
+  };
+  let pipeline: {
+    set: jest.Mock;
+    del: jest.Mock;
+    pttl: jest.Mock;
+    exec: jest.Mock;
+  };
   let realtimeGateway: { disconnectUser: jest.Mock };
 
   beforeEach(async () => {
@@ -54,9 +64,20 @@ describe('UsersService', () => {
     pipeline = {
       set: jest.fn().mockReturnThis(),
       del: jest.fn().mockReturnThis(),
+      pttl: jest.fn().mockReturnThis(),
       exec: jest.fn().mockResolvedValue([]),
     };
-    redis = { del: jest.fn(), multi: jest.fn(() => pipeline) };
+    redis = {
+      del: jest.fn(),
+      multi: jest.fn(() => pipeline),
+      pipeline: jest.fn(() => pipeline),
+      // One SCAN batch per call; `for await` also walks a plain array.
+      scanStream: jest.fn(({ match }: { match: string }) => [
+        match.includes('login:fail')
+          ? ['login:fail:account_ip:john:10.0.0.1']
+          : [],
+      ]),
+    };
     realtimeGateway = { disconnectUser: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -180,6 +201,24 @@ describe('UsersService', () => {
       const result = await service.findOne('1');
 
       expect(result).not.toHaveProperty('passwordHash');
+      expect(result.loginBlockedUntil).toBeNull();
+    });
+
+    it('reports when a failed-login block ends', async () => {
+      repository.findOne!.mockResolvedValue({
+        id: '1',
+        username: 'John',
+        status: UserStatus.ACTIVE,
+      });
+      pipeline.exec.mockResolvedValue([[null, 90_000]]);
+
+      const before = Date.now();
+      const result = await service.findOne('1');
+
+      expect(pipeline.pttl).toHaveBeenCalledWith('login:blocked:john');
+      expect(result.loginBlockedUntil!.getTime()).toBeGreaterThanOrEqual(
+        before + 90_000,
+      );
     });
   });
 
@@ -297,16 +336,27 @@ describe('UsersService', () => {
       expect(realtimeGateway.disconnectUser).toHaveBeenCalledWith('u1');
     });
 
-    it('unlocks the account', async () => {
+    it('unlocks the account and lifts its failed-login block', async () => {
       repository.findOne!.mockResolvedValue({
         id: 'u1',
+        username: 'John',
         status: UserStatus.LOCKED,
       });
 
       await expect(service.unlock('u1')).resolves.toMatchObject({
         status: UserStatus.ACTIVE,
+        loginBlockedUntil: null,
       });
       expect(redis.del).toHaveBeenCalledWith('blocked:u1');
+      expect(redis.scanStream).toHaveBeenCalledWith(
+        expect.objectContaining({ match: 'login:fail:account_ip:john:*' }),
+      );
+      expect(redis.del).toHaveBeenCalledWith(
+        'login:blocked:john',
+        'login:fail:account:john',
+        'login:strike:account:john',
+        'login:fail:account_ip:john:10.0.0.1',
+      );
     });
   });
 

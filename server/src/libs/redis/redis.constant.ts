@@ -10,3 +10,27 @@ export const refreshSessionKey = (userId: string) => `refresh:${userId}`;
 // request (JwtStrategy) and socket handshake (RealtimeGateway). No TTL: it
 // mirrors the account state and is removed only on unlock.
 export const blockedUserKey = (userId: string) => `blocked:${userId}`;
+
+// Failed-login throttle (LoginRateLimiterService; buckets in
+// libs/constants/auth.constant.ts). Keyed by the normalized username rather
+// than the user id so an unknown username is throttled exactly like a real
+// one. Lowercased because MySQL's default collation matches usernames
+// case-insensitively ("Admin" and "admin" are one account);
+// encodeURIComponent keeps a ':' in a username from colliding with the
+// keys' own separators.
+export const loginThrottleAccount = (username: string) =>
+  encodeURIComponent(username.trim().toLowerCase());
+
+// Failures counted in one bucket; `id` is the account, the IP, or
+// "<account>:<ip>" for account_ip.
+export const loginFailKey = (scope: string, id: string) =>
+  `login:fail:${scope}:${id}`;
+
+// How many times that bucket has filled lately — drives the escalating
+// lockout.
+export const loginStrikeKey = (scope: string, id: string) =>
+  `login:strike:${scope}:${id}`;
+
+// Present (TTL = the longest current lockout) while any bucket tied to this
+// account is full — what the Users page reads to show a temporary block.
+export const loginBlockedKey = (account: string) => `login:blocked:${account}`;

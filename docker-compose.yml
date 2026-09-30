@@ -73,6 +73,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis_db
+    # REDISCLI_AUTH is what redis-cli reads, so the healthcheck and
+    # `docker exec redis_db redis-cli ...` authenticate without -a.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-password}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-password}
     ports:
       - "6379:6379"
     volumes:
@@ -155,16 +160,26 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: mosquitto_broker
+    # Generates the password file + ACL from the env below, then starts the
+    # broker as the image normally would (see mosquitto/entrypoint.sh).
+    entrypoint: ["/bin/sh", "/mosquitto-entrypoint.sh"]
+    command: ["/usr/sbin/mosquitto", "-c", "/mosquitto/config/mosquitto.conf"]
     ports:
       - "1883:1883"
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:-server}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-password}
+      MQTT_DEVICE_USERNAME: ${MQTT_DEVICE_USERNAME:-device}
+      MQTT_DEVICE_PASSWORD: ${MQTT_DEVICE_PASSWORD:-password}
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/entrypoint.sh:/mosquitto-entrypoint.sh:ro
       - mosquitto_data:/mosquitto/data
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "mosquitto_sub -h localhost -p 1883 -t '$$SYS/#' -C 1 -i healthcheck -W 3",
+          "mosquitto_sub -h localhost -p 1883 -u \"$$MQTT_USERNAME\" -P \"$$MQTT_PASSWORD\" -t '$$SYS/#' -C 1 -i healthcheck -W 3",
         ]
       interval: 5s
       timeout: 5s

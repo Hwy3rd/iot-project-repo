@@ -29,6 +29,12 @@ export class UserResponseDto {
   @Expose()
   lastLoginAt!: Date | null;
 
+  // End of a temporary block from too many failed logins, if one is active
+  // (UsersService.withLoginBlock). Only on GET /users, GET /users/:id and
+  // POST /users/:id/unlock.
+  @Expose()
+  loginBlockedUntil?: Date | null;
+
   @Expose()
   createdAt!: Date;
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { FieldGroup } from '@/components/ui/field'
 import { mutationErrorText } from '@/lib/forms'
+import { newPasswordRules, PASSWORD_LENGTH_HINT, PASSWORD_MAX_LENGTH } from '@/lib/users'
 import { useMutation } from '@tanstack/react-query'
 import { CircleAlert, Loader2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
@@ -64,6 +65,7 @@ export function ChangePasswordCard() {
               type="password"
               autoComplete="current-password"
               error={errors.currentPassword}
+              maxLength={PASSWORD_MAX_LENGTH}
               {...register('currentPassword', { required: 'Nhập mật khẩu hiện tại.' })}
             />
             <div className="grid gap-4 sm:grid-cols-2">
@@ -72,11 +74,11 @@ export function ChangePasswordCard() {
                 label="Mật khẩu mới"
                 type="password"
                 autoComplete="new-password"
-                description="Tối thiểu 6 ký tự."
+                description={PASSWORD_LENGTH_HINT}
                 error={errors.newPassword}
+                maxLength={PASSWORD_MAX_LENGTH}
                 {...register('newPassword', {
-                  required: 'Nhập mật khẩu mới.',
-                  minLength: { value: 6, message: 'Mật khẩu tối thiểu 6 ký tự.' },
+                  ...newPasswordRules,
                   validate: (v, all) => v !== all.currentPassword || 'Mật khẩu mới phải khác mật khẩu hiện tại.',
                 })}
               />

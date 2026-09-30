@@ -9,6 +9,10 @@ import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import type { CreateAuditLogDto } from '../audit-logs/dto/create-audit-log.dto';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
+import {
+  LoginRateLimiterService,
+  LoginThrottledException,
+} from './login-rate-limiter.service';
 
 jest.mock('bcryptjs');
 
@@ -29,6 +33,7 @@ describe('AuthService', () => {
   let auditLogsService: {
     create: jest.Mock<Promise<unknown>, [CreateAuditLogDto]>;
   };
+  let loginRateLimiter: { reserve: jest.Mock; release: jest.Mock };
 
   const rawUser = {
     id: 'user-1',
@@ -73,6 +78,10 @@ describe('AuthService', () => {
         .mockResolvedValue({}),
     };
     redis = { get: jest.fn(), set: jest.fn(), del: jest.fn() };
+    loginRateLimiter = {
+      reserve: jest.fn().mockResolvedValue(undefined),
+      release: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -82,6 +91,7 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: { get: (k: string) => CONFIG[k] } },
         { provide: REDIS_CLIENT, useValue: redis },
         { provide: AuditLogsService, useValue: auditLogsService },
+        { provide: LoginRateLimiterService, useValue: loginRateLimiter },
       ],
     }).compile();
 
@@ -188,6 +198,54 @@ describe('AuthService', () => {
       const entry = auditLogsService.create.mock.calls[0][0];
       expect(entry.action).toBe('auth.login_failed');
       expect(entry.metadata?.reason).toBe('locked');
+    });
+
+    it('refuses a throttled client before looking up the user or hashing', async () => {
+      loginRateLimiter.reserve.mockRejectedValue(
+        new LoginThrottledException(600),
+      );
+
+      await expect(
+        service.login(
+          { username: 'john', password: 'whatever' },
+          { ip: '10.0.0.1' },
+        ),
+      ).rejects.toThrow(LoginThrottledException);
+
+      expect(loginRateLimiter.reserve).toHaveBeenCalledWith('john', '10.0.0.1');
+      expect(usersService.findByUsername).not.toHaveBeenCalled();
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+      expect(auditLogsService.create).not.toHaveBeenCalled();
+    });
+
+    it('hands the attempt back after a correct password', async () => {
+      usersService.findByUsername.mockResolvedValue(rawUser);
+      usersService.findOne.mockResolvedValue(sanitizedUser);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await service.login(
+        { username: 'john', password: 'correct-password' },
+        { ip: '10.0.0.1' },
+      );
+
+      expect(loginRateLimiter.release).toHaveBeenCalledWith('john', '10.0.0.1');
+    });
+
+    it('keeps the attempt counted after a wrong password or unknown username', async () => {
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      usersService.findByUsername.mockResolvedValue(rawUser);
+      await expect(
+        service.login({ username: 'john', password: 'wrong' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      usersService.findByUsername.mockResolvedValue(null);
+      await expect(
+        service.login({ username: 'ghost', password: 'wrong' }),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(loginRateLimiter.reserve).toHaveBeenCalledTimes(2);
+      expect(loginRateLimiter.release).not.toHaveBeenCalled();
     });
   });
 

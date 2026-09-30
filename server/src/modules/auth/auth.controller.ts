@@ -19,6 +19,7 @@ import { UserResponseDto } from '../users/dto/user-response.dto';
 import { UsersService } from '../users/users.service';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { LoginThrottledException } from './login-rate-limiter.service';
 
 interface IssuedTokens {
   accessToken: string;
@@ -78,12 +79,21 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { user, ...tokens } = await this.authService.login(dto, {
-      ip: req.ip ?? null,
-      userAgent: req.get('user-agent') ?? null,
-    });
-    this.setAuthCookies(res, tokens);
-    return user;
+    try {
+      const { user, ...tokens } = await this.authService.login(dto, {
+        ip: req.ip ?? null,
+        userAgent: req.get('user-agent') ?? null,
+      });
+      this.setAuthCookies(res, tokens);
+      return user;
+    } catch (error) {
+      // Set here, not in the exception filter: the header survives the
+      // throw because the filter writes to this same response.
+      if (error instanceof LoginThrottledException) {
+        res.setHeader('Retry-After', String(error.retryAfterSeconds));
+      }
+      throw error;
+    }
   }
 
   @Post('refresh')

@@ -6,6 +6,7 @@ import { AvatarEditor } from '@/components/profile/AvatarEditor'
 import { labelOptions } from '@/lib/filters'
 import { mutationErrorText, nullableText, optionalText, toInput } from '@/lib/forms'
 import { ROLE_LABEL } from '@/lib/labels'
+import { newPasswordRules, PASSWORD_LENGTH_HINT, PASSWORD_MAX_LENGTH, USERNAME_MAX_LENGTH } from '@/lib/users'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -142,8 +143,14 @@ function UserFormDialog({
           spellCheck={false}
           autoCapitalize="none"
           error={errors.username}
+          maxLength={USERNAME_MAX_LENGTH}
           {...register('username', {
-            validate: (v) => v.trim().length >= 3 || 'Tên đăng nhập tối thiểu 3 ký tự.',
+            validate: (v) => {
+              const length = v.trim().length
+              if (length < 3) return 'Tên đăng nhập tối thiểu 3 ký tự.'
+              if (length > USERNAME_MAX_LENGTH) return `Tên đăng nhập tối đa ${USERNAME_MAX_LENGTH} ký tự.`
+              return true
+            },
           })}
         />
         {!user && (
@@ -152,12 +159,10 @@ function UserFormDialog({
             label="Mật khẩu"
             type="password"
             autoComplete="new-password"
-            description="Tối thiểu 6 ký tự. Gửi cho người dùng qua kênh riêng."
+            description={`${PASSWORD_LENGTH_HINT} Gửi cho người dùng qua kênh riêng.`}
             error={errors.password}
-            {...register('password', {
-              minLength: { value: 6, message: 'Mật khẩu tối thiểu 6 ký tự.' },
-              required: 'Nhập mật khẩu.',
-            })}
+            maxLength={PASSWORD_MAX_LENGTH}
+            {...register('password', { ...newPasswordRules, required: 'Nhập mật khẩu.' })}
           />
         )}
         <TextField

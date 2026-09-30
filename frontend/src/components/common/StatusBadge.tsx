@@ -3,7 +3,7 @@ import type {
   BatchStatus,
   CommandStatus,
   DeviceStatus,
-  UserStatus,
+  User,
   WorkShiftStatus,
 } from '@/api/types'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +15,8 @@ import {
   USER_STATUS_LABEL,
   WORK_SHIFT_STATUS_LABEL,
 } from '@/lib/labels'
+import { formatDateTime } from '@/lib/format'
+import { loginBlockedUntil } from '@/lib/users'
 import { cn } from '@/lib/utils'
 import type { ReactNode } from 'react'
 
@@ -92,10 +94,19 @@ export function WorkShiftStatusBadge({ status }: { status: WorkShiftStatus }) {
   return <ToneBadge tone={WORK_SHIFT_TONE[status]}>{WORK_SHIFT_STATUS_LABEL[status]}</ToneBadge>
 }
 
-export function UserStatusBadge({ status }: { status: UserStatus }) {
+/** An admin lock wins; otherwise a running failed-login block shows instead of "active". */
+export function UserStatusBadge({ user }: { user: Pick<User, 'status' | 'loginBlockedUntil'> }) {
+  const blockedUntil = user.status === 'active' ? loginBlockedUntil(user) : null
+  if (blockedUntil) {
+    return (
+      <span title={`Đăng nhập sai quá nhiều lần — bị chặn tới ${formatDateTime(blockedUntil)}`}>
+        <ToneBadge tone="warning">Tạm chặn đăng nhập</ToneBadge>
+      </span>
+    )
+  }
   return (
-    <ToneBadge tone={status === 'active' ? 'success' : 'danger'}>
-      {USER_STATUS_LABEL[status]}
+    <ToneBadge tone={user.status === 'active' ? 'success' : 'danger'}>
+      {USER_STATUS_LABEL[user.status]}
     </ToneBadge>
   )
 }

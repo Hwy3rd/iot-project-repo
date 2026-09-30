@@ -18,6 +18,7 @@ import {
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
+import { LoginRateLimiterService } from './login-rate-limiter.service';
 
 // Precomputed bcrypt hash of an arbitrary string (bcrypt.hashSync('dummy-password-for-timing-safety', 10)).
 // Compared against on a login with an unknown username so the response takes
@@ -57,9 +58,17 @@ export class AuthService {
     private readonly config: ConfigService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly auditLogsService: AuditLogsService,
+    private readonly loginRateLimiter: LoginRateLimiterService,
   ) {}
 
   async login(dto: LoginDto, context: LoginContext = {}) {
+    // Before any lookup or bcrypt work: a throttled client gets the same
+    // 429 whether or not the username exists, and costs no hashing. Not
+    // audited — the failures that filled the bucket already were, and one
+    // row per refused request would let a flood grow the audit table.
+    const ip = context.ip ?? null;
+    await this.loginRateLimiter.reserve(dto.username, ip);
+
     const user = await this.usersService.findByUsername(dto.username);
 
     // Unknown username: no user to attribute the attempt to, so the entry
@@ -80,6 +89,10 @@ export class AuthService {
       });
       throw new UnauthorizedException('Invalid username or password');
     }
+
+    // Right password: not a guess, so it doesn't count toward the limit —
+    // including for a locked account, which the next check refuses anyway.
+    await this.loginRateLimiter.release(dto.username, ip);
 
     if (user.status === UserStatus.LOCKED) {
       this.auditLogin(user.id, 'auth.login_failed', context, {

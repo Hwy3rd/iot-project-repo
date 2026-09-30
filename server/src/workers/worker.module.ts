@@ -43,6 +43,7 @@ import { WorkShiftSweepProcessor } from './processors/work-shift-sweep.processor
       connection: {
         host: process.env.REDIS_HOST ?? 'localhost',
         port: Number(process.env.REDIS_PORT ?? 6379),
+        password: process.env.REDIS_PASSWORD || undefined,
       },
     }),
     BullModule.registerQueue(
