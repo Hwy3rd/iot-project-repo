@@ -53,7 +53,7 @@ export function ChatPanel({
   const tooLong = draft.length > CHAT_MESSAGE_MAX_LENGTH
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {chat.notFound ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-muted-foreground">Cuộc trò chuyện này không còn tồn tại.</p>
@@ -84,7 +84,7 @@ export function ChatPanel({
         />
       )}
 
-      <div className={cn('border-t', compact ? 'p-2' : 'p-3')}>
+      <div className={cn('shrink-0 border-t pb-[max(0.5rem,env(safe-area-inset-bottom))]', compact ? 'px-2 pt-2' : 'px-3 pt-3')}>
         {chat.error && (
           <Alert variant="destructive" className="mb-2 py-2">
             <CircleAlert aria-hidden="true" />
@@ -123,7 +123,7 @@ export function ChatPanel({
             placeholder={chat.warehouse ? `Hỏi về ${chat.warehouse.name}…` : 'Hỏi về kho, phòng lạnh, cảnh báo…'}
             aria-invalid={tooLong || undefined}
             aria-describedby={tooLong ? 'chat-too-long' : undefined}
-            className="field-sizing-content max-h-40 min-h-9 w-full min-w-0 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-sm dark:bg-input/30"
+            className="field-sizing-content max-h-[min(10rem,25dvh)] min-h-9 w-full min-w-0 resize-none rounded-lg border border-input bg-transparent px-3 py-2 text-base outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive md:text-sm dark:bg-input/30"
           />
           <Button
             type="submit"
@@ -140,7 +140,7 @@ export function ChatPanel({
           </p>
         ) : (
           !compact && (
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 text-xs text-muted-foreground [@media(max-height:500px)]:hidden">
               Enter để gửi, Shift + Enter để xuống dòng. Đổi kho ở đầu trang để hỏi về kho khác; trợ lý chỉ xem được dữ liệu trong phạm vi của bạn.
             </p>
           )
@@ -192,7 +192,7 @@ function MessageList({
 
   if (messages.length === 0 && !pending) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 overflow-y-auto p-6 text-center">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center gap-4 overflow-y-auto p-4 text-center sm:p-6">
         <span className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
           <Bot className="size-6" aria-hidden="true" />
         </span>
@@ -202,14 +202,14 @@ function MessageList({
             Hỏi về cảnh báo, nhiệt độ phòng lạnh, thiết bị, lô hàng hay ca trực trong phạm vi của bạn.
           </p>
         </div>
-        <div className="flex max-w-md flex-wrap justify-center gap-2">
+        <div className="flex w-full min-w-0 max-w-md flex-wrap justify-center gap-2">
           {SUGGESTIONS.map((s) => (
             <Button
               key={s}
               type="button"
               variant="outline"
               size="sm"
-              className="h-auto py-1.5 whitespace-normal"
+              className="h-auto min-w-0 max-w-full py-1.5 whitespace-normal [overflow-wrap:anywhere]"
               disabled={suggestionsDisabled}
               onClick={() => onSuggestion(s)}
             >

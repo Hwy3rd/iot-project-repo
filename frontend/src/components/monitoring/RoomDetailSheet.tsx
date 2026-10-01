@@ -252,7 +252,7 @@ export function RoomDetailSheet({
 }) {
   return (
     <Sheet open={!!room} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-2xl data-[side=right]:sm:max-w-2xl">
+      <SheetContent className="overflow-y-auto pb-[env(safe-area-inset-bottom)] data-[side=right]:w-full data-[side=right]:sm:max-w-2xl">
         {room && (
           <>
             <SheetHeader>

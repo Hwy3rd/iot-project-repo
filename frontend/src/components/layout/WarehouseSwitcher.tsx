@@ -43,8 +43,8 @@ export function WarehouseSwitcher() {
 
   return (
     <Select value={current.value} onValueChange={change} disabled={!warehouses.settled}>
-      <SelectTrigger aria-label="Kho đang làm việc" className="min-w-0 flex-1 basis-32 sm:w-80 sm:flex-none [&_[data-slot=select-value]]:flex-1 [&_[data-slot=select-value]]:justify-start">
-        <Warehouse className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <SelectTrigger aria-label="Kho đang làm việc" className="order-last min-w-0 w-full flex-1 basis-full px-2 sm:order-none sm:max-w-80 sm:basis-0 sm:px-3 [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:flex-1 [&_[data-slot=select-value]]:justify-start">
+        <Warehouse className="hidden shrink-0 text-muted-foreground sm:block" aria-hidden="true" />
         <SelectValue placeholder="Chọn kho…" />
       </SelectTrigger>
       <SelectContent position="popper" align="start">

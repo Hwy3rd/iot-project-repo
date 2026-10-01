@@ -18,7 +18,6 @@ import { useNow } from '@/lib/useNow'
 import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
 import { usePreference } from '@/lib/usePreference'
 import { useWarehouseLive } from '@/lib/useWarehouseLive'
-import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useSearchParams } from 'react-router'
@@ -131,7 +130,7 @@ export function MonitoringPage() {
         }
       />
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {roomList.length > 0 && (
             <div className="flex flex-wrap items-center gap-2" aria-label="Tóm tắt trạng thái phòng">
@@ -160,10 +159,7 @@ export function MonitoringPage() {
             </Card>
           ) : (
             <div
-              className={cn(
-                'grid gap-4 sm:grid-cols-2',
-                panelOpen ? '2xl:grid-cols-3' : 'xl:grid-cols-3 2xl:grid-cols-4',
-              )}
+              className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4"
             >
               {roomList.map((room) => (
                 <RoomTile
@@ -181,7 +177,7 @@ export function MonitoringPage() {
         </div>
 
         {panelOpen && warehouseId && (
-          <Card className="h-[28rem] gap-0 overflow-hidden py-0 shadow-sm lg:sticky lg:top-4 lg:h-[calc(100dvh-8rem)] lg:w-96 lg:shrink-0">
+          <Card className="h-[28rem] gap-0 overflow-hidden py-0 shadow-sm xl:sticky xl:top-20 xl:h-[calc(100dvh-8rem)] xl:w-80 xl:shrink-0">
             <AlertStream warehouseId={warehouseId} roomName={roomName} onSelectRoom={selectRoom} />
           </Card>
         )}

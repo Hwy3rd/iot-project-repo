@@ -38,7 +38,7 @@ export function QuickChat() {
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Mở trợ lý AI"
-          className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-40 size-14 rounded-full shadow-lg [&_svg:not([class*='size-'])]:size-6"
+          className="relative ml-auto mt-4 flex size-14 rounded-full shadow-lg sm:fixed sm:right-4 sm:bottom-[calc(1rem+env(safe-area-inset-bottom))] sm:z-40 sm:mt-0 [&_svg:not([class*='size-'])]:size-6"
         >
           <Bot aria-hidden="true" />
         </Button>
@@ -53,9 +53,9 @@ export function QuickChat() {
             document.getElementById('quick-chat-input')?.focus()
           }}
           // Anchored bottom right on larger screens, full screen on phones.
-          className="top-auto right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] left-auto flex h-[min(640px,calc(100dvh-2rem))] w-[calc(100%-2rem)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0 data-open:slide-in-from-bottom-4 data-open:zoom-in-100 sm:max-w-md max-sm:inset-0 max-sm:h-dvh max-sm:w-full max-sm:rounded-none"
+          className="top-auto right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] left-auto flex h-[min(640px,calc(100dvh-2rem))] w-[calc(100%-2rem)] max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden p-0 data-open:slide-in-from-bottom-4 data-open:zoom-in-100 sm:max-w-md max-sm:inset-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:w-full max-sm:rounded-none"
         >
-          <header className="flex items-center gap-2 border-b py-2 pr-2 pl-3">
+          <header className="flex items-center gap-2 border-b pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 pr-2 pl-3">
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary" aria-hidden="true">
               <Bot className="size-4" />
             </span>

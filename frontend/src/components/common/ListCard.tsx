@@ -58,14 +58,14 @@ export function ListCard<T>({
 
   return (
     <Card className="gap-0 py-0 shadow-sm">
-      <div className="flex flex-col gap-2 border-b p-3 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-wrap gap-2 border-b p-3">
         {search && (
           <SearchInput
             value={list.search}
             onSearch={list.setSearch}
             label={search.label}
             placeholder={search.placeholder}
-            className="sm:max-w-sm"
+            className="w-full min-w-0 sm:w-auto sm:min-w-48 sm:max-w-sm sm:flex-1"
           />
         )}
         <div className="flex items-center gap-2">
@@ -76,7 +76,7 @@ export function ListCard<T>({
             </Button>
           )}
         </div>
-        <div className="flex items-center gap-3 sm:ml-auto">
+        <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
           {list.isFiltered && query.data && (
             <p className="text-muted-foreground tabular-nums" aria-live="polite">
               Tìm thấy {formatNumber(query.data.meta.total)} {noun}
@@ -105,7 +105,7 @@ export function ListCard<T>({
           <Button variant="ghost" size="lg" onClick={selection.onClear}>
             Bỏ chọn
           </Button>
-          <div className="ml-auto flex items-center gap-2">{selection.actions}</div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">{selection.actions}</div>
         </div>
       )}
 

@@ -86,7 +86,7 @@ function JumpToPage({ totalPages }: { totalPages: number }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="ml-2 hidden items-center gap-2 lg:flex">
+    <form onSubmit={onSubmit} className="ml-2 hidden items-center gap-2 2xl:flex">
       <label htmlFor="jump-page" className="whitespace-nowrap">
         Đến trang
       </label>
@@ -145,9 +145,9 @@ export function Pagination({ meta }: { meta: PageMeta }) {
   return (
     <nav
       aria-label="Phân trang"
-      className="flex flex-col gap-3 border-t-2 bg-muted px-4 py-3 text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-wrap gap-3 border-t-2 bg-muted px-4 py-3 text-muted-foreground items-center justify-between"
     >
-      <div className="flex items-center justify-between gap-4 sm:justify-start">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3 xl:w-auto xl:justify-start">
         <p className="tabular-nums">
           {from > meta.total ? '0' : `${formatNumber(from)}–${formatNumber(to)}`} /{' '}
           {formatNumber(meta.total)}
@@ -155,7 +155,7 @@ export function Pagination({ meta }: { meta: PageMeta }) {
         <PageSizeSelect limit={meta.limit} />
       </div>
 
-      <div className="flex items-center justify-between gap-1 sm:justify-end">
+      <div className="flex w-full flex-wrap items-center justify-between gap-1 xl:w-auto xl:justify-end">
         <PageLink page={1} disabled={page <= 1} label="Trang đầu">
           <ChevronsLeft aria-hidden="true" />
         </PageLink>
@@ -163,10 +163,10 @@ export function Pagination({ meta }: { meta: PageMeta }) {
           <ChevronLeft aria-hidden="true" />
         </PageLink>
 
-        <span className="px-2 tabular-nums sm:hidden">
+        <span className="min-w-0 text-center tabular-nums xl:hidden">
           Trang {formatNumber(page)}/{formatNumber(totalPages)}
         </span>
-        <ul className="hidden items-center gap-1 sm:flex">
+        <ul className="hidden items-center gap-1 xl:flex">
           {pageWindow(page, totalPages).map((p, i) => (
             <li key={p ?? `gap-${i}`}>
               {p === null ? (

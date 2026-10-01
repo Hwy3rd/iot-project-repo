@@ -51,5 +51,5 @@ export function StatTile({
 }
 
 export function StatGrid({ children }: { children: ReactNode }) {
-  return <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">{children}</div>
+  return <div className="mb-6 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 xl:grid-cols-4">{children}</div>
 }

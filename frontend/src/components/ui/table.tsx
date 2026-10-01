@@ -7,7 +7,10 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      role="region"
+      aria-label="Bảng dữ liệu, cuộn ngang để xem thêm cột"
+      tabIndex={0}
+      className="relative min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain focus-visible:ring-2 focus-visible:ring-ring"
     >
       <table
         data-slot="table"

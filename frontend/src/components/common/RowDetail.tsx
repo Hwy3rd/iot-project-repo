@@ -123,7 +123,7 @@ export function DetailList({ fields }: { fields: DetailField[] }) {
       {fields.map((f) => (
         <div key={f.label} className={cn('min-w-0', f.full && 'sm:col-span-2')}>
           <dt className="text-sm text-muted-foreground">{f.label}</dt>
-          <dd className="mt-0.5 break-words">
+          <dd className="mt-0.5 [overflow-wrap:anywhere]">
             {f.value === null || f.value === undefined || f.value === '' ? '—' : f.value}
           </dd>
         </div>

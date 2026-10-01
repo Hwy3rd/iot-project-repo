@@ -93,7 +93,7 @@ export function Combobox({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        className="w-(--radix-popover-trigger-width) min-w-64 gap-0 p-0"
+        className="w-(--radix-popover-trigger-width) min-w-0 max-w-[calc(100vw-2rem)] gap-0 p-0"
       >
         <Command filter={filter} loop>
           {searchable && (

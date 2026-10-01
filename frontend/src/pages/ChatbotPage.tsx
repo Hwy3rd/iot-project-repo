@@ -51,13 +51,13 @@ export function ChatbotPage() {
   }
 
   return (
-    // Fills the viewport under the 3.5rem header and the page's 1.5rem vertical padding.
-    <div className="-my-2 flex h-[calc(100dvh-3.5rem-2rem)] min-h-96 overflow-hidden rounded-xl border bg-card">
+    // Follow the measured header height when the warehouse picker wraps.
+    <div className="-my-2 flex h-[calc(100dvh-var(--app-header-height,3.5rem)-2rem-env(safe-area-inset-bottom))] min-h-0 overflow-hidden rounded-xl border bg-card">
       <aside
-        className={cn('flex w-full flex-col border-r md:flex md:w-72 md:shrink-0', showChat && 'max-md:hidden')}
+        className={cn('flex w-full flex-col border-r xl:flex xl:w-72 xl:shrink-0', showChat && 'max-xl:hidden')}
         aria-label="Các cuộc trò chuyện"
       >
-        <div className="flex items-center justify-between gap-2 border-b p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
           <h1 className="text-lg font-semibold">Trợ lý AI</h1>
           <Button size="sm" onClick={startNew}>
             <MessageSquarePlus aria-hidden="true" />
@@ -67,8 +67,8 @@ export function ChatbotPage() {
         <ConversationList selected={selected} onSelect={select} />
       </aside>
 
-      <section className={cn('flex min-w-0 flex-1 flex-col', !showChat && 'max-md:hidden')} aria-label="Cuộc trò chuyện">
-        <div className="flex items-center gap-2 border-b p-2 md:hidden">
+      <section className={cn('flex min-w-0 flex-1 flex-col', !showChat && 'max-xl:hidden')} aria-label="Cuộc trò chuyện">
+        <div className="flex items-center gap-2 border-b p-2 xl:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -141,7 +141,7 @@ function ConversationList({
                 size="icon-sm"
                 // Centred without translate: Button's pressed state nudges its own translate,
                 // which would drop the -50% and move it from under the pointer mid-click.
-                className="absolute inset-y-0 right-1.5 my-auto opacity-100 md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"
+                className="absolute inset-y-0 right-1.5 my-auto opacity-100 xl:opacity-0 xl:group-focus-within:opacity-100 xl:group-hover:opacity-100"
                 aria-label={`Xoá cuộc trò chuyện ${c.title || untitled}`}
                 onClick={() => setRemoving(c)}
               >

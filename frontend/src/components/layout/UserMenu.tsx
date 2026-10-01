@@ -45,7 +45,7 @@ export function UserMenu() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="h-9 gap-2 px-1.5" aria-label={`Menu tài khoản ${name}`}>
             <UserAvatar user={user} className="size-7 text-xs" />
-            <span className="hidden max-w-40 min-w-0 flex-col items-start text-left sm:flex">
+            <span className="hidden max-w-40 min-w-0 flex-col items-start text-left xl:flex">
               <span className="w-full truncate font-medium">{name}</span>
               <span className="text-xs font-normal text-muted-foreground">{ROLE_LABEL[user.role]}</span>
             </span>

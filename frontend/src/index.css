@@ -169,6 +169,37 @@
     touch-action: manipulation;
   }
 
+  /* Keep form fields readable without triggering zoom on phone browsers. */
+  @media (max-width: 767px) {
+    input,
+    textarea,
+    select {
+      font-size: max(1rem, 16px);
+    }
+  }
+
+  /* Touch targets need more room than mouse controls, including on tablets. */
+  @media (pointer: coarse) {
+    button:where(:not([role='checkbox']):not([role='switch'])),
+    a[data-slot='button'],
+    [data-slot='select-trigger'],
+    [data-slot='sidebar-menu-button'],
+    [data-slot='input'] {
+      min-height: 44px;
+    }
+
+    button:where(:not([role='checkbox']):not([role='switch'])),
+    a[data-slot='button'] {
+      min-width: 44px;
+    }
+
+    /* Seven calendar columns must still fit a 320px screen. */
+    [data-slot='calendar'] button {
+      min-width: var(--cell-size);
+      min-height: var(--cell-size);
+    }
+  }
+
   h1,
   h2,
   h3 {

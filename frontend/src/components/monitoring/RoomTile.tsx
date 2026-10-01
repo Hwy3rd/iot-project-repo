@@ -50,18 +50,18 @@ export function RoomTile({
       onClick={onSelect}
       aria-pressed={selected}
       className={cn(
-        'flex h-full flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 text-left shadow-xs transition-shadow',
+        'flex h-full min-w-0 flex-col gap-3 rounded-xl border border-l-4 bg-card p-4 text-left shadow-xs transition-shadow',
         'hover:shadow-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
         ACCENT[state],
         selected && 'ring-2 ring-primary/50',
       )}
     >
-      <div className="flex w-full items-start gap-2">
-        <h3 className="min-w-0 flex-1 font-semibold break-words">{room.name}</h3>
+      <div className="flex w-full flex-wrap items-start gap-2">
+        <h3 className="min-w-0 flex-1 basis-36 font-semibold [overflow-wrap:anywhere]">{room.name}</h3>
         <ToneBadge tone={TEMP_STATE[state].tone}>{TEMP_STATE[state].label}</ToneBadge>
       </div>
 
-      <div className="flex w-full items-end justify-between gap-3">
+      <div className="flex w-full flex-wrap items-end justify-between gap-3">
         <p className={cn('text-4xl font-semibold tracking-tight tabular-nums', TEMP_TEXT[state])}>
           {latest?.temperature != null ? formatTemp(latest.temperature) : '—'}
         </p>
@@ -105,7 +105,7 @@ export function RoomTile({
           <ul className="flex flex-col gap-1.5">
             {devices.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="truncate font-mono" translate="no">
+                <span className="min-w-0 flex-1 truncate font-mono" translate="no">
                   {d.uniqueId}
                 </span>
                 <DeviceStatusBadge status={d.status} />
