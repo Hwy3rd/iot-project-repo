@@ -87,7 +87,7 @@ app  ── migration:run ── node dist/main.js ── healthy (mở được
 | `mongo`     | `mongosh --eval "db.adminCommand('ping')"`                         |
 | `redis`     | `redis-cli ping`                                                   |
 | `minio`     | `mc ready local`                                                   |
-| `mosquitto` | `mosquitto_sub` nhận 1 message trên `$SYS/#`                       |
+| `mosquitto` | `mosquitto_sub` (tài khoản `MQTT_USERNAME`) nhận 1 message trên `$SYS/#` |
 
 Vì `app` chỉ mở cổng 3000 **sau khi** migration xong, trạng thái "app healthy" đồng nghĩa với "schema đã ở phiên bản mới nhất". `worker` dựa vào điều này để không đọc schema cũ. Cách làm này chỉ an toàn khi có **đúng 1 container `app`**. Lý do và hướng tách migration khi scale xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 6.
 
@@ -170,11 +170,12 @@ Hệ quả của cách (2): ký tự `$` trong giá trị bị hiểu là tham c
 | App                 | `PORT`, `NODE_ENV`, `TRUST_PROXY`, `CORS_ORIGINS`                                  | Xem mục 5                                                                                 |
 | MySQL               | `MYSQL_HOST/PORT/USER/PASSWORD/DATABASE`, `MYSQL_ROOT_PASSWORD`                    | Dùng chung cho app lẫn container mysql                                                    |
 | MongoDB             | `MONGO_ROOT_USERNAME/PASSWORD`, `MONGO_URI`                                        | Credential trong `MONGO_URI` phải khớp `MONGO_ROOT_*`                                     |
-| Redis               | `REDIS_HOST`, `REDIS_PORT`                                                         | Không đặt mật khẩu, chỉ truy cập được trong mạng compose                                  |
-| MQTT                | `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD` (tuỳ chọn)                            |                                                                                           |
+| Redis               | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`                                       | `REDIS_PASSWORD` cũng là `requirepass` của container redis                                |
+| MQTT                | `MQTT_URL`, `MQTT_USERNAME/PASSWORD`, `MQTT_DEVICE_USERNAME/PASSWORD`              | Broker sinh password file + ACL từ 4 biến này (`mosquitto/entrypoint.sh`); `MQTT_DEVICE_*` nạp vào firmware thiết bị |
 | MinIO               | `MINIO_ENDPOINT/PORT/USE_SSL/ACCESS_KEY/SECRET_KEY/BUCKET`, `MINIO_PUBLIC_URL`     | `ACCESS_KEY/SECRET_KEY` cũng là root credential của container minio                       |
 | Auth                | `JWT_SECRET`, `JWT_REFRESH_SECRET`, `*_EXPIRES_IN`, `COOKIE_NAME`, `REFRESH_COOKIE_NAME` | Hai secret phải khác nhau và khác bộ secret dev                                     |
 | Web Push            | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`                           | Sinh cặp khoá riêng cho production: `npx web-push generate-vapid-keys`                    |
+| Giới hạn đăng nhập  | `LOGIN_MAX_FAILED_PER_ACCOUNT_IP/PER_IP/PER_ACCOUNT`, `LOGIN_FAILED_WINDOW_MINUTES`, `LOGIN_LOCKOUT_STEPS_MINUTES`, `LOGIN_LOCKOUT_RESET_HOURS`, `LOGIN_ACCOUNT_LOCKOUT_MINUTES` | Tuỳ chọn, mặc định 5/30/50 lần, cửa sổ 15 phút, khoá tăng dần 1/5/15/60 phút (quên sau 24 giờ), khoá theo username 15 phút; xem [API_DESIGN.md](API_DESIGN.md) mục 2 |
 | Chatbot (LLM)       | `GEMINI_API_KEY`, `LLM_*`, `CHATBOT_RATE_LIMIT_*`, `CHATBOT_DOCS_DIR`              | `CHATBOT_DOCS_DIR=/app/docs` khớp với đường dẫn copy docs trong Dockerfile                |
 | Seed                | `SEED_ADMIN_USERNAME`, `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_USERNAME`, `SEED_TECHNICIAN_USERNAME`, `SEED_STAFF_USERNAME` | Chỉ dùng lúc `init.sh`; cả 4 tài khoản dùng chung `SEED_ADMIN_PASSWORD`; nên xoá/đổi khỏi `.env` sau lần đầu |
 | Tunnel              | `CLOUDFLARE_TUNNEL_TOKEN`                                                          | Chỉ `cloudflared` đọc                                                                     |
@@ -326,6 +327,7 @@ Script chạy lại an toàn. Khi chuyển sang WiFi hoặc hotspot mới thì c
 
 - Cổng datastore/API ở production chỉ bind `127.0.0.1`, không lộ ra mạng. Truy cập public đi qua Cloudflare (HTTPS, ẩn IP gốc).
 - Credential datastore là bắt buộc ở production, không có giá trị mặc định.
+- Redis bật `requirepass`; MQTT broker bắt buộc đăng nhập và có ACL tách quyền backend/thiết bị.
 - Container `app`/`worker` chạy bằng user `node` (không phải root), có `tini` làm PID 1 để forward signal và dọn zombie process.
 - Image runner chỉ chứa `dist/` và production dependencies, không có source hay devDependencies.
 
@@ -333,7 +335,7 @@ Chưa có, cần làm trước khi mở rộng ra môi trường không tin cậ
 
 | Vấn đề                                   | Rủi ro                                                                                   | Hướng xử lý                                                                    |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| MQTT anonymous, không TLS, cổng 1883 publish ra host | Bất kỳ ai tới được cổng 1883 đều có thể publish telemetry giả hoặc đọc dữ liệu | `allow_anonymous false` + `password_file`, đặt `MQTT_USERNAME/PASSWORD`; thêm listener TLS 8883; giới hạn firewall theo subnet LAN |
+| MQTT chưa có TLS, thiết bị dùng chung 1 tài khoản | Ai nghe lén được LAN sẽ thấy credential; lộ credential của một thiết bị là giả được telemetry của mọi thiết bị | Thêm listener TLS 8883; cấp credential riêng cho từng thiết bị (username = `unique_id`, ACL `pattern write devices/%u/telemetry`) |
 | Bucket MinIO cho đọc public              | Ai có URL đều xem được ảnh (tên object là thông tin duy nhất cần biết)                   | Chấp nhận được với ảnh không nhạy cảm; nếu cần riêng tư thì chuyển sang presigned URL |
 | Image dùng tag `latest` (`minio`, `cloudflared`) | Build/pull lại có thể kéo phiên bản mới ngoài ý muốn                             | Pin phiên bản cụ thể                                                           |
 | Chưa có backup tự động                   | Mất dữ liệu khi hỏng ổ đĩa hoặc lỡ xoá volume                                            | Cron chạy các lệnh ở mục 7 và đẩy bản backup ra ngoài máy chủ                  |

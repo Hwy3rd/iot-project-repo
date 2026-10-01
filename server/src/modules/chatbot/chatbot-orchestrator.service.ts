@@ -24,7 +24,10 @@ import { UserRole } from '../../libs/constants/user.constant';
 import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ChatbotService } from './chatbot.service';
-import { buildChatbotSystemInstruction } from './chatbot-system-prompt.constant';
+import {
+  buildChatbotSystemInstruction,
+  ChatbotWorkingWarehouse,
+} from './chatbot-system-prompt.constant';
 import { MessageResponseDto } from './dto/message-response.dto';
 import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
@@ -92,6 +95,9 @@ export class ChatbotOrchestratorService {
   // model/tool loop without waiting for it. Anything thrown from here
   // (404 conversation, 409 turn already running) means nothing was stored.
   //
+  // `warehouseId` is the warehouse picked in the app header (optional):
+  // answers default to it. One the caller isn't assigned to is a 403.
+  //
   // One turn at a time per conversation: two overlapping turns (double
   // send, two tabs) would each read history without the other's messages
   // and interleave their rows, leaving a history the model can't follow.
@@ -99,11 +105,15 @@ export class ChatbotOrchestratorService {
     conversationId: string,
     caller: ChatbotToolCaller,
     content: string,
+    warehouseId?: string,
   ): Promise<ChatbotTurn> {
     const conversation = await this.chatbotService.findConversation(
       conversationId,
       caller.id,
     );
+    const working = warehouseId
+      ? await this.toolExecutor.resolveWorkingWarehouse(caller, warehouseId)
+      : null;
     const lockToken = await this.acquireTurnLock(conversationId);
 
     let userMessage: Message;
@@ -119,7 +129,11 @@ export class ChatbotOrchestratorService {
     }
     this.emitMessage(caller.id, userMessage);
 
-    const completion = this.runTurn(conversation, caller)
+    const completion = this.runTurn(
+      conversation,
+      { ...caller, workingWarehouseId: working?.id },
+      working,
+    )
       .then((reply) => {
         this.emitMessage(caller.id, reply);
         return reply;
@@ -147,14 +161,21 @@ export class ChatbotOrchestratorService {
     conversationId: string,
     caller: ChatbotToolCaller,
     content: string,
+    warehouseId?: string,
   ): Promise<Message> {
-    const turn = await this.startTurn(conversationId, caller, content);
+    const turn = await this.startTurn(
+      conversationId,
+      caller,
+      content,
+      warehouseId,
+    );
     return turn.completion;
   }
 
   private async runTurn(
     conversation: Conversation,
     caller: ChatbotToolCaller,
+    workingWarehouse: ChatbotWorkingWarehouse | null,
   ): Promise<Message> {
     const conversationId = conversation.id;
     const history = await this.chatbotService.findRecentHistory(
@@ -168,6 +189,7 @@ export class ChatbotOrchestratorService {
     const systemInstruction = buildChatbotSystemInstruction(
       new Date(),
       CHATBOT_TIMEZONE,
+      workingWarehouse,
     );
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {

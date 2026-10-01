@@ -35,12 +35,36 @@ Cách lấy dữ liệu hiệu quả (mỗi lượt gọi tool đều làm ngư�
 - Kết quả đã kèm tên phòng/mã kho; nếu có trường "note" báo chỉ trả về một phần thì nói rõ điều đó với người dùng.
 - Nếu tool báo có nhiều kết quả khớp một tên, hỏi lại người dùng muốn nói cái nào.`;
 
+// The warehouse picked in the app header, as shown to the model.
+export interface ChatbotWorkingWarehouse {
+  name: string;
+  code: string;
+}
+
+// Where the question is about when the user doesn't say: the header's
+// warehouse, else every warehouse they can read (Admin/Technician on
+// "Tất cả kho"). The tools enforce access either way; this only picks the
+// default filter.
+function workingWarehouseSection(
+  warehouse: ChatbotWorkingWarehouse | null,
+): string {
+  if (!warehouse) {
+    return `Kho đang làm việc: người dùng đang xem TẤT CẢ các kho mình được phép truy cập. Không lọc theo kho trừ khi người dùng nêu rõ một kho; khi liệt kê dữ liệu của nhiều kho, ghi rõ mỗi mục thuộc kho nào.`;
+  }
+  return `Kho đang làm việc: ${warehouse.name} (mã ${warehouse.code}) — kho người dùng đang chọn trên giao diện.
+- Mặc định hiểu mọi câu hỏi là về kho này: khi gọi tool có tham số warehouseId, truyền "${warehouse.code}" (kể cả get_system_health_summary cho câu hỏi tổng quan). Tên phòng lạnh người dùng nói được hiểu là phòng của kho này.
+- Chỉ dùng kho khác hoặc bỏ bộ lọc kho khi người dùng nêu rõ kho khác hoặc hỏi về tất cả các kho.
+- Kho đang chọn có thể đã đổi so với các tin nhắn trước trong cuộc trò chuyện: câu hỏi mới luôn theo kho hiện tại.
+- Khi trả lời, nêu tên kho để người dùng biết dữ liệu thuộc kho nào.`;
+}
+
 // The model has no clock: without this, "cảnh báo hôm nay" or "ca hôm qua"
 // can't be turned into the from/to a tool needs. Appended per request (not
 // baked into the constant above) so it's always the current moment.
 export function buildChatbotSystemInstruction(
   now: Date,
   timeZone: string,
+  workingWarehouse: ChatbotWorkingWarehouse | null = null,
 ): string {
   const readable = new Intl.DateTimeFormat('vi-VN', {
     timeZone,
@@ -63,5 +87,7 @@ export function buildChatbotSystemInstruction(
   return `${CHATBOT_SYSTEM_PROMPT}
 
 Thời điểm hiện tại: ${readable} (giờ Việt Nam, UTC+7) — ngày ${isoDate}.
-Dùng mốc này để tính các khoảng thời gian người dùng nói tới ("hôm nay", "hôm qua", "tuần này"...). Khi truyền tham số thời gian cho tool, dùng datetime ISO 8601 kèm múi giờ +07:00 (ví dụ ${isoDate}T00:00:00+07:00) để không bị lệch ngày.`;
+Dùng mốc này để tính các khoảng thời gian người dùng nói tới ("hôm nay", "hôm qua", "tuần này"...). Khi truyền tham số thời gian cho tool, dùng datetime ISO 8601 kèm múi giờ +07:00 (ví dụ ${isoDate}T00:00:00+07:00) để không bị lệch ngày.
+
+${workingWarehouseSection(workingWarehouse)}`;
 }

@@ -10,6 +10,7 @@ import { Toaster } from './components/ui/sonner'
 import { TooltipProvider } from './components/ui/tooltip'
 import './index.css'
 import './lib/format' // registers the dayjs "vi" locale + plugins
+import { registerServiceWorker } from './lib/push'
 import { router } from './router'
 
 const queryClient = new QueryClient({
@@ -24,6 +25,8 @@ const queryClient = new QueryClient({
   },
 })
 
+registerServiceWorker()
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider attribute="class" storageKey="theme" defaultTheme="system" enableSystem disableTransitionOnChange>
@@ -35,7 +38,14 @@ createRoot(document.getElementById('root')!).render(
           </TooltipProvider>
         </AuthProvider>
       </QueryClientProvider>
-      <Toaster position="top-right" richColors closeButton />
+      {/* Below the sticky app header (h-14 + iOS safe area), not over the bell and account menu. */}
+      <Toaster
+        position="top-right"
+        offset={{ top: 'calc(3.5rem + env(safe-area-inset-top) + 0.75rem)', right: '1rem' }}
+        mobileOffset={{ top: 'calc(3.5rem + env(safe-area-inset-top) + 0.5rem)' }}
+        richColors
+        closeButton
+      />
     </ThemeProvider>
   </StrictMode>,
 )

@@ -24,6 +24,10 @@ import {
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import {
   blockedUserKey,
+  loginBlockedKey,
+  loginFailKey,
+  loginStrikeKey,
+  loginThrottleAccount,
   REDIS_CLIENT,
   refreshSessionKey,
 } from '../../libs/redis/redis.constant';
@@ -36,6 +40,10 @@ import { User } from './entities/user.entity';
 import { bulkDelete, BulkDeleteResult } from '../../common/bulk/bulk-delete';
 
 const SALT_ROUNDS = 10;
+
+// Escapes Redis glob metacharacters so a username can sit inside a SCAN
+// MATCH pattern literally.
+const escapeGlob = (value: string) => value.replace(/[*?[\]\\]/g, '\\$&');
 
 // Who is calling update() — needed because the same PATCH /users/:id route
 // serves both Admin (any user, any field) and a user editing themselves.
@@ -72,6 +80,55 @@ export class UsersService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...rest } = user;
     return rest;
+  }
+
+  // Adds `loginBlockedUntil`: when the temporary block from too many failed
+  // logins (LoginRateLimiterService) ends, or null if there is none. It may
+  // cover only the IPs the failures came from — the Users page shows it so
+  // an admin can lift it (unlock) instead of the user waiting it out. One
+  // pipelined round trip for the whole page.
+  private async withLoginBlock<T extends Pick<User, 'username'>>(
+    users: T[],
+  ): Promise<(T & { loginBlockedUntil: Date | null })[]> {
+    if (users.length === 0) return [];
+    const pipeline = this.redis.pipeline();
+    for (const user of users) {
+      pipeline.pttl(loginBlockedKey(loginThrottleAccount(user.username)));
+    }
+    const results = (await pipeline.exec()) ?? [];
+    const now = Date.now();
+    return users.map((user, i) => {
+      const ttl = Number(results[i]?.[1] ?? -2);
+      return {
+        ...user,
+        loginBlockedUntil: ttl > 0 ? new Date(now + ttl) : null,
+      };
+    });
+  }
+
+  // Lifts every failed-login block tied to this username: the account-wide
+  // bucket and its per-IP buckets (with their escalation strikes, so the
+  // next lockout starts short again). The per-IP bucket that spans all
+  // usernames is left alone — it isn't this account's.
+  private async clearLoginBlock(username: string): Promise<void> {
+    const account = loginThrottleAccount(username);
+    const keys = [
+      loginBlockedKey(account),
+      loginFailKey('account', account),
+      loginStrikeKey('account', account),
+    ];
+    for (const pattern of [
+      loginFailKey('account_ip', `${escapeGlob(account)}:*`),
+      loginStrikeKey('account_ip', `${escapeGlob(account)}:*`),
+    ]) {
+      for await (const batch of this.redis.scanStream({
+        match: pattern,
+        count: 100,
+      }) as AsyncIterable<string[]>) {
+        keys.push(...batch);
+      }
+    }
+    await this.redis.del(...keys);
   }
 
   private async saveUser(user: User): Promise<User> {
@@ -129,9 +186,10 @@ export class UsersService {
       skip: pagination.skip,
       take: pagination.take,
     });
-    return Paginated.of(users, total, pagination).map((user) =>
-      this.sanitize(user),
+    const items = await this.withLoginBlock(
+      users.map((user) => this.sanitize(user)),
     );
+    return Paginated.of(items, total, pagination);
   }
 
   async findOne(id: string) {
@@ -139,7 +197,8 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(`User ${id} not found`);
     }
-    return this.sanitize(user);
+    const [withBlock] = await this.withLoginBlock([this.sanitize(user)]);
+    return withBlock;
   }
 
   async findByUsername(username: string) {
@@ -245,6 +304,9 @@ export class UsersService {
     return this.sanitize(saved);
   }
 
+  // Lifts both kinds of block at once, so an admin has one button whatever
+  // the cause: a lock set by an admin (status) and a temporary block from
+  // too many failed logins.
   async unlock(id: string) {
     const user = await this.usersRepository.findOne({ where: { id } });
     if (!user) {
@@ -254,7 +316,9 @@ export class UsersService {
     user.status = UserStatus.ACTIVE;
     const saved = await this.saveUser(user);
     await this.redis.del(blockedUserKey(id));
-    return this.sanitize(saved);
+    await this.clearLoginBlock(saved.username);
+    const [withBlock] = await this.withLoginBlock([this.sanitize(saved)]);
+    return withBlock;
   }
 
   async addImages(id: string, files: Express.Multer.File[]) {

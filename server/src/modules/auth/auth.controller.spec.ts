@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import { UsersService } from '../users/users.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { LoginThrottledException } from './login-rate-limiter.service';
 
 describe('AuthController', () => {
   let controller: AuthController;
@@ -16,10 +17,11 @@ describe('AuthController', () => {
   const config = { get: jest.fn(() => undefined) };
 
   const buildRes = (): jest.Mocked<
-    Pick<Response, 'cookie' | 'clearCookie'>
+    Pick<Response, 'cookie' | 'clearCookie' | 'setHeader'>
   > => ({
     cookie: jest.fn(),
     clearCookie: jest.fn(),
+    setHeader: jest.fn(),
   });
 
   beforeEach(async () => {
@@ -79,6 +81,24 @@ describe('AuthController', () => {
       'refresh-token',
       expect.objectContaining({ path: '/auth', httpOnly: true }),
     );
+  });
+
+  it('login sets Retry-After and rethrows when throttled', async () => {
+    const error = new LoginThrottledException(600);
+    authService.login.mockRejectedValue(error);
+    const res = buildRes();
+    const req = { ip: '10.0.0.1', get: jest.fn().mockReturnValue('jest-ua') };
+
+    await expect(
+      controller.login(
+        { username: 'john', password: 'x' },
+        req as unknown as Request,
+        res as unknown as Response,
+      ),
+    ).rejects.toBe(error);
+
+    expect(res.setHeader).toHaveBeenCalledWith('Retry-After', '600');
+    expect(res.cookie).not.toHaveBeenCalled();
   });
 
   it('refresh rotates both cookies', async () => {

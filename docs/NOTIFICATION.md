@@ -106,6 +106,8 @@ Nội dung chưa có tên cold room/warehouse. Người dùng thuộc nhiều wa
 }
 ```
 
+Gửi với `urgency: 'high'` (push service đánh thức thiết bị ngay) và `TTL` 6 giờ: thiết bị offline lâu hơn thế sẽ không nhận thông báo cũ nữa, vẫn xem được trong app.
+
 ---
 
 ## 5. Trạng thái một notification
@@ -139,17 +141,20 @@ pending ──▶ sent     (≥ 1 subscription nhận thành công, sent_at đư
 
 ## 7. Tích hợp frontend
 
-Thư mục `frontend/` chưa có code, nên phần này là **hợp đồng** backend đang giả định:
+| Thành phần | Vai trò |
+|---|---|
+| [`frontend/public/sw.js`](../frontend/public/sw.js) | Service worker (JS thuần, không qua bundler), scope `/`. `push`: hiện thông báo hệ thống với `tag = alertId` (push lặp lại của cùng alert thay thế thông báo cũ thay vì chồng thêm), rồi `postMessage({ type: 'push' })` cho các tab đang mở để làm mới chuông/danh sách. `notificationclick`: nếu có tab đang mở thì focus và `postMessage({ type: 'navigate', url })` để điều hướng trong SPA; không có thì `openWindow(url)`. `url` = `/notifications?open=<notificationId>`. |
+| [`frontend/src/lib/push.ts`](../frontend/src/lib/push.ts) | Đăng ký service worker lúc khởi động (`main.tsx`), `enablePush` / `disablePush` / `syncPush`. |
+| [`frontend/src/lib/usePushNotifications.ts`](../frontend/src/lib/usePushNotifications.ts) | Hook trạng thái cho UI (`unsupported` / `denied` / `off` / `on`), và `usePushBridge()` gắn trong `AppShell`: đồng bộ subscription theo user đang đăng nhập, xử lý message từ service worker. |
+| [`PushNotifications.tsx`](../frontend/src/components/notifications/PushNotifications.tsx) | Card "Thông báo trên thiết bị" ở trang Hồ sơ, nút "Bật thông báo trên thiết bị" ở trang Thông báo (chỉ hiện khi đang tắt). |
 
-1. **Đăng ký service worker** và xin quyền `Notification.requestPermission()`, chỉ sau một thao tác của người dùng (bấm nút), không tự hỏi khi vừa tải trang.
-2. Lấy khoá: `GET /notifications/vapid-public-key` → `{ publicKey }`. Nếu `publicKey === null`, server chưa cấu hình VAPID: ẩn tính năng.
-3. `registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: <publicKey dạng Uint8Array> })`.
-4. `POST /notifications/subscriptions` với `subscription.toJSON()` và `userAgent` (tuỳ chọn, chỉ để hiển thị).
-5. Trong service worker:
-   - `push`: đọc payload (mục 4), gọi `showNotification(title, { body, data: { notificationId, alertId } })`.
-   - `notificationclick`: mở trang chi tiết alert và gọi `POST /notifications/:id/read`. Web Push không có "đã đọc" tự động, không gọi thì `read_at` luôn `null`.
-6. Khi đăng xuất: gọi `DELETE /notifications/subscriptions` **trước** khi xoá cookie (endpoint cần đăng nhập), rồi `subscription.unsubscribe()`.
-7. Danh sách trong app: `GET /notifications?unreadOnly=true` cho badge chưa đọc.
+**Luồng:**
+
+1. Người dùng bấm "Bật thông báo" → `Notification.requestPermission()` (không bao giờ tự hỏi khi tải trang) → `GET /notifications/vapid-public-key` → `pushManager.subscribe(...)` → `POST /notifications/subscriptions`. Nếu trình duyệt đang giữ subscription với public key khác (đã đổi VAPID), subscription cũ bị huỷ và đăng ký lại.
+2. Lựa chọn được nhớ **theo user, trên trình duyệt đó** (localStorage `pref:push:<userId>`).
+3. Mỗi lần app tải với một user đã đăng nhập (`syncPush`): nếu user này đã bật và quyền vẫn là `granted` thì đăng ký lại (upsert — cũng cập nhật endpoint nếu trình duyệt đã xoay vòng); ngược lại huỷ subscription đang có trong trình duyệt. Nhờ vậy người đăng nhập sau trên cùng thiết bị không nhận cảnh báo của người trước, kể cả khi phiên trước hết hạn mà không đăng xuất: huỷ ở trình duyệt làm endpoint mất hiệu lực, worker sẽ xoá dòng khi gặp 404/410.
+4. Đăng xuất: `DELETE /notifications/subscriptions` **trước** `POST /auth/logout` (endpoint cần đăng nhập), rồi `subscription.unsubscribe()`. Lựa chọn "đã bật" được giữ lại, nên đăng nhập lại sẽ tự đăng ký, không hỏi lại.
+5. Bấm thông báo → `/notifications?open=<id>`: trang Thông báo gọi `POST /notifications/:id/read` và mở chi tiết. Mở chi tiết một thông báo chưa đọc từ danh sách cũng đánh dấu đã đọc.
 
 Yêu cầu môi trường: Push API chỉ chạy trên **HTTPS** (hoặc `localhost`). Trên iOS/iPadOS, Web Push chỉ hoạt động khi web app đã được "Thêm vào Màn hình chính" (iOS 16.4+).
 
@@ -184,7 +189,6 @@ Những điểm dưới đây là hành vi hiện tại của code, cần xử l
 | Worker chết giữa lúc gửi | Notification kẹt ở `pending` mãi | Job dọn dẹp chuyển `pending` quá hạn sang `failed` |
 | Không retry push riêng từng subscription | Lỗi mạng thoáng qua thì user đó mất thông báo của alert này | Retry có backoff cho lỗi 429/5xx |
 | Gửi tuần tự từng user, từng thiết bị | Warehouse nhiều người thì người cuối nhận chậm | Gửi song song có giới hạn concurrency |
-| Không đặt `TTL`/`urgency` khi gửi | Dùng mặc định của thư viện, thiết bị offline có thể nhận thông báo cũ hoặc chậm | Đặt `urgency: 'high'` cho alert nhiệt độ, `TTL` hợp lý |
 | Không có realtime qua WebSocket | App đang mở không tự cập nhật danh sách alert/notification | `RealtimeGateway.emitToWarehouse()` đã có sẵn, chưa được gọi |
 | `GET /notifications` không phân trang | Danh sách lớn dần theo thời gian | Thêm phân trang theo `created_at` |
 | Không có endpoint xem danh sách thiết bị đã đăng ký | Cột `user_agent` được lưu nhưng chưa dùng | `GET /notifications/subscriptions` cho màn "quản lý thiết bị" |

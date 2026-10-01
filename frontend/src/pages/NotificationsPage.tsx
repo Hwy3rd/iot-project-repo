@@ -10,6 +10,7 @@ import {
   RowActionsHead,
 } from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
+import { EnablePushButton } from '@/components/notifications/PushNotifications'
 import { ToneBadge } from '@/components/common/StatusBadge'
 import {
   Table,
@@ -21,9 +22,12 @@ import {
 } from '@/components/ui/table'
 import { emptyFilters, rangeError } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
-import { param, useListParams } from '@/lib/useListParams'
+import { param, patchParams, useListParams } from '@/lib/useListParams'
 import { rowOpenProps, useRowDialogs } from '@/lib/useRowDialogs'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect } from 'react'
+import { useSearchParams } from 'react-router'
+import { toast } from 'sonner'
 
 const FILTER_KEYS = ['unreadOnly', 'createdFrom', 'createdTo'] as const
 type Filters = Record<(typeof FILTER_KEYS)[number], string>
@@ -75,6 +79,32 @@ export function NotificationsPage() {
   const f = list.filters
   const rows = useRowDialogs<AppNotification>()
   const current = rows.item
+  const qc = useQueryClient()
+  const markRead = useMutation({
+    mutationFn: notificationsApi.markRead,
+    onSettled: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+
+  // Opening one reads it (the bell counts unread ones).
+  const view = (n: AppNotification) => {
+    rows.view(n.readAt ? n : { ...n, readAt: new Date().toISOString() })
+    if (!n.readAt) markRead.mutate(n.id)
+  }
+
+  // Clicked on the device (public/sw.js links to ?open=<id>): mark it read
+  // and show it, whichever page of the list it's on.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const openId = searchParams.get('open')
+  useEffect(() => {
+    if (!openId) return
+    setSearchParams((prev) => patchParams(prev, { open: null }), { replace: true })
+    markRead.mutate(openId, {
+      onSuccess: (n) => rows.view(n),
+      onError: () => toast.error('Không tìm thấy thông báo này'),
+    })
+    // Once per ?open= value; markRead/rows are fresh objects every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId])
 
   const params: NotificationQuery = {
     page: list.page,
@@ -92,7 +122,7 @@ export function NotificationsPage() {
 
   return (
     <>
-      <PageHeader title="Thông báo" description="Thông báo của bạn." />
+      <PageHeader title="Thông báo" description="Thông báo của bạn." actions={<EnablePushButton />} />
       <ListCard
         list={list}
         query={query}
@@ -122,7 +152,7 @@ export function NotificationsPage() {
             </TableHeader>
             <TableBody>
               {items.map((n) => (
-                <TableRow key={n.id} {...rowOpenProps(() => rows.view(n))}>
+                <TableRow key={n.id} {...rowOpenProps(() => view(n))}>
                   <TableCell className="max-w-xl min-w-64 pl-4 whitespace-normal">
                     <span className={n.readAt ? 'font-normal' : 'font-semibold'}>{n.title}</span>
                     <span className="mt-0.5 line-clamp-2 text-muted-foreground">{n.body}</span>
@@ -139,7 +169,7 @@ export function NotificationsPage() {
                       {formatRelative(n.createdAt)}
                     </time>
                   </TableCell>
-                  <RowActionsCell label={`thông báo ${n.title}`} onView={() => rows.view(n)} />
+                  <RowActionsCell label={`thông báo ${n.title}`} onView={() => view(n)} />
                 </TableRow>
               ))}
             </TableBody>

@@ -91,6 +91,24 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `POST /auth/logout` | yêu cầu cookie `refresh_token` hợp lệ | — | `null`, xoá cả 2 cookie, thu hồi phiên trong Redis |
 | `GET /auth/me` | mọi role đã đăng nhập | — | `UserResponseDto` của chính caller |
 
+**Giới hạn của `POST /auth/login`** (`libs/constants/auth.constant.ts`, `LoginRateLimiterService`):
+
+- `username` tối đa 50 ký tự, `password` tối đa 64 ký tự. Sai thì trả `400`. Cùng giới hạn này áp cho mọi chỗ đặt username/mật khẩu (`POST /users`, `POST /users/me/password`, `POST /users/:id/password`; mật khẩu mới tối thiểu 6 ký tự), để không tạo ra được tài khoản không đăng nhập nổi.
+- Đếm số lần đăng nhập sai trong Redis theo 3 bộ đếm, trong một cửa sổ `LOGIN_FAILED_WINDOW_MINUTES` tính từ lần sai đầu tiên. Bộ đếm nào chạm ngưỡng thì mọi lần đăng nhập đi qua nó bị trả `429`, kèm header `Retry-After` (giây), cho tới hết thời gian khoá. Việc kiểm tra diễn ra trước khi tra user hay chạy bcrypt.
+
+  | Bộ đếm | Ngưỡng (env, mặc định) | Thời gian khoá |
+  |---|---|---|
+  | cùng username + cùng IP | `LOGIN_MAX_FAILED_PER_ACCOUNT_IP`, 5 | **Tăng dần** |
+  | cùng IP (mọi username) | `LOGIN_MAX_FAILED_PER_IP`, 30 | **Tăng dần** |
+  | cùng username (mọi IP) | `LOGIN_MAX_FAILED_PER_ACCOUNT`, 50 | Cố định `LOGIN_ACCOUNT_LOCKOUT_MINUTES`, 15 phút |
+
+- **Khoá tăng dần:** theo danh sách bậc `LOGIN_LOCKOUT_STEPS_MINUTES` (mặc định `1,5,15,60`): lần khoá thứ 1 là 1 phút, lần 2 là 5 phút, lần 3 là 15 phút, từ lần 4 trở đi luôn là 60 phút. Số lần đã bị khoá được quên sau `LOGIN_LOCKOUT_RESET_HOURS` (24 giờ) không bị khoá thêm. Đăng nhập đúng mật khẩu thì xoá luôn số lần bị khoá của cặp username+IP, nhưng không xoá của bộ đếm IP, vì kẻ tấn công có thể đăng nhập vào tài khoản của chính họ để xoá. Người gõ nhầm chỉ phải đợi khoảng 1 phút; một script dò mật khẩu bị ghìm xuống còn khoảng 5 lần thử mỗi giờ.
+- **Bộ đếm theo username không tăng dần**, vì ai cũng có thể gõ sai cho bất kỳ username nào. Nếu tăng dần, kẻ xấu sẽ khoá được người dùng thật, kể cả admin, mỗi lần tới 1 giờ.
+- Giá trị env không phải số nguyên dương, hoặc `LOGIN_LOCKOUT_STEPS_MINUTES` có bậc sau ngắn hơn bậc trước, thì app từ chối khởi động. Đổi giá trị thì cần restart `app`. Các khoá đang chạy trong Redis giữ TTL cũ.
+- Chỉ lần sai mới bị tính: đăng nhập đúng thì xoá bộ đếm username+IP và trả lại lượt cho 2 bộ đếm còn lại. Username được so khớp không phân biệt hoa thường. Username không tồn tại vẫn bị đếm như thường, để không lộ username nào có thật.
+- **Admin gỡ chặn:** khi một bộ đếm gắn với username bị đầy (username+IP, hoặc username), Redis đặt key `login:blocked:<username>` với TTL bằng thời gian khoá. `GET /users` và `GET /users/:id` trả thêm `loginBlockedUntil`, trang Users hiện badge "Tạm chặn đăng nhập", và admin bấm "Gỡ chặn đăng nhập" (`POST /users/:id/unlock`) để xoá toàn bộ bộ đếm và số lần khoá của username đó. Bộ đếm theo IP không gắn với username nên không bị gỡ theo; muốn gỡ thì `docker exec redis_db redis-cli DEL login:fail:ip:<ip> login:strike:ip:<ip>`.
+- Bộ đếm theo IP dựa vào `req.ip`, nên đằng sau Cloudflare Tunnel phải đặt `TRUST_PROXY=1`. Thiếu biến này thì mọi người dùng chung IP của cloudflared.
+
 ---
 
 ## 3. Users — `/users`
@@ -103,9 +121,9 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 | `PATCH /users/:id` | TT | như create, trừ `password` | `UserResponseDto` — chỉ Admin được đổi `role` (người khác gửi `role` khác role hiện tại → `403`) |
 | `DELETE /users/:id` | A | — | `null` (soft delete) |
 | `POST /users/:id/lock` | A | — | `UserResponseDto` — `status → locked`, có hiệu lực ngay: xoá phiên refresh, access token đang có bị từ chối (key `blocked:<id>` trong Redis), WebSocket bị ngắt; không tự khoá chính mình (`400`). `DELETE /users/:id` cũng thu hồi quyền truy cập ngay theo cách này |
-| `POST /users/:id/unlock` | A | — | `UserResponseDto` — `status → active` |
-| `POST /users/me/password` | mọi role (tài khoản của chính mình) | `{ currentPassword, newPassword }` (`newPassword` ≥ 6 ký tự) | `UserResponseDto`; `400` nếu mật khẩu hiện tại sai hoặc mật khẩu mới trùng mật khẩu cũ. Phiên đăng nhập hiện tại được giữ. Audit `user.password_change` |
-| `POST /users/:id/password` | A (tài khoản khác) | `{ newPassword }` (≥ 6 ký tự) | `UserResponseDto` — đặt lại mật khẩu (vd. người dùng quên mật khẩu): xoá phiên refresh và ngắt WebSocket của người đó (access token đã cấp còn dùng được tới khi hết hạn, mặc định 15 phút); không dùng cho chính mình (`400`). Audit `user.password_reset` |
+| `POST /users/:id/unlock` | A | — | `UserResponseDto` — `status → active`, đồng thời gỡ chặn tạm do đăng nhập sai (xoá các key `login:*` của username, xem mục 2). Gọi được cả khi tài khoản đang `active` mà chỉ bị chặn tạm |
+| `POST /users/me/password` | mọi role (tài khoản của chính mình) | `{ currentPassword, newPassword }` (`newPassword` 6–64 ký tự) | `UserResponseDto`; `400` nếu mật khẩu hiện tại sai hoặc mật khẩu mới trùng mật khẩu cũ. Phiên đăng nhập hiện tại được giữ. Audit `user.password_change` |
+| `POST /users/:id/password` | A (tài khoản khác) | `{ newPassword }` (6–64 ký tự) | `UserResponseDto` — đặt lại mật khẩu (vd. người dùng quên mật khẩu): xoá phiên refresh và ngắt WebSocket của người đó (access token đã cấp còn dùng được tới khi hết hạn, mặc định 15 phút); không dùng cho chính mình (`400`). Audit `user.password_reset` |
 | `POST /users/:id/images` | TT | `multipart/form-data` | `UserResponseDto` |
 | `DELETE /users/:id/images` | TT | `{ url }` | `UserResponseDto` |
 
@@ -326,7 +344,7 @@ Có 2 loại phòng (room):
 |---|---|---|
 | `join:warehouse` | `{ warehouseId }` | Admin join được mọi warehouse; role khác chỉ join được warehouse mình có mặt trong `warehouse_staff` (`WsException` nếu không hợp lệ). Trả về `{ warehouseId }` khi thành công. |
 | `leave:warehouse` | `{ warehouseId }` | Rời phòng, trả về `{ warehouseId }`. |
-| `chatbot:send` | `{ conversationId, content }` | Xem §18.1. |
+| `chatbot:send` | `{ conversationId, content, warehouseId? }` | Xem §18.1. |
 
 Chiều server → client theo warehouse (`emitToWarehouse(warehouseId, event, payload)`) đã có sẵn hạ tầng nhưng **chưa có module nghiệp vụ nào gọi tới**. Dự kiến dùng cho `alert:new`.
 
@@ -335,8 +353,10 @@ Chiều server → client theo warehouse (`emitToWarehouse(warehouseId, event, p
 Quản lý cuộc trò chuyện và đọc lịch sử vẫn dùng REST (`/chatbot/conversations` — `GET` trả `Paginated<ConversationResponseDto>`, nhận `page?`/`limit?`; `GET :id/messages` giữ phân trang cursor `before`/`limit`). **Gửi tin nhắn** thì dùng socket:
 
 ```js
-socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
+socket.emit('chatbot:send', { conversationId, content, warehouseId }, (ack) => { ... });
 ```
+
+- `warehouseId` (không bắt buộc) là kho đang chọn trên header. Trợ lý mặc định trả lời về kho này: gọi tool với bộ lọc kho đó, và khi tên phòng trùng giữa các kho thì hiểu là phòng của kho này. Người dùng vẫn hỏi được kho khác bằng cách nêu tên. Không gửi thì trợ lý xét mọi kho người dùng được đọc (Admin/Technician chọn "Tất cả kho"). Đây chỉ là ngữ cảnh, không mở rộng quyền: kho người dùng không được phân công trả `403` và tin nhắn không được lưu.
 
 - **Ack** trả về ngay khi tin nhắn của user đã được lưu, không đợi model:
   - Thành công: `{ ok: true, message: MessageResponseDto }`.
@@ -346,6 +366,7 @@ socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
   |---|---|
   | `400` | Payload sai. `content` tối đa 2000 ký tự. |
   | `401` | Access token của socket đã hết hạn. Client gọi `POST /auth/refresh` rồi kết nối lại. |
+  | `403` | `warehouseId` là kho người dùng không được phân công (hoặc không tồn tại). |
   | `404` | Cuộc trò chuyện không tồn tại hoặc không thuộc về mình. |
   | `409` | Cuộc trò chuyện đang có một lượt trả lời chưa xong. |
   | `429` | Vượt giới hạn tin nhắn. |
@@ -361,7 +382,7 @@ socket.emit('chatbot:send', { conversationId, content }, (ack) => { ... });
 
 - **Mỗi cuộc trò chuyện chỉ chạy một lượt tại một thời điểm**, dùng khoá Redis `chatbot:turn:<conversationId>` (TTL 180s phòng khi process chết giữa lượt). Nhờ vậy gửi trùng hay gửi từ hai tab không làm lịch sử bị xen kẽ.
 - Giới hạn tin nhắn (`CHATBOT_RATE_LIMIT_PER_MINUTE` / `_PER_DAY`) dùng chung bộ đếm với REST.
-- `POST /chatbot/conversations/:id/messages` vẫn còn: chạy cùng một lượt, nhưng chỉ trả về câu trả lời cuối khi đã xong. Các sự kiện trên vẫn được phát. Endpoint này dùng khi test bằng REST Client, hoặc khi client không có socket.
+- `POST /chatbot/conversations/:id/messages` (body `{ content, warehouseId? }`) vẫn còn: chạy cùng một lượt, nhưng chỉ trả về câu trả lời cuối khi đã xong. Các sự kiện trên vẫn được phát. Endpoint này dùng khi test bằng REST Client, hoặc khi client không có socket.
 - Kịch bản test tay: `node http/chatbot-socket.mjs "câu hỏi" [conversationId]` (chạy trong `server/`).
 
 ---

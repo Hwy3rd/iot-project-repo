@@ -12,6 +12,7 @@ import {
   type ChatToolCallEvent,
 } from './chatbot'
 import { getSocket, holdSocket } from './socket'
+import { useCurrentWarehouse } from './useCurrentWarehouse'
 
 const PAGE_SIZE = 50
 // Past the server's turn lock (CHATBOT_TURN_LOCK_TTL_SECONDS): by then the
@@ -43,10 +44,13 @@ interface Turn {
 /**
  * One conversation's shown messages (oldest first), the in-flight reply
  * and `send`. With `conversationId` null, the first `send` creates the
- * conversation and reports it through `onCreated`.
+ * conversation and reports it through `onCreated`. Each message carries the
+ * header's warehouse, which the assistant answers about by default.
  */
 export function useChatConversation(conversationId: string | null, onCreated: (id: string) => void) {
   const qc = useQueryClient()
+  const scope = useCurrentWarehouse()
+  const warehouseId = scope.warehouseId || undefined
   const [turn, setTurn] = useState<Turn | null>(null)
   const [sending, setSending] = useState(false)
   const currentId = useRef(conversationId)
@@ -133,7 +137,7 @@ export function useChatConversation(conversationId: string | null, onCreated: (i
           currentId.current = id
           onCreated(id)
         }
-        const message = await sendChatMessage(id, content)
+        const message = await sendChatMessage(id, content, warehouseId)
         appendMessage(qc, message)
         setTurn((t) => (t?.conversationId === id ? t : { conversationId: id, tools: [] }))
         return true
@@ -149,7 +153,7 @@ export function useChatConversation(conversationId: string | null, onCreated: (i
         setSending(false)
       }
     },
-    [conversationId, onCreated, qc, setError],
+    [conversationId, onCreated, qc, setError, warehouseId],
   )
 
   const messages = useMemo(
@@ -167,5 +171,9 @@ export function useChatConversation(conversationId: string | null, onCreated: (i
     sending,
     error: failure && failure.conversationId === conversationId ? failure.text : null,
     send,
+    /** The warehouse questions go to; undefined = all of the user's warehouses. */
+    warehouse: scope.warehouse,
+    /** False while the header's warehouse is still being settled: don't send yet. */
+    warehouseReady: scope.ready,
   }
 }

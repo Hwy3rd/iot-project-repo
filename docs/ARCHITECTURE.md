@@ -83,7 +83,7 @@ ESP32 ──MQTT──▶ mosquitto ──▶ MqttIngestService ──▶ Teleme
 
 `MqttIngestService` (`server/src/modules/mqtt-ingest/`) chạy trong tiến trình `app` (không phải `worker`) vì cần dùng thẳng `TelemetryModule`/`AlertsModule` đã wire sẵn ở đó. Kết nối MQTT dùng client `mqtt` toàn cục (`libs/mqtt/mqtt.module.ts`, `MQTT_URL`), subscribe filter `devices/+/telemetry` (QoS 1). Mỗi message được validate (`class-validator`) khớp đúng `TelemetrySample`, tra `Device` theo `unique_id` (không phải `id` nội bộ) — payload sai định dạng, thiết bị không tồn tại, hoặc bị `TelemetryService.ingest()` từ chối (chưa claim vào cold room, đã decommission...) chỉ log cảnh báo rồi bỏ qua, không làm rớt kết nối chung.
 
-Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `docker-compose.yml` và `docker-compose.production.yml`. Cấu hình hiện tại cho phép kết nối anonymous (`allow_anonymous true`), không có TLS — đủ dùng khi broker chỉ nằm trong mạng docker-compose nội bộ; khoá lại bằng `password_file`/TLS là bước cứng hoá cần làm riêng trước khi mở broker ra mạng không tin cậy (xem comment trong `.env.example`).
+Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `docker-compose.yml` và `docker-compose.production.yml`. Broker không cho kết nối anonymous: `mosquitto/entrypoint.sh` sinh password file + ACL từ env mỗi lần container khởi động, gồm tài khoản backend (`MQTT_USERNAME`, chỉ đọc telemetry) và một tài khoản dùng chung cho thiết bị (`MQTT_DEVICE_USERNAME`, chỉ publish `devices/+/telemetry`). Chưa có TLS — đủ dùng trong LAN tin cậy, cần listener TLS 8883 trước khi mở broker ra mạng không tin cậy.
 
 **Gap đã biết, quan trọng khi phát triển tiếp:**
 
