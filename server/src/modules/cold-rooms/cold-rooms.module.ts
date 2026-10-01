@@ -10,6 +10,7 @@ import { ColdRoomStatusService } from './cold-room-status.service';
 import { ColdRoom } from './entities/cold-room.entity';
 import { ColdRoomsService } from './cold-rooms.service';
 import { ColdRoomsController } from './cold-rooms.controller';
+import { AiPredictionModule } from '../ai-prediction/ai-prediction.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ColdRoomsController } from './cold-rooms.controller';
     // AlertsModule and the ingest side.
     MongooseModule.forFeature(TELEMETRY_MODELS),
     BatchesModule,
+    AiPredictionModule,
   ],
   controllers: [ColdRoomsController],
   providers: [ColdRoomsService, ColdRoomStatusService],
