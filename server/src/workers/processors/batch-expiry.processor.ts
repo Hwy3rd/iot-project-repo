@@ -1,10 +1,16 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Job, Queue } from 'bullmq';
+import { LessThan, Repository } from 'typeorm';
+import { BatchStatus } from '../../libs/constants/batch.constant';
 import { QUEUE_NAMES } from '../../libs/constants/queue.constant';
+import { Batch } from '../../modules/batches/entities/batch.entity';
+import { businessDate } from '../../modules/work-shifts/work-shift-schedule';
 
-// Connection + schedule only for now — sweep logic (marking expired
-// batches) lands in a follow-up change.
+// Marks IN_STOCK batches past their expiry date as EXPIRED. A batch is
+// expired from the day after expiryDate (business timezone), matching the
+// `expiryDate < today` rule the cold room inventory already applies.
 @Injectable()
 @Processor(QUEUE_NAMES.BATCH_MAINTENANCE)
 export class BatchExpiryProcessor extends WorkerHost implements OnModuleInit {
@@ -12,6 +18,8 @@ export class BatchExpiryProcessor extends WorkerHost implements OnModuleInit {
 
   constructor(
     @InjectQueue(QUEUE_NAMES.BATCH_MAINTENANCE) private readonly queue: Queue,
+    @InjectRepository(Batch)
+    private readonly batchesRepository: Repository<Batch>,
   ) {
     super();
   }
@@ -25,11 +33,22 @@ export class BatchExpiryProcessor extends WorkerHost implements OnModuleInit {
     );
   }
 
-  process(job: Job): Promise<void> {
-    // TODO: sweep IN_STOCK batches past expiryDate and mark them EXPIRED.
+  async process(job: Job): Promise<void> {
+    const expired = await this.sweep();
     this.logger.debug(
-      `Received job ${job.name} (${job.id}) — not yet implemented`,
+      `Job ${job.name} (${job.id}): marked ${expired} batch(es) expired`,
     );
-    return Promise.resolve();
+  }
+
+  // Public so it can be tested without going through the queue.
+  async sweep(now = new Date()): Promise<number> {
+    const result = await this.batchesRepository.update(
+      {
+        status: BatchStatus.IN_STOCK,
+        expiryDate: LessThan(businessDate(now)),
+      },
+      { status: BatchStatus.EXPIRED },
+    );
+    return result.affected ?? 0;
   }
 }
