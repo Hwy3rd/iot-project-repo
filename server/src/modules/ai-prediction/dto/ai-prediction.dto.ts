@@ -17,3 +17,14 @@ export interface AiPredictResponseDto {
   recommendation: string;
   metadata?: Record<string, unknown>;
 }
+
+// What the cold-room chart shows (GET /cold-rooms/:id/telemetry → prediction).
+// Kept here rather than in cold-rooms so the telemetry side can store it
+// without importing the cold-rooms module.
+export interface ColdRoomPrediction {
+  predictedTemp15m: number;
+  willExceedThreshold: boolean;
+  violationType: string;
+  riskLevel: string;
+  recommendation: string;
+}

@@ -1,4 +1,6 @@
 import type {
+  AiRiskLevel,
+  AiViolationType,
   AlertStatus,
   ChannelRole,
   DeviceStatusChangeTrigger,
@@ -101,4 +103,16 @@ export const DEVICE_STATUS_TRIGGER_LABEL: Record<DeviceStatusChangeTrigger, stri
 export const CHANNEL_ROLE_LABEL: Record<ChannelRole, string> = {
   sensor: 'Cảm biến',
   actuator: 'Điều khiển',
+}
+
+export const AI_RISK_LEVEL_LABEL: Record<AiRiskLevel, string> = {
+  NORMAL: 'Bình thường',
+  WARNING: 'Cần theo dõi',
+  CRITICAL: 'Nguy hiểm',
+}
+
+export const AI_VIOLATION_LABEL: Record<AiViolationType, string> = {
+  NONE: 'Trong ngưỡng',
+  OVERHEAT: 'Nguy cơ quá nhiệt',
+  FREEZING: 'Nguy cơ quá lạnh',
 }

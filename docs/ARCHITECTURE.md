@@ -24,12 +24,13 @@
                                                        └────────┘
 ```
 
-Hai tiến trình Node độc lập, cùng build từ `server/`, chạy từ 2 entrypoint khác nhau:
+Hai tiến trình Node độc lập, cùng build từ `server/`, chạy từ 2 entrypoint khác nhau, cộng một service Python riêng cho dự báo nhiệt độ:
 
-| Tiến trình | Entrypoint                                     | Vai trò                                                                               |
-| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `app`      | `dist/main.js` (`src/main.ts`)                 | Phục vụ REST API + WebSocket gateway trên cùng 1 cổng HTTP                            |
-| `worker`   | `dist/workers/main.js` (`src/workers/main.ts`) | Không mở cổng HTTP — chỉ tiêu thụ job BullMQ (`NestFactory.createApplicationContext`) |
+| Tiến trình   | Entrypoint                                     | Vai trò                                                                               |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `app`        | `dist/main.js` (`src/main.ts`)                 | Phục vụ REST API + WebSocket gateway trên cùng 1 cổng HTTP                            |
+| `worker`     | `dist/workers/main.js` (`src/workers/main.ts`) | Không mở cổng HTTP — chỉ tiêu thụ job BullMQ (`NestFactory.createApplicationContext`) |
+| `ai-service` | `uvicorn ai_service:app` (`ai-service/`)       | FastAPI, dự báo nhiệt độ 15 phút tới. Chỉ `app` gọi nó, qua HTTP nội bộ (mục 4b)       |
 
 `app` và `worker` dùng chung `dataSourceOptions` (MySQL) và cùng kết nối Mongo/Redis, nhưng **không chung 1 Nest module** — `WorkerModule` (`src/workers/worker.module.ts`) khai báo lại trực tiếp entity/service cần dùng thay vì import các feature module của `app` (`AlertsModule`, `NotificationsModule`...), để tránh kéo theo controller HTTP không cần thiết vào tiến trình worker.
 
@@ -58,7 +59,7 @@ Chi tiết ký hiệu quyền theo từng endpoint (A/M/T/S, **P**, **C**, **TT*
 - **MongoDB (Mongoose)** — chỉ dùng cho dữ liệu telemetry tần suất cao, 2 collection (`src/modules/telemetry/schemas/`):
   - `telemetry_raw` — mỗi sample thô từ thiết bị (nhiệt độ, trạng thái cửa, lỗi cảm biến), khoá theo `(deviceId, ts)` để chống trùng khi MQTT redeliver (QoS 1).
   - `telemetry_hourly` — bucket theo giờ, do job rollup trong `worker` tổng hợp từ raw (mục 5).
-- **Redis** — 2 vai trò tách biệt, không dùng chung kết nối (xem `server/CLAUDE.md`): client `ioredis` toàn cục (`REDIS_CLIENT`, dùng cho refresh-token session, single-session/user) và kết nối riêng của `BullModule.forRoot()` cho BullMQ.
+- **Redis** — 2 vai trò tách biệt, không dùng chung kết nối (xem `server/CLAUDE.md`): client `ioredis` toàn cục (`REDIS_CLIENT`, dùng cho refresh-token session, single-session/user, giới hạn đăng nhập, và dự báo AI mới nhất của từng phòng — mục 4b) và kết nối riêng của `BullModule.forRoot()` cho BullMQ.
 - **MinIO** — lưu ảnh upload (user, warehouse, product-type...), publish `MINIO_PUBLIC_URL` riêng cho browser vì `MINIO_ENDPOINT` chỉ resolve được trong mạng Docker.
 
 ---
@@ -70,8 +71,9 @@ ESP32 ──MQTT──▶ mosquitto ──▶ MqttIngestService ──▶ Teleme
  (publish        (broker,       (subscribe             │
   devices/        docker-       "devices/+/            ├─▶ lưu telemetry_raw (Mongo)
   {uniqueId}/     compose       telemetry",             ├─▶ so ngưỡng temp_min/temp_max của cold room
-  telemetry)      service)      tra uniqueId            └─▶ nếu vượt ngưỡng: AlertsService.raise()
-                                → device.id)                       │
+  telemetry)      service)      tra uniqueId            ├─▶ (nền, không chờ) dự báo AI — mục 4b
+                                → device.id)            └─▶ nếu vượt ngưỡng: AlertsService.raise()
+                                                                   │
                                                           ├─▶ ghi bản ghi Alert (MySQL)
                                                           └─▶ enqueue job 'notify' → queue alert-notifications
                                                                     │
@@ -88,11 +90,46 @@ Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `dock
 **Gap đã biết, quan trọng khi phát triển tiếp:**
 
 - **Điều khiển thiết bị (chiều ngược lại) chưa nối MQTT** — `CommandsService.create()` mới chỉ ghi `Command` vào MySQL, chưa publish gì lên broker để ESP32 nhận lệnh bật/tắt actuator; `POST /commands/:id/sent`/`:id/ack` vẫn tạm giới hạn Admin vì chưa có cơ chế service-account cho broker bridge gọi 2 route này thay ESP32 (xem `docs/RBAC.md`).
-- **Không cập nhật `devices.last_heartbeat_at`/`status` khi nhận được telemetry** — `MqttIngestService` chỉ gọi `TelemetryService.ingest()` (lưu mẫu đo + đánh giá cảnh báo nhiệt độ) đúng như hợp đồng có sẵn của hàm này; việc coi "vừa nhận được message" là tín hiệu thiết bị đang `active`/còn sống chưa được cài đặt ở đâu — cột `last_heartbeat_at` tồn tại trên entity nhưng chưa có chỗ nào ghi vào nó.
+- **Heartbeat**: sau mỗi mẫu telemetry được nhận, `MqttIngestService` ghi `devices.last_heartbeat_at`; nếu thiết bị đang `offline` thì chuyển về `active` (ghi `device_status_history` trigger `automated`, cùng transaction) và tự đóng cảnh báo `OFFLINE`. `fault`/`maintenance` không bị tự đổi. **Chưa có** chiều ngược lại: job quét thiết bị im lặng quá lâu để đặt `offline` và raise cảnh báo `OFFLINE` (worker chưa có `AlertsService`).
 - `RealtimeGateway` (WebSocket) có phòng theo warehouse (`join:warehouse`/`leave:warehouse`, `emitToWarehouse()`). Ai được phân công vào kho thì join được, kể cả Staff không trong ca. Tên sự kiện nằm ở `libs/constants/realtime.constant.ts`:
   - `coldroom:reading`: `TelemetryService.ingest()` phát sau mỗi mẫu telemetry được lưu (mẫu gửi lại trùng thì không phát).
   - `alerts:changed`: `AlertsService` phát khi cảnh báo được tạo mới, tự đóng, tiếp nhận hoặc xử lý thủ công. Client nhận sự kiện này rồi tự tải lại dữ liệu.
   - Việc phát là best effort: lỗi socket chỉ được ghi log, không làm hỏng thao tác chính, và giao diện vẫn polling để dự phòng. Hiện chỉ tiến trình `app` phát sự kiện. Nếu sau này `worker` cần phát (ví dụ job lô hết hạn tạo cảnh báo), phải thêm `@socket.io/redis-emitter`.
+
+---
+
+## 4b. Dự báo nhiệt độ (AI)
+
+`ai-service` (`ai-service/`, Python FastAPI) giữ một model HistGradientBoosting (scikit-learn) đã train sẵn và trả về nhiệt độ dự báo sau 15 phút, kèm mức rủi ro và một câu khuyến nghị dựng từ template. Nó chỉ dự báo, không điều khiển thiết bị và không đọc DB. Thông tin về model xem [ai-service/README.md](../ai-service/README.md).
+
+```
+TelemetryService.ingest()  ── trả về ngay, không chờ AI ──▶ realtime push, heartbeat
+        │
+        └─ nền (schedulePrediction), chỉ khi: mẫu hợp lệ, chưa vượt ngưỡng,
+           phòng nằm trong vùng model hỗ trợ, thiết bị không có dự báo đang chạy
+              │
+              ├─▶ trendFeatures(): ≤5 mẫu gần nhất của thiết bị trong 15 phút (telemetry_raw)
+              │      → temperature, temp_delta, temp_moving_avg   (<2 mẫu thì bỏ qua)
+              ├─▶ AiPredictionService.predict()  ── HTTP POST ai-service:8000/internal/ai/predict
+              ├─▶ saveLatest(): Redis hash ai:prediction:<coldRoomId>, field = deviceId, TTL 15 phút
+              └─▶ will_exceed_threshold → AlertsService.raise(TEMPERATURE_PREDICTED)
+                  dự báo đã an toàn hẳn (qua hysteresis) → resolveAuto(TEMPERATURE_PREDICTED)
+
+GET /cold-rooms/:id/telemetry  ── đọc Redis (không gọi AI) ──▶ prediction trên biểu đồ phòng
+```
+
+Các quy tắc chính (code ở `TelemetryService` và `AiPredictionService`, hằng số ở `libs/constants/ai-prediction.constant.ts`):
+
+- **Không chặn luồng chính.** Ingest không chờ AI, nên realtime push và heartbeat thiết bị không bị trễ. API biểu đồ chỉ đọc kết quả đã lưu trong Redis. AI chậm hay chết thì chỉ mất phần dự báo.
+- **Circuit breaker.** Lỗi 3 lần liên tiếp (timeout 1.5 giây, mã lỗi HTTP, mất kết nối) thì ngừng gọi AI 30 giây. Trạng thái này nằm trong bộ nhớ của tiến trình `app`.
+- **Mỗi thiết bị tối đa một dự báo đang chạy.** Mẫu đến trong lúc đó bị bỏ qua, mẫu sau sẽ dự báo lại.
+- **Không dự báo khi đã vượt ngưỡng thực tế.** Lúc đó `TEMPERATURE_OUT_OF_RANGE` đã mở, dự báo thêm chỉ làm thông báo trùng.
+- **Chỉ dự báo phòng có ngưỡng nằm trong 0–15 °C** (`AI_PREDICTION_SUPPORTED_MIN/MAX_TEMP`). Model hiện tại được train trên dữ liệu 2–8 °C và không ngoại suy được: dưới khoảng −4 °C nó luôn trả ≈ −4 °C. Không chặn thì mọi phòng đông lạnh sẽ bị báo quá nhiệt liên tục.
+- **Tự đóng có hysteresis**, giống `TEMPERATURE_OUT_OF_RANGE`: chỉ đóng khi nhiệt độ dự báo nằm trong `[temp_min + hysteresis, temp_max − hysteresis]`.
+- **Giờ trong ngày theo UTC+7** (`businessHour()`), không theo timezone của container.
+- **Phòng nhiều thiết bị:** mỗi thiết bị có một field riêng trong hash. Biểu đồ hiện dự báo có rủi ro cao nhất trong số các dự báo còn mới, nên dự báo an toàn của thiết bị này không che cảnh báo của thiết bị khác. Alert thì vẫn tính theo từng thiết bị.
+
+`AI_SERVICE_URL` (mặc định `http://localhost:8000`) trỏ tới service này: compose đặt `http://ai-service:8000` cho container `app`, còn backend chạy trên host dùng giá trị trong `server/.env`.
 
 ---
 
@@ -104,7 +141,7 @@ Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `dock
 | ------------------------ | -------------------------------------------------------- | ----------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------- |
 | `alert-notifications`    | `AlertsService.raise()` (khi ghi alert mới)              | `AlertNotificationProcessor`                          | Theo sự kiện (không lịch cố định)    | Đã hoạt động — ghi Notification + gửi Web Push                                                  |
 | `telemetry-rollup`       | Tự lên lịch (`upsertJobScheduler`, cron `5 * * * *` UTC) | `TelemetryRollupProcessor` → `TelemetryRollupService` | Mỗi giờ, phút thứ 5 (chờ sample trễ) | Đã hoạt động — gom `telemetry_raw` → `telemetry_hourly`                                         |
-| `batch-maintenance`      | Tự lên lịch (`every: 1h`)                                | `BatchExpiryProcessor`                                | Mỗi giờ                              | **TODO** — job chạy nhưng thân xử lý chỉ log, chưa sweep batch hết hạn (`IN_STOCK` → `EXPIRED`) |
+| `batch-maintenance`      | Tự lên lịch (`every: 1h`)                                | `BatchExpiryProcessor`                                | Mỗi giờ                              | Đã hoạt động — `IN_STOCK` có `expiryDate` < hôm nay (UTC+7) → `EXPIRED`. Chưa raise cảnh báo `BATCH_EXPIRING_SOON` |
 | `work-shift-maintenance` | Tự lên lịch (`every: 5m`)                                | `WorkShiftSweepProcessor`                             | Mỗi 5 phút                           | Yêu cầu `pending` hết ca → `expired`; ca `approved` quá hết ca + 5 phút chưa check-out → điền `check_out_at` |
 
 `upsertJobScheduler` với id cố định nghĩa là job lặp được **upsert, không nhân bản**, mỗi lần `worker` restart — an toàn khi deploy lại.
@@ -126,8 +163,10 @@ Dockerfile multi-stage (`server/Dockerfile`):
 
 2 file compose **độc lập** (mỗi file tự đầy đủ, chạy riêng bằng `-f`), cùng tập service và cùng build/healthcheck/`depends_on`/volume — phần chung này phải sửa **cả 2 file** khi thay đổi:
 
-- `docker-compose.yml` — dev: publish port datastore ra `localhost`, credential có giá trị mặc định (khớp `server/.env.example`), `.env` ở root là tuỳ chọn — dùng cho `docker compose up -d redis mysql mongo minio mosquitto` khi chạy backend trên host bằng `pnpm start:dev`.
+- `docker-compose.yml` — dev: publish port datastore ra `localhost`, credential có giá trị mặc định (khớp `server/.env.example`), `.env` ở root là tuỳ chọn — dùng cho `docker compose up -d redis mysql mongo minio mosquitto` (thêm `ai-service` nếu cần dự báo) khi chạy backend trên host bằng `pnpm start:dev`.
 - `docker-compose.production.yml` — production, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh): `.env` và credential datastore bắt buộc, API/datastore chỉ publish trên `127.0.0.1` (cho client trên máy chủ), chỉ MQTT `1883` publish ra ngoài, có thêm `cloudflared`.
+
+`ai-service` build từ `ai-service/Dockerfile` (Python 3.10, chạy bằng user không phải root). Image có `HEALTHCHECK` gọi `/health`, trả 503 khi model không nạp được. `app` **không** `depends_on` nó, vì dự báo là tính năng phụ. Phiên bản thư viện trong `requirements.txt` được pin cứng, vì file model là pickle của scikit-learn 1.7.2.
 
 ---
 
@@ -135,7 +174,8 @@ Dockerfile multi-stage (`server/Dockerfile`):
 
 Để không lặp lại công sức tìm hiểu, các phần sau **có hạ tầng nhưng chưa hoàn thiện logic**, ghi nhận trực tiếp bằng comment trong code:
 
-- **MQTT — chỉ mới chiều thiết bị → server** — `MqttIngestService` đã subscribe `devices/+/telemetry` và gọi `TelemetryService.ingest()` (mục 4), nhưng chiều ngược lại (publish `Command` xuống thiết bị, nhận ack) chưa làm; broker cũng chưa khoá bằng auth/TLS.
-- **Realtime broadcast** — `RealtimeGateway.emitToWarehouse()` chưa được service nào gọi; alert mới không tự đẩy qua WebSocket.
-- **Batch expiry sweep** (`BatchExpiryProcessor`) — job chạy đúng lịch nhưng chưa đánh dấu batch hết hạn.
-- **Frontend** (`frontend/`) — thư mục rỗng, chưa scaffold.
+- **MQTT — chỉ mới chiều thiết bị → server** — `MqttIngestService` đã subscribe `devices/+/telemetry` và gọi `TelemetryService.ingest()` (mục 4), nhưng chiều ngược lại (publish `Command` xuống thiết bị, nhận ack) chưa làm; broker đã bắt đăng nhập nhưng chưa có TLS.
+- **Phát hiện thiết bị offline** — chưa có job đặt `offline` khi mất heartbeat và raise `OFFLINE`.
+- **Các loại alert chưa có nơi sinh** — `DOOR_OPEN_TOO_LONG`, `DEVICE_FAULT`, `BATCH_EXPIRING_SOON`, `BATCH_TEMPERATURE_OUT_OF_RANGE`.
+- **Model dự báo chưa train trên dữ liệu của hệ thống** (mục 4b) — model được train trên dataset chuỗi lạnh 2–8 °C, nên phòng đông lạnh chưa có dự báo, và độ chính xác trên kho thật chưa được đo. Hướng làm: dựng dataset từ `telemetry_raw` (đủ feature và nhãn +15 phút, nên thêm `doorOpen`), nhưng raw chỉ giữ 30 ngày, nên cần export định kỳ để tích luỹ dữ liệu.
+- **Resolve thủ công** — chưa chặn resolve khi điều kiện lỗi còn (TODO ở `AlertsService.resolveManual`).

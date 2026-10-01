@@ -392,11 +392,15 @@ export interface ColdRoomStatus {
 
 export type TelemetryRange = '1h' | '6h' | '24h'
 
+/** Values the AI service returns (ai-service/ai_service.py). */
+export type AiViolationType = 'NONE' | 'OVERHEAT' | 'FREEZING'
+export type AiRiskLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'
+
 export interface ColdRoomPrediction {
   predictedTemp15m: number
   willExceedThreshold: boolean
-  violationType: 'NONE' | 'OVERHEAT' | 'FREEZING' | string
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string
+  violationType: AiViolationType
+  riskLevel: AiRiskLevel
   recommendation: string
 }
 

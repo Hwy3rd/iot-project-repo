@@ -20,7 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatDateTime, formatRelative, formatTemp } from '@/lib/format'
-import { ALERT_TYPE_LABEL } from '@/lib/labels'
+import { AI_RISK_LEVEL_LABEL, AI_VIOLATION_LABEL, ALERT_TYPE_LABEL } from '@/lib/labels'
 import { TEMP_STATE, tempState } from '@/lib/room-status'
 import { cn } from '@/lib/utils'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -105,9 +105,7 @@ function RoomDetail({
             </div>
             {series.data.prediction.willExceedThreshold ? (
               <ToneBadge tone="warning">
-                {series.data.prediction.violationType === 'OVERHEAT'
-                  ? 'Nguy cơ quá nhiệt'
-                  : 'Nguy cơ vượt sàn'}
+                {AI_VIOLATION_LABEL[series.data.prediction.violationType]}
               </ToneBadge>
             ) : (
               <ToneBadge tone="success">Nhiệt độ ổn định</ToneBadge>
@@ -118,7 +116,7 @@ function RoomDetail({
               {formatTemp(series.data.prediction.predictedTemp15m)}
             </span>
             <span className="text-xs text-muted-foreground">
-              (Mức độ rủi ro: {series.data.prediction.riskLevel})
+              (Mức độ rủi ro: {AI_RISK_LEVEL_LABEL[series.data.prediction.riskLevel]})
             </span>
           </div>
           {series.data.prediction.recommendation && (

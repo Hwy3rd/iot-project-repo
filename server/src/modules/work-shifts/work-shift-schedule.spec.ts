@@ -4,6 +4,7 @@ import type { Shift } from '../shifts/entities/shift.entity';
 import {
   activeShiftCutoff,
   businessDate,
+  businessHour,
   openShiftAt,
   scheduleFor,
   lateMinutes,
@@ -45,6 +46,14 @@ describe('businessDate', () => {
     expect(businessDate(at('2026-09-24T17:00:00Z'))).toBe('2026-09-25');
     expect(businessDate(at('2026-09-24T16:59:59Z'))).toBe('2026-09-24');
     expect(businessDate(at('2026-09-24T17:00:00Z'), -1)).toBe('2026-09-24');
+  });
+});
+
+describe('businessHour', () => {
+  it('is the UTC+7 hour of day, wrapping past midnight', () => {
+    expect(businessHour(at('2026-09-24T10:00:05Z'))).toBe(17);
+    expect(businessHour(at('2026-09-24T16:59:59Z'))).toBe(23);
+    expect(businessHour(at('2026-09-24T17:00:00Z'))).toBe(0);
   });
 });
 

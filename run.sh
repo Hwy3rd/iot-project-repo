@@ -16,19 +16,26 @@
 #   ./run.sh logs [svc]       follow logs (all services, or just one)
 #   ./run.sh down             remove containers (keeps volumes/data)
 #   ./run.sh rebuild [svc]    rebuild the backend image from ./server and
-#                             replace app + worker (or just app / worker)
+#                             replace app + worker (or just app / worker);
+#                             `rebuild ai-service` rebuilds ./ai-service
 #
-# Services: app, worker, redis, mysql, mongo, minio, mosquitto, cloudflared
+# Services: app, worker, redis, mysql, mongo, minio, mosquitto, ai-service,
+#           cloudflared
 #
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.production.yml"
-SERVICES=(app worker redis mysql mongo minio mosquitto cloudflared)
-# `dev`: backend runs on the host, reaching datastores via 127.0.0.1 ports.
-DEV_SERVICES=(worker redis mysql mongo minio mosquitto)
-# Services built from ./server (same image, different command).
+SERVICES=(app worker redis mysql mongo minio mosquitto ai-service cloudflared)
+# `dev`: backend runs on the host, reaching datastores (and the AI service)
+# via 127.0.0.1 ports.
+DEV_SERVICES=(worker redis mysql mongo minio mosquitto ai-service)
+# Services built from ./server (same image, different command) — what a
+# bare `rebuild` replaces.
 BACKEND_SERVICES=(app worker)
+# Everything `rebuild <svc>` accepts: the backend plus images built from
+# their own directory.
+REBUILDABLE_SERVICES=(app worker ai-service)
 REBUILD_WAIT_SECONDS=300
 
 log()  { printf '\033[1;34m[run]\033[0m %s\n' "$1"; }
@@ -122,18 +129,18 @@ case "$cmd" in
     targets=("$@")
     [[ ${#targets[@]} -gt 0 ]] || targets=("${BACKEND_SERVICES[@]}")
     for svc in "${targets[@]}"; do
-      [[ " ${BACKEND_SERVICES[*]} " == *" $svc "* ]] \
-        || die "'$svc' is not built from ./server — rebuild only takes: ${BACKEND_SERVICES[*]}"
+      [[ " ${REBUILDABLE_SERVICES[*]} " == *" $svc "* ]] \
+        || die "'$svc' is not built from this repo — rebuild only takes: ${REBUILDABLE_SERVICES[*]}"
     done
-    log "building backend image and replacing: ${targets[*]}"
-    # --no-deps: only the backend containers are recreated. Without it,
+    log "building image(s) and replacing: ${targets[*]}"
+    # --no-deps: only the named containers are recreated. Without it,
     # compose would also recreate any dependency whose definition changed
     # (e.g. a new datastore image) — that must stay a deliberate step.
     # --wait: returns once the new containers are healthy (app runs its
     # migrations first), and fails if they don't get there in time.
     compose up -d --build --no-deps --wait --wait-timeout "$REBUILD_WAIT_SECONDS" "${targets[@]}" \
       || die "rebuilt containers did not become healthy — check: ./run.sh logs ${targets[0]}"
-    ok "backend rebuilt and running"
+    ok "rebuilt and running: ${targets[*]}"
     compose ps "${targets[@]}"
     ;;
 

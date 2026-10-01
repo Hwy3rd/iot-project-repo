@@ -83,6 +83,14 @@ export function businessDate(instant: Date, dayOffset = 0): string {
   return new Date(shifted).toISOString().slice(0, 10);
 }
 
+// Hour of day (0-23) in the business timezone — independent of the
+// process/container TZ, unlike Date#getHours().
+export function businessHour(instant: Date): number {
+  return new Date(
+    instant.getTime() + SHIFT_UTC_OFFSET_MINUTES * MINUTE_MS,
+  ).getUTCHours();
+}
+
 function wallClockToInstant(date: string, time: string): Date {
   const [hours, minutes, seconds = 0] = time.split(':').map(Number);
   const utcMidnight = Date.parse(`${date}T00:00:00Z`);

@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -18,6 +17,7 @@ import { QueryColdRoomStatusDto } from './dto/query-cold-room-status.dto';
 import type { TelemetryRange } from './dto/query-cold-room-telemetry.dto';
 import { ColdRoom } from './entities/cold-room.entity';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
+import type { ColdRoomPrediction } from '../ai-prediction/dto/ai-prediction.dto';
 
 // A room's rows can span many warehouses when asked by warehouseIds; this
 // keeps one response bounded.
@@ -52,14 +52,6 @@ export interface ColdRoomSeriesPoint {
   sensorFault: number;
 }
 
-export interface ColdRoomPrediction {
-  predictedTemp15m: number;
-  willExceedThreshold: boolean;
-  violationType: string;
-  riskLevel: string;
-  recommendation: string;
-}
-
 export interface ColdRoomSeries {
   coldRoomId: string;
   from: Date;
@@ -69,7 +61,8 @@ export interface ColdRoomSeries {
   tempMin: number;
   tempMax: number;
   points: ColdRoomSeriesPoint[];
-  prediction?: ColdRoomPrediction | null;
+  /** Latest AI forecast stored at ingest; null when none is recent enough. */
+  prediction: ColdRoomPrediction | null;
 }
 
 export interface ColdRoomStatus {
@@ -88,8 +81,6 @@ export interface ColdRoomStatus {
 // rooms (one Mongo aggregation, two grouped SQL counts).
 @Injectable()
 export class ColdRoomStatusService {
-  private readonly logger = new Logger(ColdRoomStatusService.name);
-
   constructor(
     @InjectRepository(ColdRoom)
     private readonly coldRoomsRepository: Repository<ColdRoom>,
@@ -185,43 +176,9 @@ export class ColdRoomStatusService {
       { $sort: { _id: 1 } },
     ]);
 
-    // Get latest temperature to query AI prediction
-    let latestTemp: number | null = null;
-    const latestMap = await this.latestReadings([coldRoomId]);
-    const latest = latestMap.get(coldRoomId);
-    if (latest && latest.temperature !== null) {
-      latestTemp = latest.temperature;
-    } else {
-      for (let i = rows.length - 1; i >= 0; i--) {
-        if (rows[i].avg !== null) {
-          latestTemp = rows[i].avg;
-          break;
-        }
-      }
-    }
-
-    let prediction: ColdRoomPrediction | null = null;
-    if (latestTemp !== null) {
-      try {
-        const pred = await this.aiPredictionService.predict({
-          temperature: latestTemp,
-          temp_min: room.tempMin,
-          temp_max: room.tempMax,
-          hour_of_day: to.getHours(),
-        });
-        if (pred) {
-          prediction = {
-            predictedTemp15m: pred.predicted_temp_15m,
-            willExceedThreshold: pred.will_exceed_threshold,
-            violationType: pred.violation_type,
-            riskLevel: pred.risk_level,
-            recommendation: pred.recommendation,
-          };
-        }
-      } catch (err) {
-        this.logger.warn(`AI prediction failed for room ${coldRoomId}: ${err}`);
-      }
-    }
+    // Computed at ingest (TelemetryService) — never calls the AI service
+    // here, so the chart doesn't wait on it.
+    const prediction = await this.aiPredictionService.getLatest(coldRoomId);
 
     return {
       coldRoomId,
