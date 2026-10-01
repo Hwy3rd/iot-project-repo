@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AlertsModule } from '../alerts/alerts.module';
+import { AiPredictionModule } from '../ai-prediction/ai-prediction.module';
 import { Device } from '../devices/entities/device.entity';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { TelemetryController } from './telemetry.controller';
@@ -15,6 +16,7 @@ import { TelemetryService } from './telemetry.service';
     MongooseModule.forFeature(TELEMETRY_MODELS),
     TypeOrmModule.forFeature([Device]),
     AlertsModule,
+    AiPredictionModule,
     // coldroom:reading pushes to the warehouse room (see REALTIME_EVENTS).
     RealtimeModule,
   ],

@@ -22,6 +22,7 @@ services:
       - ./.env
     environment:
       - NODE_ENV=production
+      - AI_SERVICE_URL=http://ai-service:8000
     command: sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && node dist/main.js"
     healthcheck:
       test:
@@ -186,6 +187,14 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  ai-service:
+    build:
+      context: ./ai-service
+    container_name: ai_service
+    ports:
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
 
   # Cloudflare Tunnel: outbound-only connection to Cloudflare's edge, which

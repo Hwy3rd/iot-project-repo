@@ -11,6 +11,7 @@ import { DeviceStatus } from '../../libs/constants/device.constant';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AlertsService } from '../alerts/alerts.service';
 import { Device } from '../devices/entities/device.entity';
+import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { TelemetryHourly } from './schemas/telemetry-hourly.schema';
 import { TelemetryRaw } from './schemas/telemetry-raw.schema';
 import { TelemetryService } from './telemetry.service';
@@ -77,6 +78,10 @@ describe('TelemetryService', () => {
         {
           provide: RealtimeGateway,
           useValue: { emitToWarehouse: jest.fn() },
+        },
+        {
+          provide: AiPredictionService,
+          useValue: { predict: jest.fn().mockResolvedValue(null) },
         },
       ],
     }).compile();
