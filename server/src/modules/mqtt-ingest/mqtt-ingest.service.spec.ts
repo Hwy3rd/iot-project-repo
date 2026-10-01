@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MQTT_CLIENT } from '../../libs/mqtt/mqtt.constant';
 import { Device } from '../devices/entities/device.entity';
+import { AlertsService } from '../alerts/alerts.service';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { MqttIngestService } from './mqtt-ingest.service';
 
@@ -14,10 +15,24 @@ describe('MqttIngestService', () => {
   let service: MqttIngestService;
   let devicesRepository: MockRepository<Device>;
   let telemetryService: { ingest: jest.Mock };
+  let alertsService: { resolveAuto: jest.Mock };
+  let manager: {
+    transaction: jest.Mock;
+    update: jest.Mock;
+    save: jest.Mock;
+    create: jest.Mock;
+  };
   let mqttClient: { on: jest.Mock; subscribeAsync: jest.Mock };
 
   beforeEach(async () => {
-    devicesRepository = { findOne: jest.fn() };
+    manager = {
+      transaction: jest.fn((cb: (m: unknown) => Promise<void>) => cb(manager)),
+      update: jest.fn(),
+      save: jest.fn(),
+      create: jest.fn((_e: unknown, v: unknown) => v),
+    };
+    alertsService = { resolveAuto: jest.fn() };
+    devicesRepository = { findOne: jest.fn(), manager } as never;
     telemetryService = { ingest: jest.fn() };
     mqttClient = {
       on: jest.fn(),
@@ -30,6 +45,7 @@ describe('MqttIngestService', () => {
         { provide: MQTT_CLIENT, useValue: mqttClient },
         { provide: getRepositoryToken(Device), useValue: devicesRepository },
         { provide: TelemetryService, useValue: telemetryService },
+        { provide: AlertsService, useValue: alertsService },
       ],
     }).compile();
 
@@ -157,5 +173,65 @@ describe('MqttIngestService', () => {
         sensorFault: false,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  describe('heartbeat', () => {
+    const sample = {
+      ts: '2026-01-01T00:00:00.000Z',
+      temperature: -18.5,
+      doorOpen: false,
+      sensorFault: false,
+    };
+
+    it('refreshes last_heartbeat_at without changing status for an active device', async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'device-uuid',
+        uniqueId: 'esp32-1',
+        status: 'active',
+      });
+
+      await publish('devices/esp32-1/telemetry', sample);
+
+      expect(manager.update).toHaveBeenCalledWith(Device, 'device-uuid', {
+        lastHeartbeatAt: expect.any(Date) as Date,
+      });
+      expect(manager.save).not.toHaveBeenCalled();
+      expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+    });
+
+    it('brings an offline device back to active, logs history and closes the alert', async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'device-uuid',
+        uniqueId: 'esp32-1',
+        status: 'offline',
+        coldRoomId: 'room-1',
+      });
+
+      await publish('devices/esp32-1/telemetry', sample);
+
+      expect(manager.update).toHaveBeenCalledWith(Device, 'device-uuid', {
+        lastHeartbeatAt: expect.any(Date) as Date,
+        status: 'active',
+      });
+      expect(manager.save).toHaveBeenCalledTimes(1);
+      expect(alertsService.resolveAuto).toHaveBeenCalledWith({
+        type: 'offline',
+        deviceId: 'device-uuid',
+        coldRoomId: 'room-1',
+      });
+    });
+
+    it('does not record a heartbeat when ingest rejects the sample', async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'device-uuid',
+        uniqueId: 'esp32-1',
+        status: 'active',
+      });
+      telemetryService.ingest.mockRejectedValue(new Error('unclaimed'));
+
+      await publish('devices/esp32-1/telemetry', sample);
+
+      expect(manager.update).not.toHaveBeenCalled();
+    });
   });
 });

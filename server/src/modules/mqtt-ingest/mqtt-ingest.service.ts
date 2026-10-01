@@ -4,7 +4,14 @@ import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { MqttClient } from 'mqtt';
 import { Repository } from 'typeorm';
+import { AlertType } from '../../libs/constants/alert.constant';
+import {
+  DeviceStatus,
+  DeviceStatusChangeTrigger,
+} from '../../libs/constants/device.constant';
 import { MQTT_CLIENT } from '../../libs/mqtt/mqtt.constant';
+import { AlertsService } from '../alerts/alerts.service';
+import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { Device } from '../devices/entities/device.entity';
 import { TelemetryService } from '../telemetry/telemetry.service';
 import { TelemetryMessageDto } from './dto/telemetry-message.dto';
@@ -27,6 +34,7 @@ export class MqttIngestService implements OnModuleInit {
     @InjectRepository(Device)
     private readonly devicesRepository: Repository<Device>,
     private readonly telemetryService: TelemetryService,
+    private readonly alertsService: AlertsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -91,6 +99,7 @@ export class MqttIngestService implements OnModuleInit {
         doorOpen: message.doorOpen,
         sensorFault: message.sensorFault,
       });
+      await this.recordHeartbeat(device);
     } catch (error) {
       // A device that isn't claimed into a room yet, or one that was just
       // decommissioned, is an expected condition here (unlike the HTTP
@@ -99,6 +108,49 @@ export class MqttIngestService implements OnModuleInit {
       // shared subscription.
       this.logger.warn(
         `Rejected telemetry from device ${uniqueId} (${device.id}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  // Any accepted message proves the device is alive. Refreshes
+  // last_heartbeat_at and brings an OFFLINE device back to ACTIVE (history
+  // row in the same transaction, closing its OFFLINE alert). FAULT and
+  // MAINTENANCE are deliberately left alone — those are set on purpose and
+  // a telemetry message doesn't clear them. Best effort: the sample is
+  // already stored, so a failure here is only logged.
+  private async recordHeartbeat(device: Device): Promise<void> {
+    try {
+      const recovered = device.status === DeviceStatus.OFFLINE;
+      await this.devicesRepository.manager.transaction(async (manager) => {
+        await manager.update(Device, device.id, {
+          lastHeartbeatAt: new Date(),
+          ...(recovered ? { status: DeviceStatus.ACTIVE } : {}),
+        });
+        if (recovered) {
+          await manager.save(
+            DeviceStatusHistory,
+            manager.create(DeviceStatusHistory, {
+              deviceId: device.id,
+              oldStatus: DeviceStatus.OFFLINE,
+              newStatus: DeviceStatus.ACTIVE,
+              trigger: DeviceStatusChangeTrigger.AUTOMATED,
+              reason: 'Telemetry received',
+            }),
+          );
+        }
+      });
+      if (recovered) {
+        await this.alertsService.resolveAuto({
+          type: AlertType.OFFLINE,
+          deviceId: device.id,
+          coldRoomId: device.coldRoomId ?? undefined,
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Could not record heartbeat for device ${device.uniqueId}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
