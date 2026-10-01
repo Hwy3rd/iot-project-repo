@@ -392,6 +392,14 @@ export interface ColdRoomStatus {
 
 export type TelemetryRange = '1h' | '6h' | '24h'
 
+export interface ColdRoomPrediction {
+  predictedTemp15m: number
+  willExceedThreshold: boolean
+  violationType: 'NONE' | 'OVERHEAT' | 'FREEZING' | string
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | string
+  recommendation: string
+}
+
 /** GET /cold-rooms/:id/telemetry — one room's temperature, bucketed. */
 export interface ColdRoomSeries {
   coldRoomId: string
@@ -411,6 +419,7 @@ export interface ColdRoomSeries {
     doorOpen: number
     sensorFault: number
   }[]
+  prediction?: ColdRoomPrediction | null
 }
 
 export type ChatMessageRole = 'user' | 'assistant' | 'tool' | 'system'
