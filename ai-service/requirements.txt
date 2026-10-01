@@ -1,11 +1,16 @@
 # Cold Chain Monitoring - AI Forecasting Microservice
-# Python dependencies for Bangkok Cold Chain Dataset processing & ML service
+#
+# Pinned exactly, not ">=": temperature_model_hgb.pkl is a scikit-learn
+# pickle written by scikit-learn 1.7.2, and pickles are only guaranteed to
+# load into the version that wrote them. Retrain the model before bumping
+# scikit-learn (and keep numpy/scipy within what that version supports).
+# Every pin here must still support the Dockerfile's Python 3.10.
 
-pandas>=2.0.0
-numpy>=1.24.0
-scikit-learn>=1.3.0
-joblib>=1.3.0
-fastapi>=0.100.0
-uvicorn>=0.23.0
-pydantic>=2.0.0
-requests>=2.31.0
+scikit-learn==1.7.2
+scipy==1.15.3
+numpy==2.2.6
+pandas==2.3.3
+joblib==1.5.2
+fastapi==0.115.14
+uvicorn==0.35.0
+pydantic==2.11.9

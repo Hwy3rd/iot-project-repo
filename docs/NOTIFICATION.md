@@ -62,7 +62,11 @@ Việc gửi push nằm trong `worker` chứ không trong request/luồng MQTT, 
 
 **Khi nào:** chỉ khi `AlertsService.raise()` **tạo mới** một alert. Nếu sự cố cùng loại trên cùng thiết bị/lô hàng vẫn đang `open`/`acknowledged` (trùng `active_key`), lần raise sau chỉ cập nhật giá trị mới nhất và **không gửi lại**. Nhờ vậy người dùng nhận một thông báo cho mỗi sự cố, không phải mỗi sample telemetry. Khi alert đó được resolve và sự cố xảy ra lại, alert mới được tạo và thông báo được gửi lại.
 
-Hiện chỉ có `TEMPERATURE_OUT_OF_RANGE` thực sự được raise (từ `TelemetryService.ingest()`). Các `AlertType` khác đã có nhãn tiếng Việt sẵn (mục 4) nhưng chưa có code nào sinh ra chúng.
+Hiện có hai loại thực sự được raise, đều từ `TelemetryService`:
+- `TEMPERATURE_OUT_OF_RANGE`: nhiệt độ đo được vượt ngưỡng.
+- `TEMPERATURE_PREDICTED`: AI dự báo nhiệt độ sẽ vượt ngưỡng trong 15 phút tới. Loại này chỉ có ở phòng mà model hỗ trợ, và không được raise khi nhiệt độ thực tế đã vượt ngưỡng, nên một sự cố không bị báo hai lần. Quy tắc đầy đủ xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b.
+
+Các `AlertType` khác đã có nhãn tiếng Việt sẵn (mục 4) nhưng chưa có code nào sinh ra chúng.
 
 **Cho ai:** mọi user có dòng trong `warehouse_staff` của warehouse chứa cold room phát sinh alert, **không phân biệt role** (Manager, Technician, Staff đều nhận).
 
@@ -90,7 +94,7 @@ Hệ quả cần biết:
 | `BATCH_EXPIRING_SOON` | Lô hàng sắp hết hạn |
 
 `body`:
-- Có `trigger_value`: `Giá trị: <trigger_value>`, thêm ` (cao hơn ngưỡng)` / ` (thấp hơn ngưỡng)` nếu `alert.details.direction` là `high` / `low`.
+- Có `trigger_value`: `Giá trị: <trigger_value>`, thêm ` (cao hơn ngưỡng)` / ` (thấp hơn ngưỡng)` nếu `alert.details.direction` là `high` / `low`. Với `TEMPERATURE_PREDICTED`, `trigger_value` là nhiệt độ **dự báo** và `details` không có `direction`, nên body chỉ là `Giá trị: <nhiệt độ dự báo>`. Hướng vi phạm và khuyến nghị nằm trong `details` (`violationType`, `recommendation`) và xem được trong ứng dụng.
 - Không có `trigger_value`: `Xem chi tiết trong ứng dụng.`
 
 Nội dung chưa có tên cold room/warehouse. Người dùng thuộc nhiều warehouse cần mở app để biết alert ở kho nào.

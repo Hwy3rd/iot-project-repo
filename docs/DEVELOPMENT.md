@@ -30,13 +30,21 @@ docker compose ps        # chờ tất cả ở trạng thái healthy
 
 **Không** tạo file `.env` ở root. File đó dành cho production: nếu có, Compose sẽ đọc nó để điền `${MYSQL_PASSWORD:-password}`…, khiến datastore nhận credential khác với `server/.env`.
 
+Muốn có dự báo nhiệt độ AI thì chạy thêm `ai-service`. Không chạy thì hệ thống vẫn hoạt động bình thường, chỉ không có dự báo và không có cảnh báo `TEMPERATURE_PREDICTED`:
+
+```bash
+docker compose up -d --build ai-service   # http://localhost:8000/docs để thử API
+```
+
+`server/.env.example` đã có sẵn `AI_SERVICE_URL=http://localhost:8000`.
+
 ### Cách khác: dùng stack production (`./run.sh dev`)
 
 Nếu máy đã chạy `./init.sh` (có `.env` ở root), có thể dùng luôn stack production thay cho lệnh `docker compose up` ở trên. Stack này dùng chung dữ liệu với production.
 
 ```bash
 ./run.sh stop    # nếu app/cloudflared đang chạy, `dev` không tự dừng chúng
-./run.sh dev     # up worker + datastore + broker, không up app/cloudflared
+./run.sh dev     # up worker + datastore + broker + ai-service, không up app/cloudflared
 ```
 
 Datastore ở production chỉ bind `127.0.0.1` nhưng dùng cùng cổng với dev (mục 7), nên `server/.env` vẫn trỏ `localhost`. Khác biệt:
@@ -110,6 +118,7 @@ Mở http://localhost:5173 và đăng nhập bằng `SEED_ADMIN_USERNAME` / `SEE
 | MinIO console         | http://localhost:9001 (`minioadmin` / `minioadmin`, hoặc `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` trong `.env` root nếu dùng `./run.sh dev`) |
 | MySQL / Mongo / Redis | `3306` / `27017` / `6379`                           |
 | MQTT                  | `1883`                                              |
+| AI service            | http://localhost:8000 (`/docs`, `/health`)          |
 
 ## 8. Công việc thường gặp
 
@@ -128,6 +137,18 @@ npm run build     # kiểm tra type + build production
 
 Quy ước code backend (module, response envelope, auth, migration) xem [server/CLAUDE.md](../server/CLAUDE.md).
 
+**Gửi telemetry giả lập** (không cần ESP32), dùng tài khoản thiết bị `MQTT_DEVICE_USERNAME/PASSWORD` (mặc định `device` / `password`, khớp `docker-compose.yml`):
+
+```bash
+# 6 mẫu trong 30 phút gần nhất; --scenario normal | overheat | overcool
+node scripts/simulate_telemetry.js --device <uniqueId> --scenario overheat
+
+# 1 mẫu (cần: pip install paho-mqtt)
+python scripts/simulate_telemetry.py --device <uniqueId> --temperature 3.5
+```
+
+`<uniqueId>` là mã thiết bị (cột `unique_id`), và thiết bị phải đang được gán vào một phòng lạnh. Thiết bị không tồn tại thì backend chỉ ghi log rồi bỏ qua.
+
 ## 9. Lỗi thường gặp
 
 | Triệu chứng                                    | Cách xử lý                                                                                               |
@@ -136,6 +157,7 @@ Quy ước code backend (module, response envelope, auth, migration) xem [server
 | Backend báo `Access denied` khi kết nối MySQL  | Có file `.env` ở root, hoặc volume được tạo với credential khác. Xem mục 3 và mục reset bên dưới         |
 | App báo `S3Error: Access Denied` khi khởi động | Volume MinIO sai owner, xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 7                                 |
 | ESP32 không kết nối được MQTT (WSL2)           | Chạy `scripts/setup-windows-lan.ps1`, xem [README.md](../README.md#kết-nối-thiết-bị-esp32-qua-wifi-wsl2) |
+| Biểu đồ phòng không có dự báo AI               | Lần lượt kiểm tra: `ai-service` có đang chạy và `curl localhost:8000/health` trả `HEALTHY` không; phòng có ngưỡng nằm trong 0–15 °C không (phòng đông lạnh chưa được hỗ trợ); thiết bị có ít nhất 2 mẫu trong 15 phút gần nhất không; nhiệt độ hiện tại có đang vượt ngưỡng không (khi đó không dự báo). Chi tiết xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b |
 
 **Reset toàn bộ dữ liệu dev:**
 

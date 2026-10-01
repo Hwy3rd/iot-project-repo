@@ -27,6 +27,10 @@ for (let i = 0; i < args.length; i++) {
 const DEVICE_ID = deviceId;
 const TOPIC = `devices/${DEVICE_ID}/telemetry`;
 const BROKER_URL = process.env.MQTT_URL || 'mqtt://localhost:1883';
+// Broker không cho kết nối ẩn danh (mosquitto/entrypoint.sh): dùng tài khoản
+// thiết bị — mặc định khớp với docker-compose.yml, ghi đè qua env nếu khác.
+const MQTT_USERNAME = process.env.MQTT_DEVICE_USERNAME || 'device';
+const MQTT_PASSWORD = process.env.MQTT_DEVICE_PASSWORD || 'password';
 
 console.log(`\n======================================================`);
 console.log(`🚀 BẮT ĐẦU GIẢ LẬP DỮ LIỆU TELEMETRY (KỊCH BẢN: ${scenario.toUpperCase()})`);
@@ -34,7 +38,10 @@ console.log(`📍 Thiết bị: ${DEVICE_ID}`);
 console.log(`📍 Phòng mục tiêu: Ngưỡng 0°C - 4°C (Kho lạnh Biên Hoà / Sơn Trà)`);
 console.log(`======================================================\n`);
 
-const client = mqtt.connect(BROKER_URL);
+const client = mqtt.connect(BROKER_URL, {
+  username: MQTT_USERNAME,
+  password: MQTT_PASSWORD,
+});
 
 client.on('connect', () => {
   console.log(`✓ Đã kết nối MQTT Broker tại ${BROKER_URL}`);

@@ -39,8 +39,7 @@ if sys.platform == "win32":
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Response, status
 from pydantic import BaseModel, Field
 
 # Cấu hình logging chuyên nghiệp
@@ -102,7 +101,7 @@ async def lifespan(app: FastAPI):
                 )
 
             model_artifacts["loaded_at"] = datetime.now().isoformat()
-            logger.info("✅ Mô hình 'temperature_model.pkl' đã được nạp thành công vào RAM!")
+            logger.info(f"✅ Mô hình '{MODEL_PATH}' đã được nạp thành công vào RAM!")
             logger.info(f"Danh sách đặc trưng: {model_artifacts['feature_names']}")
             if model_artifacts["metrics"]:
                 logger.info(f"Độ chính xác MAE đã lưu: {model_artifacts['metrics'].get('mae', 'N/A')} °C")
@@ -123,14 +122,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Cho phép CORS khi cần kết nối frontend / microservice khác
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Không bật CORS: chỉ backend (server-to-server, trong network nội bộ của
+# docker compose) gọi service này, không có trình duyệt nào gọi trực tiếp.
 
 
 # ==============================================================================
@@ -335,9 +328,16 @@ async def root():
 
 
 @app.get("/health", tags=["Monitoring"])
-async def health_check():
-    """Kiểm tra sức khỏe hệ thống và trạng thái mô hình."""
+async def health_check(response: Response):
+    """
+    Kiểm tra sức khỏe hệ thống và trạng thái mô hình.
+    Trả 503 khi mô hình chưa nạp được (ví dụ pickle không khớp phiên bản
+    scikit-learn) để HEALTHCHECK của Docker đánh dấu container unhealthy,
+    thay vì service vẫn "chạy" nhưng mọi lần dự báo đều lỗi.
+    """
     model_loaded = model_artifacts["model"] is not None
+    if not model_loaded:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {
         "status": "HEALTHY" if model_loaded else "DEGRADED",
         "timestamp": datetime.now().isoformat(),
@@ -355,10 +355,14 @@ async def health_check():
     tags=["Prediction"],
     summary="Dự báo nhiệt độ sau 15 phút từ thông số cảm biến",
 )
-async def predict_temperature(payload: SensorDataRequest):
+def predict_temperature(payload: SensorDataRequest):
     """
     Nhận dữ liệu cảm biến hiện tại từ Backend / IoT Broker, dự báo nhiệt độ
     chuỗi lạnh sau 15 phút và trả về đánh giá rủi ro kèm khuyến nghị.
+
+    Cố ý là `def` (không phải `async def`): model.predict() là tác vụ CPU
+    đồng bộ, FastAPI chạy hàm `def` trong threadpool nên một lần dự báo
+    không chặn event loop (và các request khác như /health).
     """
     model = model_artifacts["model"]
     if model is None:
@@ -388,7 +392,7 @@ async def predict_temperature(payload: SensorDataRequest):
     try:
         X_infer = pd.DataFrame(feature_dict)[model_artifacts["feature_names"]]
         
-        # 3. Thực hiện dự báo qua RandomForestRegressor
+        # 3. Thực hiện dự báo
         raw_pred = model.predict(X_infer)[0]
         predicted_temp = float(np.round(raw_pred, 2))
 
@@ -427,10 +431,11 @@ async def predict_temperature(payload: SensorDataRequest):
         )
 
     except Exception as e:
+        # Chi tiết lỗi chỉ ghi log phía server, không trả về cho client.
         logger.error(f"Lỗi trong quá trình inference: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi nội bộ khi dự báo: {str(e)}"
+            detail="Lỗi nội bộ khi dự báo.",
         )
 
 

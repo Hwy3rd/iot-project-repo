@@ -14,6 +14,7 @@ Hệ thống giám sát & quản lý kho lạnh: theo dõi nhiệt độ/thiết
 | Lưu trữ file | MinIO (S3-compatible) |
 | Realtime | WebSocket (Socket.IO), cùng cổng với HTTP |
 | Auth | JWT qua httpOnly cookie (access + refresh token, single-session/user) |
+| Dự báo nhiệt độ | Python FastAPI + scikit-learn, service riêng — [ai-service/](ai-service/) |
 
 Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CLAUDE.md).
 
@@ -23,6 +24,7 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
 .
 ├── server/                       # NestJS backend (toàn bộ code ứng dụng)
 ├── frontend/                     # React + Vite SPA
+├── ai-service/                   # FastAPI dự báo nhiệt độ 15 phút tới (model scikit-learn)
 ├── docs/                         # Tài liệu thiết kế & vận hành
 │   ├── DEVELOPMENT.md            # Chạy môi trường dev local
 │   ├── INFRASTRUCTURE.md         # Hạ tầng production, Cloudflare Tunnel
@@ -50,6 +52,7 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
    ./run.sh stop      # tắt, giữ nguyên dữ liệu
    ./run.sh start      # bật lại
    ./run.sh dev        # bật mọi thứ trừ app + cloudflared, để tự chạy backend trên host
+   ./run.sh rebuild    # sau git pull: build lại app + worker (thêm `rebuild ai-service` nếu ai-service/ đổi)
    ./run.sh status      # xem trạng thái container
    ./run.sh logs app    # xem log
    ```
@@ -60,6 +63,7 @@ Datastore chạy bằng Docker, backend và frontend chạy trực tiếp trên 
 
 ```bash
 docker compose up -d redis mysql mongo minio mosquitto   # chỉ datastore + broker
+docker compose up -d --build ai-service                  # (tuỳ chọn) dự báo nhiệt độ AI
 cd server && cp .env.example .env    # điền các giá trị <...>
 npm install && npm run migration:run && npm run seed:admin && npm run start:dev
 # terminal khác, từ root repo:
@@ -70,7 +74,7 @@ Hoặc dùng luôn stack production đã `init.sh` (chung dữ liệu với prod
 
 ```bash
 ./run.sh stop     # nếu app/cloudflared đang chạy — `dev` không tự dừng chúng
-./run.sh dev      # up worker + datastore + broker, không up app/cloudflared
+./run.sh dev      # up worker + datastore + broker + ai-service, không up app/cloudflared
 cd server && npm run start:dev   # tự chạy backend trên host
 ```
 

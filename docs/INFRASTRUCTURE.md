@@ -40,6 +40,9 @@ Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng *
   │              ┌───────────┐                                       │
   │              │ mosquitto │◀──── host:1883 (publish ra ngoài host)│
   │              └───────────┘                                       │
+  │              ┌────────────┐                                      │
+  │              │ ai-service │◀── app gọi HTTP nội bộ (:8000)       │
+  │              └────────────┘                                      │
   └──────────────────────────────────────────────────────────────────┘
                       ▲
                 ESP32 (MQTT qua LAN)
@@ -58,6 +61,7 @@ Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng *
 | `redis`       | `redis:7-alpine`                 | `redis_db`         | 6379                | `redisdata`         | Session refresh token + queue BullMQ                                 |
 | `minio`       | `cgr.dev/chainguard/minio:latest` | `minio_bucket`    | 9000 (S3), 9001 (console) | `minio_data`  | Ảnh upload; bucket được `app` tự tạo và mở quyền đọc public. Bản build MinIO miễn phí của Chainguard (xem mục 7) |
 | `mosquitto`   | `eclipse-mosquitto:2`            | `mosquitto_broker` | 1883                | `mosquitto_data` + mount `mosquitto/mosquitto.conf` (read-only) | Broker MQTT cho thiết bị |
+| `ai-service`  | build từ `ai-service/Dockerfile` | `ai_service`       | 8000 (HTTP)         | —                   | Dự báo nhiệt độ 15 phút (FastAPI + scikit-learn), chỉ `app` gọi. `mem_limit: 512m`. Xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b |
 | `cloudflared` | `cloudflare/cloudflared:latest`  | `cloudflared`      | —                   | —                   | **Chỉ có ở production**                                              |
 
 Mọi service đều đặt `restart: unless-stopped`: tự khởi động lại khi crash hoặc khi Docker daemon khởi động lại, trừ khi đã bị `stop` thủ công.
@@ -88,6 +92,9 @@ app  ── migration:run ── node dist/main.js ── healthy (mở được
 | `redis`     | `redis-cli ping`                                                   |
 | `minio`     | `mc ready local`                                                   |
 | `mosquitto` | `mosquitto_sub` (tài khoản `MQTT_USERNAME`) nhận 1 message trên `$SYS/#` |
+| `ai-service` | `HEALTHCHECK` trong Dockerfile gọi `/health`; trả 503 (unhealthy) khi model không nạp được |
+
+`ai-service` nằm ngoài chuỗi `depends_on`: `app` khởi động và chạy bình thường khi nó chưa lên hoặc đang unhealthy, chỉ là không có dự báo.
 
 Vì `app` chỉ mở cổng 3000 **sau khi** migration xong, trạng thái "app healthy" đồng nghĩa với "schema đã ở phiên bản mới nhất". `worker` dựa vào điều này để không đọc schema cũ. Cách làm này chỉ an toàn khi có **đúng 1 container `app`**. Lý do và hướng tách migration khi scale xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 6.
 
@@ -108,6 +115,7 @@ Tất cả service nằm trong network mặc định của compose project và g
 | 9000      | `minio`     | ✅  | `127.0.0.1`         | S3 API / tải ảnh                       |
 | 9001      | `minio`     | ✅  | `127.0.0.1`         | MinIO web console                      |
 | 1883      | `mosquitto` | ✅  | ✅ (mọi interface)  | Thiết bị ESP32 gửi telemetry           |
+| 8000      | `ai-service` | ✅ | `127.0.0.1`         | Backend chạy trên host gọi AI (`./run.sh dev`); `/docs` để thử API |
 
 Ở production, truy cập từ bên ngoài máy chủ: API và ảnh MinIO **chỉ** đi qua Cloudflare Tunnel, datastore thì không có đường nào. Các cổng `127.0.0.1` chỉ để dùng client (DBeaver, `redis-cli`, MinIO console...) ngay trên máy chủ, xem mục 8.
 
@@ -177,6 +185,7 @@ Hệ quả của cách (2): ký tự `$` trong giá trị bị hiểu là tham c
 | Web Push            | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`                           | Sinh cặp khoá riêng cho production: `npx web-push generate-vapid-keys`                    |
 | Giới hạn đăng nhập  | `LOGIN_MAX_FAILED_PER_ACCOUNT_IP/PER_IP/PER_ACCOUNT`, `LOGIN_FAILED_WINDOW_MINUTES`, `LOGIN_LOCKOUT_STEPS_MINUTES`, `LOGIN_LOCKOUT_RESET_HOURS`, `LOGIN_ACCOUNT_LOCKOUT_MINUTES` | Tuỳ chọn, mặc định 5/30/50 lần, cửa sổ 15 phút, khoá tăng dần 1/5/15/60 phút (quên sau 24 giờ), khoá theo username 15 phút; xem [API_DESIGN.md](API_DESIGN.md) mục 2 |
 | Chatbot (LLM)       | `GEMINI_API_KEY`, `LLM_*`, `CHATBOT_RATE_LIMIT_*`, `CHATBOT_DOCS_DIR`              | `CHATBOT_DOCS_DIR=/app/docs` khớp với đường dẫn copy docs trong Dockerfile                |
+| Dự báo AI           | `AI_SERVICE_URL`                                                                   | Không cần đặt trong `.env` root: compose đã đặt `http://ai-service:8000` cho `app`. Chỉ `server/.env` cần (`http://localhost:8000`) |
 | Seed                | `SEED_ADMIN_USERNAME`, `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_USERNAME`, `SEED_TECHNICIAN_USERNAME`, `SEED_STAFF_USERNAME` | Chỉ dùng lúc `init.sh`; cả 4 tài khoản dùng chung `SEED_ADMIN_PASSWORD`; nên xoá/đổi khỏi `.env` sau lần đầu |
 | Tunnel              | `CLOUDFLARE_TUNNEL_TOKEN`                                                          | Chỉ `cloudflared` đọc                                                                     |
 
@@ -257,7 +266,7 @@ Yêu cầu: Docker + Docker Compose v2. Máy chủ **không cần** cài Node/pn
 | `./run.sh status`            | `compose ps -a`                                                                 |
 | `./run.sh logs [svc]`        | Theo dõi log (200 dòng cuối)                                                     |
 | `./run.sh down`              | Xoá container, **giữ volume**                                                   |
-| `./run.sh rebuild [svc]`     | Build lại image backend từ `./server` rồi thay `app` + `worker`, hoặc chỉ một trong hai. Chờ container mới healthy (tối đa 300 giây) |
+| `./run.sh rebuild [svc]`     | Build lại image backend từ `./server` rồi thay `app` + `worker`, hoặc chỉ một trong hai. `./run.sh rebuild ai-service` build lại `./ai-service`. Chờ container mới healthy (tối đa 300 giây) |
 
 Chỉ `rebuild` mới build lại image; các lệnh khác dùng image có sẵn. Mỗi lần `app` khởi động nó chạy `migration:run` (không có gì mới thì bỏ qua).
 
@@ -269,6 +278,8 @@ git pull
 ```
 
 Lệnh này build lại image `app`/`worker` từ `./server` và chỉ thay hai container đó (`--no-deps`). `app` tự chạy migration mới trước khi được coi là healthy. Trong lúc `app` được thay, API và WebSocket sẽ gián đoạn ngắn vì chỉ có một replica.
+
+Nếu bản mới có sửa `ai-service/` (code, thư viện, hoặc file model), chạy thêm `./run.sh rebuild ai-service`. Trong lúc nó được thay, hệ thống vẫn chạy bình thường, chỉ thiếu dự báo.
 
 `rebuild` **không đụng** datastore hay `cloudflared`, kể cả khi định nghĩa của chúng trong compose đã đổi (ví dụ đổi image MinIO). Những thay đổi đó phải làm riêng và có chủ đích (`docker compose -f docker-compose.production.yml up -d <svc>`), sau khi đã làm các bước chuẩn bị cần thiết, như chown `minio_data` ở mục 7.
 
@@ -287,7 +298,7 @@ Muốn mở MinIO console từ xa lâu dài thì thêm một public hostname ri�
 ### Dev trên máy cá nhân
 
 ```bash
-docker compose up -d redis mysql mongo minio mosquitto   # chỉ datastore + broker
+docker compose up -d redis mysql mongo minio mosquitto   # chỉ datastore + broker (thêm ai-service nếu cần dự báo)
 cd server && pnpm install && pnpm migration:run && pnpm start:dev
 ```
 
@@ -328,7 +339,7 @@ Script chạy lại an toàn. Khi chuyển sang WiFi hoặc hotspot mới thì c
 - Cổng datastore/API ở production chỉ bind `127.0.0.1`, không lộ ra mạng. Truy cập public đi qua Cloudflare (HTTPS, ẩn IP gốc).
 - Credential datastore là bắt buộc ở production, không có giá trị mặc định.
 - Redis bật `requirepass`; MQTT broker bắt buộc đăng nhập và có ACL tách quyền backend/thiết bị.
-- Container `app`/`worker` chạy bằng user `node` (không phải root), có `tini` làm PID 1 để forward signal và dọn zombie process.
+- Container `app`/`worker` chạy bằng user `node` (không phải root), có `tini` làm PID 1 để forward signal và dọn zombie process. `ai-service` chạy bằng user `aiservice`, không bật CORS, và không trả chi tiết lỗi nội bộ cho client.
 - Image runner chỉ chứa `dist/` và production dependencies, không có source hay devDependencies.
 
 Chưa có, cần làm trước khi mở rộng ra môi trường không tin cậy:
@@ -338,6 +349,7 @@ Chưa có, cần làm trước khi mở rộng ra môi trường không tin cậ
 | MQTT chưa có TLS, thiết bị dùng chung 1 tài khoản | Ai nghe lén được LAN sẽ thấy credential; lộ credential của một thiết bị là giả được telemetry của mọi thiết bị | Thêm listener TLS 8883; cấp credential riêng cho từng thiết bị (username = `unique_id`, ACL `pattern write devices/%u/telemetry`) |
 | Bucket MinIO cho đọc public              | Ai có URL đều xem được ảnh (tên object là thông tin duy nhất cần biết)                   | Chấp nhận được với ảnh không nhạy cảm; nếu cần riêng tư thì chuyển sang presigned URL |
 | Image dùng tag `latest` (`minio`, `cloudflared`) | Build/pull lại có thể kéo phiên bản mới ngoài ý muốn                             | Pin phiên bản cụ thể                                                           |
+| `ai-service` không xác thực request       | Ai tới được cổng 8000 đều gọi được API dự báo. Ở production chỉ bind `127.0.0.1` nên chỉ máy chủ gọi được; ở dev thì bind mọi interface | Thêm token dùng chung qua header nếu cần mở rộng ra ngoài máy chủ |
 | Chưa có backup tự động                   | Mất dữ liệu khi hỏng ổ đĩa hoặc lỡ xoá volume                                            | Cron chạy các lệnh ở mục 7 và đẩy bản backup ra ngoài máy chủ                  |
 | Chỉ 1 replica `app`, 1 máy chủ           | Gián đoạn khi deploy hoặc khi máy chủ chết                                               | Tách migration thành job riêng trước khi scale (xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 6) |
 | Chưa có giám sát/cảnh báo hạ tầng        | Không biết khi container restart liên tục hoặc đĩa đầy                                   | Xem [LOGGING_MONITORING.md](LOGGING_MONITORING.md) (chưa có nội dung)          |

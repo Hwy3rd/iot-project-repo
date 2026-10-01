@@ -34,3 +34,10 @@ export const loginStrikeKey = (scope: string, id: string) =>
 // Present (TTL = the longest current lockout) while any bucket tied to this
 // account is full — what the Users page reads to show a temporary block.
 export const loginBlockedKey = (account: string) => `login:blocked:${account}`;
+
+// Latest AI forecast for a cold room, written after each ingested reading
+// (TelemetryService) and read by the chart (ColdRoomStatusService). Expires
+// after AI_PREDICTION_TTL_SECONDS, so a room whose devices stopped
+// reporting shows no forecast instead of a stale one.
+export const aiPredictionKey = (coldRoomId: string) =>
+  `ai:prediction:${coldRoomId}`;

@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { dayjs, formatNumber, formatTemp } from '@/lib/format'
+import { AI_RISK_LEVEL_LABEL, AI_VIOLATION_LABEL } from '@/lib/labels'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import {
@@ -116,7 +117,7 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
         </p>
         {meta.willExceedThreshold ? (
           <p className="mt-1 text-xs font-semibold text-destructive">
-            ⚠️ Nguy cơ {meta.violationType === 'OVERHEAT' ? 'quá nhiệt' : 'vượt ngưỡng sàn'} (Mức rủi ro: {meta.riskLevel})
+            ⚠️ {AI_VIOLATION_LABEL[meta.violationType]} (Mức rủi ro: {AI_RISK_LEVEL_LABEL[meta.riskLevel]})
           </p>
         ) : (
           <p className="mt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">

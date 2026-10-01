@@ -9,6 +9,13 @@ import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
 import { Repository } from 'typeorm';
+import {
+  AI_PREDICTION_HISTORY_SAMPLES,
+  AI_PREDICTION_HISTORY_WINDOW_MS,
+  AI_PREDICTION_MIN_SAMPLES,
+  AI_PREDICTION_SUPPORTED_MAX_TEMP,
+  AI_PREDICTION_SUPPORTED_MIN_TEMP,
+} from '../../libs/constants/ai-prediction.constant';
 import { AlertType } from '../../libs/constants/alert.constant';
 import { DeviceStatus } from '../../libs/constants/device.constant';
 import {
@@ -31,6 +38,7 @@ import {
   type ColdRoomReadingEvent,
 } from '../../libs/constants/realtime.constant';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { businessHour } from '../work-shifts/work-shift-schedule';
 import { TelemetryHourly } from './schemas/telemetry-hourly.schema';
 import { TelemetryRaw } from './schemas/telemetry-raw.schema';
 import { floorToHour } from './telemetry.util';
@@ -50,9 +58,16 @@ const isDuplicateKeyError = (error: unknown): boolean =>
   error !== null &&
   (error as { code?: number }).code === MONGO_DUPLICATE_KEY;
 
+interface PredictionInput {
+  deviceId: string;
+  coldRoom: ColdRoom;
+  ts: Date;
+}
+
 @Injectable()
 export class TelemetryService {
   private readonly logger = new Logger(TelemetryService.name);
+  private readonly predictionsInFlight = new Set<string>();
 
   constructor(
     @InjectModel(TelemetryRaw.name)
@@ -130,12 +145,15 @@ export class TelemetryService {
         outOfRange,
         doorOpen: sample.doorOpen,
       });
-      await this.evaluatePredictedAlert({
-        deviceId: device.id,
-        coldRoom: device.coldRoom,
-        temperature,
-        ts: sample.ts,
-      });
+      // Already out of range: TEMPERATURE_OUT_OF_RANGE is open, so a
+      // forecast of the same breach would only notify people twice.
+      if (!outOfRange) {
+        this.schedulePrediction({
+          deviceId: device.id,
+          coldRoom: device.coldRoom,
+          ts: sample.ts,
+        });
+      }
     }
     this.announceReading({
       warehouseId: device.coldRoom.warehouseId,
@@ -198,28 +216,58 @@ export class TelemetryService {
     }
   }
 
-  // Evaluates AI 15-minute temperature forecast. Raises TEMPERATURE_PREDICTED
-  // when an upcoming breach is forecast; auto-resolves when forecast is safe.
-  private async evaluatePredictedAlert(input: {
-    deviceId: string;
-    coldRoom: ColdRoom;
-    temperature: number;
-    ts: Date;
-  }): Promise<void> {
-    const { deviceId, coldRoom, temperature, ts } = input;
-    const { tempMin, tempMax } = coldRoom;
+  // Runs the AI forecast in the background: ingest (and with it the realtime
+  // push and the device heartbeat in MqttIngestService) never waits on the
+  // AI service. At most one forecast per device is in flight — a reading
+  // that arrives meanwhile is skipped, the next one picks the device up again.
+  // Rooms outside the model's trained range get none (see
+  // AI_PREDICTION_SUPPORTED_MIN_TEMP).
+  private schedulePrediction(input: PredictionInput) {
+    const { tempMin, tempMax } = input.coldRoom;
+    const supported =
+      tempMin >= AI_PREDICTION_SUPPORTED_MIN_TEMP &&
+      tempMax <= AI_PREDICTION_SUPPORTED_MAX_TEMP;
+    if (!supported || this.predictionsInFlight.has(input.deviceId)) {
+      return;
+    }
+    this.predictionsInFlight.add(input.deviceId);
+    void this.evaluatePredictedAlert(input).finally(() =>
+      this.predictionsInFlight.delete(input.deviceId),
+    );
+  }
+
+  // Evaluates AI 15-minute temperature forecast. Stores it for the cold-room
+  // chart, raises TEMPERATURE_PREDICTED when an upcoming breach is forecast
+  // and auto-resolves it once the forecast is back inside the hysteresis
+  // band — same rule as TEMPERATURE_OUT_OF_RANGE, so a forecast hovering at
+  // a threshold doesn't reopen (and re-notify) the alert on every reading.
+  // Never throws.
+  private async evaluatePredictedAlert(input: PredictionInput): Promise<void> {
+    const { deviceId, coldRoom, ts } = input;
+    const { tempMin, tempMax, hysteresis } = coldRoom;
 
     try {
+      const features = await this.trendFeatures(deviceId, ts);
+      if (!features) {
+        return;
+      }
+
       const prediction = await this.aiPredictionService.predict({
-        temperature,
+        ...features,
         temp_min: tempMin,
         temp_max: tempMax,
-        hour_of_day: ts.getHours(),
+        hour_of_day: businessHour(ts),
       });
 
       if (!prediction) {
         return;
       }
+
+      await this.aiPredictionService.saveLatest(
+        coldRoom.id,
+        deviceId,
+        prediction,
+      );
 
       if (prediction.will_exceed_threshold) {
         await this.alertsService.raise({
@@ -236,7 +284,13 @@ export class TelemetryService {
             recommendation: prediction.recommendation,
           },
         });
-      } else {
+        return;
+      }
+
+      const predicted = prediction.predicted_temp_15m;
+      const recovered =
+        predicted <= tempMax - hysteresis && predicted >= tempMin + hysteresis;
+      if (recovered) {
         await this.alertsService.resolveAuto({
           type: AlertType.TEMPERATURE_PREDICTED,
           deviceId,
@@ -251,6 +305,48 @@ export class TelemetryService {
         }`,
       );
     }
+  }
+
+  // The model's inputs besides the thresholds, from the device's own valid
+  // readings up to `ts` (the one just stored included). Uses the
+  // { deviceId, ts } index. Null when there are too few recent readings to
+  // tell a trend — no forecast beats one fed a made-up delta of 0.
+  private async trendFeatures(
+    deviceId: string,
+    ts: Date,
+  ): Promise<{
+    temperature: number;
+    temp_delta: number;
+    temp_moving_avg: number;
+  } | null> {
+    const rows = await this.rawModel
+      .find(
+        {
+          deviceId,
+          ts: {
+            $gt: new Date(ts.getTime() - AI_PREDICTION_HISTORY_WINDOW_MS),
+            $lte: ts,
+          },
+          sensorFault: false,
+          temperature: { $ne: null },
+        },
+        { temperature: 1 },
+      )
+      .sort({ ts: -1 })
+      .limit(AI_PREDICTION_HISTORY_SAMPLES)
+      .lean()
+      .exec();
+
+    const temps = rows.map((row) => row.temperature as number);
+    if (temps.length < AI_PREDICTION_MIN_SAMPLES) {
+      return null;
+    }
+    const average = temps.reduce((sum, t) => sum + t, 0) / temps.length;
+    return {
+      temperature: temps[0],
+      temp_delta: Math.round((temps[0] - temps[1]) * 100) / 100,
+      temp_moving_avg: Math.round(average * 100) / 100,
+    };
   }
 
   // Live update for open cold-room/warehouse grids. Best effort: the sample

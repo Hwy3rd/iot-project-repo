@@ -187,12 +187,17 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # Temperature forecast (see ai-service/). Optional for the app: when it is
+  # down, ingest and the charts work as usual, only forecasts are missing —
+  # hence no depends_on from app. Healthcheck lives in its Dockerfile.
   ai-service:
     build:
       context: ./ai-service
     container_name: ai_service
     ports:
       - "8000:8000"
+    # pandas + scikit-learn; caps it so it can't starve the datastores.
+    mem_limit: 512m
     restart: unless-stopped
 
 volumes:

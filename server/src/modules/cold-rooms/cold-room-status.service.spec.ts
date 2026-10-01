@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { In } from 'typeorm';
 import { UserRole } from '../../libs/constants/user.constant';
+import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { Alert } from '../alerts/entities/alert.entity';
 import { Device } from '../devices/entities/device.entity';
 import { TelemetryRaw } from '../telemetry/schemas/telemetry-raw.schema';
@@ -27,15 +28,16 @@ const rawQuery = (rows: unknown[]) => {
   return qb;
 };
 
-import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
-
 describe('ColdRoomStatusService', () => {
   let service: ColdRoomStatusService;
   const coldRooms = { find: jest.fn(), findOne: jest.fn() };
   const devices = { createQueryBuilder: jest.fn() };
   const alerts = { createQueryBuilder: jest.fn() };
   const raw = { aggregate: jest.fn() };
-  const aiPrediction = { predict: jest.fn().mockResolvedValue(null) };
+  const aiPrediction = {
+    predict: jest.fn(),
+    getLatest: jest.fn().mockResolvedValue(null),
+  };
 
   const access = (warehouseIds: string[] | null) => ({
     userId: 'u1',
@@ -197,51 +199,40 @@ describe('ColdRoomStatusService', () => {
       });
     });
 
-    it('includes AI prediction when prediction service succeeds', async () => {
+    it('returns the stored AI prediction without calling the AI service', async () => {
       coldRooms.findOne.mockResolvedValue({
         id: 'r1',
         tempMin: -22,
         tempMax: -18,
       });
-      raw.aggregate
-        .mockResolvedValueOnce([
-          {
-            _id: new Date(),
-            avg: -16.5,
-            min: -17,
-            max: -16,
-            samples: 5,
-            outOfRange: 1,
-            doorOpen: 0,
-            sensorFault: 0,
-          },
-        ])
-        .mockResolvedValueOnce([
-          {
-            _id: 'r1',
-            ts: new Date(),
-            temperature: -16.5,
-            doorOpen: false,
-            sensorFault: false,
-            outOfRange: true,
-          },
-        ]);
-      aiPrediction.predict.mockResolvedValueOnce({
-        predicted_temp_15m: -15.8,
-        will_exceed_threshold: true,
-        violation_type: 'OVERHEAT',
-        risk_level: 'HIGH',
-        recommendation: 'Check compressor and ensure door is closed',
-      });
-
-      const series = await service.findSeries('r1', '1h');
-      expect(series.prediction).toEqual({
+      raw.aggregate.mockResolvedValueOnce([]);
+      const stored = {
         predictedTemp15m: -15.8,
         willExceedThreshold: true,
         violationType: 'OVERHEAT',
-        riskLevel: 'HIGH',
+        riskLevel: 'CRITICAL',
         recommendation: 'Check compressor and ensure door is closed',
+      };
+      aiPrediction.getLatest.mockResolvedValueOnce(stored);
+
+      const series = await service.findSeries('r1', '1h');
+
+      expect(aiPrediction.getLatest).toHaveBeenCalledWith('r1');
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
+      expect(series.prediction).toEqual(stored);
+    });
+
+    it('returns a null prediction when none is stored', async () => {
+      coldRooms.findOne.mockResolvedValue({
+        id: 'r1',
+        tempMin: -22,
+        tempMax: -18,
       });
+      raw.aggregate.mockResolvedValueOnce([]);
+
+      const series = await service.findSeries('r1', '1h');
+
+      expect(series.prediction).toBeNull();
     });
   });
 });

@@ -34,6 +34,7 @@ describe('TelemetryService', () => {
   let devicesRepository: { findOne: jest.Mock; existsBy: jest.Mock };
   let alertsService: { raise: jest.Mock; resolveAuto: jest.Mock };
   let realtime: { emitToWarehouse: jest.Mock };
+  let aiPrediction: { predict: jest.Mock; saveLatest: jest.Mock };
 
   // tempMax=-15, hysteresis=1 → the alert only auto-resolves at <= -16, not
   // merely back inside [-20,-15] — see the "hysteresis band" tests below.
@@ -81,7 +82,10 @@ describe('TelemetryService', () => {
         },
         {
           provide: AiPredictionService,
-          useValue: { predict: jest.fn().mockResolvedValue(null) },
+          useValue: {
+            predict: jest.fn().mockResolvedValue(null),
+            saveLatest: jest.fn(),
+          },
         },
       ],
     }).compile();
@@ -92,6 +96,7 @@ describe('TelemetryService', () => {
     devicesRepository = module.get(getRepositoryToken(Device));
     alertsService = module.get(AlertsService);
     realtime = module.get(RealtimeGateway);
+    aiPrediction = module.get(AiPredictionService);
   });
 
   describe('ingest', () => {
@@ -365,6 +370,200 @@ describe('TelemetryService', () => {
 
       expect(alertsService.raise).not.toHaveBeenCalled();
       expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('AI prediction wiring', () => {
+    // A chill room — inside the range the current model was trained on
+    // (see AI_PREDICTION_SUPPORTED_MIN_TEMP); activeDevice's frozen room isn't.
+    const chillDevice = {
+      ...activeDevice,
+      coldRoom: {
+        id: 'c1',
+        warehouseId: 'w1',
+        tempMin: 0,
+        tempMax: 4,
+        hysteresis: 0.5,
+      },
+    };
+    const chillSample = { ...sample, temperature: 3 };
+    const breach = {
+      predicted_temp_15m: 4.6,
+      will_exceed_threshold: true,
+      violation_type: 'OVERHEAT',
+      risk_level: 'CRITICAL',
+      recommendation: 'Check the door',
+    };
+    const safe = (predicted: number) => ({
+      ...breach,
+      predicted_temp_15m: predicted,
+      will_exceed_threshold: false,
+      violation_type: 'NONE',
+      risk_level: 'NORMAL',
+    });
+    // Lets the background forecast (fire-and-forget) run to completion.
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+    let history: ReturnType<typeof createQueryChain>;
+
+    beforeEach(() => {
+      devicesRepository.findOne.mockResolvedValue(chillDevice);
+      rawModel.create.mockResolvedValue({});
+      // Newest first, the just-stored sample included.
+      history = createQueryChain([
+        { temperature: 3 },
+        { temperature: 2.5 },
+        { temperature: 2 },
+        { temperature: 2 },
+      ]);
+      rawModel.find.mockReturnValue(history);
+    });
+
+    it('does not wait for the AI service before returning and pushing the reading', async () => {
+      aiPrediction.predict.mockReturnValue(new Promise(() => {}));
+
+      await expect(service.ingest('d1', chillSample)).resolves.toEqual({
+        stored: true,
+      });
+      expect(realtime.emitToWarehouse).toHaveBeenCalled();
+
+      await flush();
+      expect(aiPrediction.predict).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends trend features from the device history and the business-timezone hour', async () => {
+      await service.ingest('d1', chillSample);
+      await flush();
+
+      const [filter] = rawModel.find.mock.calls[0] as [Record<string, unknown>];
+      expect(filter).toEqual({
+        deviceId: 'd1',
+        ts: {
+          $gt: new Date(chillSample.ts.getTime() - 15 * 60_000),
+          $lte: chillSample.ts,
+        },
+        sensorFault: false,
+        temperature: { $ne: null },
+      });
+      expect(history.sort).toHaveBeenCalledWith({ ts: -1 });
+      expect(history.limit).toHaveBeenCalledWith(5);
+      expect(aiPrediction.predict).toHaveBeenCalledWith({
+        temperature: 3,
+        temp_delta: 0.5,
+        temp_moving_avg: 2.38,
+        temp_min: 0,
+        temp_max: 4,
+        // sample.ts is 10:00Z → 17:00 in UTC+7.
+        hour_of_day: 17,
+      });
+    });
+
+    it('makes no forecast for a room outside the range the model was trained on', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+
+      await service.ingest('d1', sample);
+      await flush();
+
+      expect(rawModel.find).not.toHaveBeenCalled();
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
+    });
+
+    it('makes no forecast without enough recent readings to tell a trend', async () => {
+      rawModel.find.mockReturnValue(createQueryChain([{ temperature: 3 }]));
+
+      await service.ingest('d1', chillSample);
+      await flush();
+
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
+    });
+
+    it('makes no forecast once the reading is already out of range', async () => {
+      await service.ingest('d1', { ...chillSample, temperature: 5 });
+      await flush();
+
+      expect(rawModel.find).not.toHaveBeenCalled();
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
+      expect(alertsService.raise).toHaveBeenCalledTimes(1);
+      expect(alertsService.raise).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: AlertType.TEMPERATURE_OUT_OF_RANGE,
+        }),
+      );
+    });
+
+    it('stores the forecast and raises TEMPERATURE_PREDICTED on a forecast breach', async () => {
+      aiPrediction.predict.mockResolvedValue(breach);
+
+      await service.ingest('d1', chillSample);
+      await flush();
+
+      expect(aiPrediction.saveLatest).toHaveBeenCalledWith('c1', 'd1', breach);
+      expect(alertsService.raise).toHaveBeenCalledWith({
+        coldRoomId: 'c1',
+        deviceId: 'd1',
+        type: AlertType.TEMPERATURE_PREDICTED,
+        triggerValue: 4.6,
+        threshold: 4,
+        details: {
+          predictedTemp15m: 4.6,
+          violationType: 'OVERHEAT',
+          riskLevel: 'CRITICAL',
+          recommendation: 'Check the door',
+        },
+      });
+    });
+
+    it('keeps the forecast alert open while the forecast is safe but inside the hysteresis gap', async () => {
+      // Below tempMax (4) but warmer than the 3.5 recovery boundary.
+      aiPrediction.predict.mockResolvedValue(safe(3.8));
+
+      await service.ingest('d1', chillSample);
+      await flush();
+
+      expect(aiPrediction.saveLatest).toHaveBeenCalled();
+      expect(alertsService.raise).not.toHaveBeenCalled();
+      expect(alertsService.resolveAuto).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: AlertType.TEMPERATURE_PREDICTED }),
+      );
+    });
+
+    it('auto-resolves the forecast alert once the forecast is back inside the hysteresis band', async () => {
+      aiPrediction.predict.mockResolvedValue(safe(3.5));
+
+      await service.ingest('d1', chillSample);
+      await flush();
+
+      expect(alertsService.resolveAuto).toHaveBeenCalledWith({
+        type: AlertType.TEMPERATURE_PREDICTED,
+        deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
+      });
+    });
+
+    it('skips a new forecast while one is still in flight for the device', async () => {
+      let finish: (value: null) => void = () => {};
+      aiPrediction.predict.mockReturnValueOnce(
+        new Promise((resolve) => (finish = resolve)),
+      );
+
+      await service.ingest('d1', chillSample);
+      await flush();
+      await service.ingest('d1', { ...chillSample, ts: new Date() });
+      await flush();
+      expect(aiPrediction.predict).toHaveBeenCalledTimes(1);
+
+      finish(null);
+      await flush();
+      await service.ingest('d1', { ...chillSample, ts: new Date() });
+      await flush();
+      expect(aiPrediction.predict).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not forecast a sensor-fault sample', async () => {
+      await service.ingest('d1', { ...chillSample, sensorFault: true });
+      await flush();
+
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
     });
   });
 
