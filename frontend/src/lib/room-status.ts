@@ -32,5 +32,20 @@ export function tempState(latest: ColdRoomStatus['latest'], now = Date.now()): T
   return latest.outOfRange ? 'out' : 'ok'
 }
 
+/**
+ * Fan state from the latest reading, or null when the device doesn't report
+ * it (older firmware, simulators). A power fault is only reported while the
+ * fan is switched on — off with the door open is normal.
+ */
+export function fanState(
+  latest: ColdRoomStatus['latest'],
+): { label: string; tone: Tone; fault: boolean } | null {
+  if (!latest || latest.fanOn == null) return null
+  if (latest.fanPowerFault) return { label: 'Mất nguồn quạt', tone: 'danger', fault: true }
+  return latest.fanOn
+    ? { label: 'Quạt chạy', tone: 'success', fault: false }
+    : { label: 'Quạt tắt', tone: 'neutral', fault: false }
+}
+
 /** Devices that need attention, for the card footers. */
 export const PROBLEM_DEVICE_STATUSES: DeviceStatus[] = ['offline', 'fault', 'maintenance']

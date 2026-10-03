@@ -27,4 +27,19 @@ export class TelemetryHourlyResponseDto {
 
   @Expose()
   sensorErrorCount!: number;
+
+  @Expose()
+  avgHumidity!: number | null;
+
+  @Expose()
+  minHumidity!: number | null;
+
+  @Expose()
+  maxHumidity!: number | null;
+
+  @Expose()
+  doorOpenCount!: number | null;
+
+  @Expose()
+  fanPowerFaultCount!: number | null;
 }

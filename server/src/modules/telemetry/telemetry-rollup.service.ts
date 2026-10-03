@@ -55,6 +55,15 @@ export class TelemetryRollupService {
             maxTemp: { $max: '$temperature' },
             outOfRangeCount: { $sum: { $cond: ['$outOfRange', 1, 0] } },
             sensorErrorCount: { $sum: { $cond: ['$sensorFault', 1, 0] } },
+            // Same null-skipping as the temperature stats: null when no
+            // sample of the hour reported humidity.
+            avgHumidity: { $avg: '$humidity' },
+            minHumidity: { $min: '$humidity' },
+            maxHumidity: { $max: '$humidity' },
+            doorOpenCount: { $sum: { $cond: ['$doorOpen', 1, 0] } },
+            fanPowerFaultCount: {
+              $sum: { $cond: ['$fanPowerFault', 1, 0] },
+            },
           },
         },
         {
@@ -71,6 +80,11 @@ export class TelemetryRollupService {
             maxTemp: 1,
             outOfRangeCount: 1,
             sensorErrorCount: 1,
+            avgHumidity: 1,
+            minHumidity: 1,
+            maxHumidity: 1,
+            doorOpenCount: 1,
+            fanPowerFaultCount: 1,
             computedAt: '$$NOW',
           },
         },

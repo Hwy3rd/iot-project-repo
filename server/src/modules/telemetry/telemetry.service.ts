@@ -49,7 +49,26 @@ export interface TelemetrySample {
   temperature: number | null;
   doorOpen: boolean;
   sensorFault: boolean;
+  // Optional device state (see TelemetryMessageDto); omitted = not reported.
+  humidity?: number | null;
+  fanOn?: boolean | null;
+  fanVoltage?: number | null;
+  fanPowerFault?: boolean | null;
+  alarmActive?: boolean | null;
 }
+
+// Stored as-is, except that "not reported" is always null (never
+// undefined) and a non-finite number counts as not reported.
+const finiteOrNull = (value: number | null | undefined) =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
+
+const deviceState = (sample: TelemetrySample) => ({
+  humidity: finiteOrNull(sample.humidity),
+  fanOn: sample.fanOn ?? null,
+  fanVoltage: finiteOrNull(sample.fanVoltage),
+  fanPowerFault: sample.fanPowerFault ?? null,
+  alarmActive: sample.alarmActive ?? null,
+});
 
 const MONGO_DUPLICATE_KEY = 11000;
 
@@ -117,6 +136,7 @@ export class TelemetryService {
 
     const outOfRange =
       temperature !== null && (temperature < tempMin || temperature > tempMax);
+    const state = deviceState(sample);
 
     try {
       await this.rawModel.create({
@@ -127,6 +147,7 @@ export class TelemetryService {
         doorOpen: sample.doorOpen,
         sensorFault: !hasValidReading,
         outOfRange,
+        ...state,
       });
     } catch (error) {
       if (isDuplicateKeyError(error)) {
@@ -155,6 +176,11 @@ export class TelemetryService {
         });
       }
     }
+    await this.evaluateFanPowerAlert({
+      deviceId: device.id,
+      coldRoom: device.coldRoom,
+      ...state,
+    });
     this.announceReading({
       warehouseId: device.coldRoom.warehouseId,
       coldRoomId: device.coldRoom.id,
@@ -165,9 +191,45 @@ export class TelemetryService {
         doorOpen: sample.doorOpen,
         sensorFault: !hasValidReading,
         outOfRange,
+        ...state,
       },
     });
     return { stored: true };
+  }
+
+  // DEVICE_FAULT for the fan's power supply, as judged by the device itself
+  // (fanPowerFault: the fan is switched on but its supply dropped or spiked).
+  // Raised on a fault sample, refreshed with the latest voltage while it
+  // lasts, and only cleared by a sample that shows the fan running on a
+  // healthy supply — a fan switched off (door open) proves nothing either
+  // way, and a device that doesn't report fan state (null) is ignored, so
+  // neither closes an open alert. One DEVICE_FAULT per device (see
+  // buildActiveKey); `details.kind` says which part failed.
+  private async evaluateFanPowerAlert(input: {
+    deviceId: string;
+    coldRoom: ColdRoom;
+    fanOn: boolean | null;
+    fanVoltage: number | null;
+    fanPowerFault: boolean | null;
+  }): Promise<void> {
+    const { deviceId, coldRoom, fanOn, fanVoltage, fanPowerFault } = input;
+
+    if (fanPowerFault === true) {
+      await this.alertsService.raise({
+        coldRoomId: coldRoom.id,
+        deviceId,
+        type: AlertType.DEVICE_FAULT,
+        // Not triggerValue: every alert view formats that as a temperature.
+        details: { kind: 'fan_power', fanVoltage },
+      });
+    } else if (fanPowerFault === false && fanOn === true) {
+      await this.alertsService.resolveAuto({
+        type: AlertType.DEVICE_FAULT,
+        deviceId,
+        coldRoomId: coldRoom.id,
+        warehouseId: coldRoom.warehouseId,
+      });
+    }
   }
 
   // Reacts to a single valid reading: raises/refreshes the alert while out
@@ -175,9 +237,10 @@ export class TelemetryService {
   // hysteresis band (not merely back inside [tempMin, tempMax]) so it
   // doesn't flap open/closed right at the edge — mirrors the fan's own
   // hysteresis behaviour (see docs/system-design.md §13b). A sensor-fault
-  // sample (temperature === null) is skipped entirely: the DEVICE_FAULT
-  // alert type isn't wired up yet (see docs/system-design.md's alerts
-  // section), and we don't want a fault reading to be misread as "recovered".
+  // sample (temperature === null) is skipped entirely: a sensor fault doesn't
+  // raise DEVICE_FAULT yet (only the fan supply does, see
+  // evaluateFanPowerAlert), and we don't want a fault reading to be misread
+  // as "recovered".
   private async evaluateTemperatureAlert(input: {
     deviceId: string;
     coldRoom: ColdRoom;

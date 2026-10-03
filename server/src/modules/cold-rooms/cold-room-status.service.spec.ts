@@ -105,6 +105,12 @@ describe('ColdRoomStatusService', () => {
           doorOpen: false,
           sensorFault: false,
           outOfRange: false,
+          // Stored before the device state fields existed -> not reported.
+          humidity: null,
+          fanOn: null,
+          fanVoltage: null,
+          fanPowerFault: null,
+          alarmActive: null,
         },
         devices: { total: 3, active: 2, offline: 1 },
         activeAlerts: 0,

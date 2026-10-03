@@ -21,4 +21,20 @@ export class TelemetryRawResponseDto {
 
   @Expose()
   outOfRange!: boolean;
+
+  // null = not reported by the device (see telemetry-raw.schema.ts).
+  @Expose()
+  humidity!: number | null;
+
+  @Expose()
+  fanOn!: boolean | null;
+
+  @Expose()
+  fanVoltage!: number | null;
+
+  @Expose()
+  fanPowerFault!: boolean | null;
+
+  @Expose()
+  alarmActive!: boolean | null;
 }

@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { dayjs, formatNumber, formatTemp } from '@/lib/format'
+import { dayjs, formatHumidity, formatNumber, formatTemp } from '@/lib/format'
 import { AI_RISK_LEVEL_LABEL, AI_VIOLATION_LABEL } from '@/lib/labels'
 import { Sparkles } from 'lucide-react'
 import { useState } from 'react'
@@ -51,6 +51,8 @@ function toPoints(series: ColdRoomSeries): Point[] {
         outOfRange: 0,
         doorOpen: 0,
         sensorFault: 0,
+        humidity: null,
+        fanPowerFault: 0,
         band: null,
         forecast: null,
       })
@@ -88,6 +90,8 @@ function toPoints(series: ColdRoomSeries): Point[] {
         outOfRange: series.prediction.willExceedThreshold ? 1 : 0,
         doorOpen: 0,
         sensorFault: 0,
+        humidity: null,
+        fanPowerFault: 0,
         band: null,
         forecast: series.prediction.predictedTemp15m,
         isPredictionPoint: true,
@@ -150,12 +154,20 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
         </p>
       )}
       <p className="text-muted-foreground tabular-nums">{formatNumber(p.samples)} mẫu</p>
+      {p.humidity != null && (
+        <p className="tabular-nums">
+          Độ ẩm <span className="font-semibold">{formatHumidity(p.humidity)}</span>
+        </p>
+      )}
       {p.outOfRange > 0 && (
         <p className="text-destructive">{formatNumber(p.outOfRange)} mẫu vượt ngưỡng</p>
       )}
       {p.doorOpen > 0 && <p className="text-warning">Cửa mở trong {formatNumber(p.doorOpen)} mẫu</p>}
       {p.sensorFault > 0 && (
         <p className="text-destructive">{formatNumber(p.sensorFault)} mẫu lỗi cảm biến</p>
+      )}
+      {(p.fanPowerFault ?? 0) > 0 && (
+        <p className="text-destructive">{formatNumber(p.fanPowerFault)} mẫu mất nguồn quạt</p>
       )}
     </div>
   )
@@ -274,6 +286,7 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
                         p.outOfRange > 0 && 'vượt ngưỡng',
                         p.doorOpen > 0 && 'cửa mở',
                         p.sensorFault > 0 && 'lỗi cảm biến',
+                        (p.fanPowerFault ?? 0) > 0 && 'mất nguồn quạt',
                       ]
                         .filter(Boolean)
                         .join(', ') || '—'

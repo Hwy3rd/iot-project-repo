@@ -230,6 +230,32 @@ describe('NotificationsService', () => {
         }),
       );
     });
+
+    it('describes a fan power fault with the measured voltage', async () => {
+      coldRoomsRepository.findOne!.mockResolvedValue({ warehouseId: 'w1' });
+      warehouseStaffRepository.find!.mockResolvedValue([{ userId: 'u1' }]);
+      notificationsRepository.create!.mockImplementation(
+        (v: Partial<Notification>) => v,
+      );
+      notificationsRepository.save!.mockImplementation(
+        (v: Partial<Notification>[]) => v,
+      );
+
+      await service.notifyNewAlert({
+        id: 'al3',
+        coldRoomId: 'c1',
+        type: AlertType.DEVICE_FAULT,
+        triggerValue: null,
+        details: { kind: 'fan_power', fanVoltage: 0.3 },
+      } as unknown as Alert);
+
+      expect(notificationsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Thiết bị gặp lỗi',
+          body: 'Nguồn quạt bất thường (0.3 V).',
+        }),
+      );
+    });
   });
 
   describe('findAll', () => {

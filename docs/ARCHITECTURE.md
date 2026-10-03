@@ -176,6 +176,6 @@ Dockerfile multi-stage (`server/Dockerfile`):
 
 - **MQTT — chỉ mới chiều thiết bị → server** — `MqttIngestService` đã subscribe `devices/+/telemetry` và gọi `TelemetryService.ingest()` (mục 4), nhưng chiều ngược lại (publish `Command` xuống thiết bị, nhận ack) chưa làm; broker đã bắt đăng nhập nhưng chưa có TLS.
 - **Phát hiện thiết bị offline** — chưa có job đặt `offline` khi mất heartbeat và raise `OFFLINE`.
-- **Các loại alert chưa có nơi sinh** — `DOOR_OPEN_TOO_LONG`, `DEVICE_FAULT`, `BATCH_EXPIRING_SOON`, `BATCH_TEMPERATURE_OUT_OF_RANGE`.
+- **Các loại alert chưa có nơi sinh** — `DOOR_OPEN_TOO_LONG`, `BATCH_EXPIRING_SOON`, `BATCH_TEMPERATURE_OUT_OF_RANGE`. `DEVICE_FAULT` mới chỉ sinh cho lỗi nguồn quạt (`fanPowerFault` từ thiết bị, `details.kind = "fan_power"`, xem `TelemetryService.evaluateFanPowerAlert`); lỗi cảm biến (`sensorFault`) chưa raise alert.
 - **Model dự báo chưa train trên dữ liệu của hệ thống** (mục 4b) — model được train trên dataset chuỗi lạnh 2–8 °C, nên phòng đông lạnh chưa có dự báo, và độ chính xác trên kho thật chưa được đo. Hướng làm: dựng dataset từ `telemetry_raw` (đủ feature và nhãn +15 phút, nên thêm `doorOpen`), nhưng raw chỉ giữ 30 ngày, nên cần export định kỳ để tích luỹ dữ liệu.
 - **Resolve thủ công** — chưa chặn resolve khi điều kiện lỗi còn (TODO ở `AlertsService.resolveManual`).

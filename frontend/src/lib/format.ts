@@ -29,6 +29,14 @@ export function formatTemp(c: number | null | undefined) {
   return c === null || c === undefined ? '—' : `${number.format(c)}\u00a0°C`
 }
 
+export function formatHumidity(h: number | null | undefined) {
+  return h === null || h === undefined ? '—' : `${number.format(h)}\u00a0%`
+}
+
+export function formatVoltage(v: number | null | undefined) {
+  return v === null || v === undefined ? '—' : `${number.format(v)}\u00a0V`
+}
+
 /** A duration in whole minutes: "12 phút", "1 giờ", "1 giờ 5 phút". */
 export function formatMinutes(minutes: number) {
   const h = Math.floor(minutes / 60)

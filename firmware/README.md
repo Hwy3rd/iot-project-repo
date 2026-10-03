@@ -26,22 +26,23 @@ Mở Arduino IDE → **Tools > Manage Libraries**, tìm và cài các thư việ
 
 ## Cấu hình trước khi nạp code
 
-Mở file `cold_room_monitor.ino` và chỉnh sửa các dòng sau:
+Cấu hình (WiFi, broker, tài khoản thiết bị, ID thiết bị, NTP) **không nằm trong `.ino`** mà trong `cold_room_monitor/config.h`. File này được gitignore nên mật khẩu không vào git. Repo chỉ chứa file mẫu `config.example.h`:
 
-```cpp
-// Tên và mật khẩu WiFi của bạn
-#define WIFI_SSID     "TEN_WIFI_CUA_BAN"
-#define WIFI_PASSWORD "MAT_KHAU_WIFI"
-
-// IP máy tính đang chạy Docker (chạy lệnh `ipconfig` trên Windows để tìm)
-#define MQTT_BROKER_HOST "192.168.1.100"
-
-// ID thiết bị — phải khớp với trường `unique_id` trong cơ sở dữ liệu của server
-#define MQTT_CLIENT_ID       "esp32-coldroom-01"
-#define MQTT_TOPIC_TELEMETRY "devices/esp32-coldroom-01/telemetry"
+```bash
+cp firmware/cold_room_monitor/config.example.h firmware/cold_room_monitor/config.h   # rồi sửa giá trị
 ```
 
-> **Lưu ý:** Nhớ thông báo cho team backend để họ tạo thiết bị trong database với `unique_id = "esp32-coldroom-01"`.
+Nếu thiếu `config.h`, biên dịch sẽ báo lỗi kèm hướng dẫn.
+
+| Hằng số | Mô tả |
+|---------|-------|
+| `WIFI_SSID` / `WIFI_PASSWORD` | WiFi **2.4 GHz**, cần có Internet để đồng bộ giờ NTP |
+| `MQTT_BROKER_HOST` / `MQTT_BROKER_PORT` | IP LAN của máy chạy Docker (Windows: `ipconfig`) và cổng `1883` |
+| `MQTT_USERNAME` / `MQTT_PASSWORD` | Tài khoản **thiết bị** của broker: `MQTT_DEVICE_USERNAME` / `MQTT_DEVICE_PASSWORD` trong `.env` gốc của repo (không dùng tài khoản backend) |
+| `DEVICE_ID` | ID duy nhất của ESP32, phải khớp `unique_id` trên server. Dùng làm MQTT client ID và topic `devices/<DEVICE_ID>/telemetry` |
+| `NTP_SERVER_1` / `NTP_SERVER_2` | Máy chủ NTP (mặc định `pool.ntp.org`, `time.google.com`) |
+
+> **Lưu ý:** Thiết bị phải được đăng ký trên server với `unique_id` = `DEVICE_ID` và claim vào một kho lạnh, nếu không server sẽ bỏ qua dữ liệu.
 
 ## Giao thức MQTT
 
@@ -51,28 +52,40 @@ Mở file `cold_room_monitor.ino` và chỉnh sửa các dòng sau:
 | Host | IP máy tính chạy Docker (cùng mạng LAN) |
 | Port | `1883` |
 | Topic gửi dữ liệu | `devices/{unique_id}/telemetry` |
-| Xác thực | Không cần (allow_anonymous = true) |
-| Chu kỳ gửi | Mỗi 2 giây |
+| Xác thực | Bắt buộc username/password (`allow_anonymous false`) — dùng tài khoản thiết bị `MQTT_DEVICE_*`, **không** dùng tài khoản backend |
+| Chu kỳ gửi | Mỗi 5 giây (`REPORT_INTERVAL_MS`) |
 
 ## Định dạng JSON payload
 
-Mỗi 2 giây, ESP32 gửi một gói JSON lên broker theo định dạng:
+Mỗi 5 giây, ESP32 gửi một gói JSON lên broker theo định dạng:
 
 ```json
 {
-  "ts":          "2024-01-15T10:30:00.000Z",
-  "temperature": 25.5,
-  "doorOpen":    false,
-  "sensorFault": false
+  "ts":            "2026-10-03T04:10:17.115Z",
+  "temperature":   25.5,
+  "humidity":      70.0,
+  "doorOpen":      false,
+  "sensorFault":   false,
+  "fanOn":         true,
+  "fanVoltage":    11.82,
+  "fanPowerFault": false,
+  "alarmActive":   false
 }
 ```
 
 | Trường | Kiểu dữ liệu | Mô tả |
 |--------|-------------|-------|
-| `ts` | Chuỗi ISO 8601 | Thời điểm đo |
+| `ts` | Chuỗi ISO 8601 UTC | Thời điểm đo, lấy từ NTP. Server lưu đúng giá trị này và chống trùng theo `(thiết bị, ts)`, nên phải là giờ thật — chưa đồng bộ NTP thì firmware chưa gửi |
 | `temperature` | number hoặc `null` | Nhiệt độ (°C); `null` nếu cảm biến bị lỗi |
+| `humidity` | number hoặc `null` | Độ ẩm (%) từ DHT11; `null` nếu cảm biến bị lỗi |
 | `doorOpen` | boolean | `true` = cửa đang mở (cảnh báo) |
 | `sensorFault` | boolean | `true` = DHT11 không đọc được dữ liệu |
+| `fanOn` | boolean | Relay quạt đang bật (quạt tắt khi cửa mở) |
+| `fanVoltage` | number | Điện áp nguồn quạt (V) đo ở GPIO 34 |
+| `fanPowerFault` | boolean | `true` = quạt đang bật nhưng nguồn mất hoặc biến động. Quạt tắt (0 V) thì không tính là lỗi |
+| `alarmActive` | boolean | `true` = còi đang báo động tại chỗ (cửa mở / quá nhiệt / nguồn quạt bất thường) |
+
+Từ `humidity` trở xuống là tùy chọn với server (firmware v1.1+): thiết bị cũ hoặc simulator không gửi thì server lưu `null`. Payload khoảng 180 byte, nên firmware tăng bộ đệm PubSubClient lên 512 byte (`setBufferSize`).
 
 ## Luồng dữ liệu
 

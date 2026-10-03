@@ -331,10 +331,35 @@ export interface TelemetryHourly {
   maxTemp: number | null
   outOfRangeCount: number
   sensorErrorCount: number
+  /** Over the samples that reported humidity; null when none did. */
+  avgHumidity?: number | null
+  minHumidity?: number | null
+  maxHumidity?: number | null
+  /** Absent/null on hours computed before these counts existed. */
+  doorOpenCount?: number | null
+  fanPowerFaultCount?: number | null
+}
+
+/**
+ * Device state sent with each reading by the ESP32 firmware (v1.1+). null
+ * (or absent, on older samples) = the device didn't report it — older
+ * firmware, simulators.
+ */
+export interface TelemetryDeviceState {
+  /** Relative humidity, %. */
+  humidity?: number | null
+  /** Fan relay switched on. */
+  fanOn?: boolean | null
+  /** Supply voltage at the fan, V. */
+  fanVoltage?: number | null
+  /** Fan is on but its supply dropped or spiked. */
+  fanPowerFault?: boolean | null
+  /** The device's local buzzer alarm is sounding. */
+  alarmActive?: boolean | null
 }
 
 /** GET /devices/:id/telemetry/raw — one sample, kept only briefly. */
-export interface TelemetryRaw {
+export type TelemetryRaw = {
   deviceId: string
   coldRoomId: string
   ts: string
@@ -342,7 +367,7 @@ export interface TelemetryRaw {
   doorOpen: boolean
   sensorFault: boolean
   outOfRange: boolean
-}
+} & TelemetryDeviceState
 
 /** POST /devices/:id/claim-code — the code itself is only ever returned here. */
 export interface ClaimCode {
@@ -376,14 +401,14 @@ export interface ColdRoomStatus {
   coldRoomId: string
   warehouseId: string
   /** Newest sample from any device in the room; null if none is kept. */
-  latest: {
+  latest: ({
     ts: string
     temperature: number | null
     doorOpen: boolean
     sensorFault: boolean
     /** Judged against the room's thresholds when the sample arrived. */
     outOfRange: boolean
-  } | null
+  } & TelemetryDeviceState) | null
   /** Installed devices, by status. */
   devices: { total: number } & Partial<Record<DeviceStatus, number>>
   /** Alerts still open or acknowledged. */
@@ -422,6 +447,10 @@ export interface ColdRoomSeries {
     outOfRange: number
     doorOpen: number
     sensorFault: number
+    /** Average humidity (%); null when no sample reported it. */
+    humidity?: number | null
+    /** Samples that reported a fan power fault. */
+    fanPowerFault?: number
   }[]
   prediction?: ColdRoomPrediction | null
 }
