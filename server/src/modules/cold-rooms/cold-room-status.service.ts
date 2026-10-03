@@ -10,6 +10,9 @@ import { FindOptionsWhere, In, Repository } from 'typeorm';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { AlertStatus } from '../../libs/constants/alert.constant';
 import { DeviceStatus } from '../../libs/constants/device.constant';
+import type { ChannelType } from '../../libs/constants/device-channel.constant';
+import { declaredChannelTypes } from '../device-channels/declared-channels';
+import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Alert } from '../alerts/entities/alert.entity';
 import { Device } from '../devices/entities/device.entity';
 import { TelemetryRaw } from '../telemetry/schemas/telemetry-raw.schema';
@@ -25,6 +28,14 @@ const MAX_ROOMS = 500;
 
 export interface ColdRoomLatestReading {
   ts: Date;
+  /** The device that sent this sample. */
+  deviceId: string;
+  /**
+   * Channel types that device declares. The UI shows an optional field only
+   * when its channel is declared (TELEMETRY_FIELD_CHANNEL) and flags it when
+   * declared but null; [] = nothing declared, shown as-is.
+   */
+  declaredChannels: ChannelType[];
   temperature: number | null;
   doorOpen: boolean;
   sensorFault: boolean;
@@ -98,6 +109,8 @@ export class ColdRoomStatusService {
     private readonly devicesRepository: Repository<Device>,
     @InjectRepository(Alert)
     private readonly alertsRepository: Repository<Alert>,
+    @InjectRepository(DeviceChannel)
+    private readonly channelsRepository: Repository<DeviceChannel>,
     @InjectModel(TelemetryRaw.name)
     private readonly rawModel: Model<TelemetryRaw>,
     private readonly aiPredictionService: AiPredictionService,
@@ -215,7 +228,7 @@ export class ColdRoomStatusService {
   // jump to each room's newest sample instead of scanning its history.
   private async latestReadings(roomIds: string[]) {
     const rows = await this.rawModel.aggregate<
-      ColdRoomLatestReading & { _id: string }
+      Omit<ColdRoomLatestReading, 'declaredChannels'> & { _id: string }
     >([
       { $match: { coldRoomId: { $in: roomIds } } },
       { $sort: { coldRoomId: 1, ts: -1 } },
@@ -223,6 +236,7 @@ export class ColdRoomStatusService {
         $group: {
           _id: '$coldRoomId',
           ts: { $first: '$ts' },
+          deviceId: { $first: '$deviceId' },
           temperature: { $first: '$temperature' },
           doorOpen: { $first: '$doorOpen' },
           sensorFault: { $first: '$sensorFault' },
@@ -235,12 +249,16 @@ export class ColdRoomStatusService {
         },
       },
     ]);
+    const declared = await declaredChannelTypes(this.channelsRepository, [
+      ...new Set(rows.map((r) => r.deviceId)),
+    ]);
     // `?? null`: samples stored before these fields existed lack them.
     return new Map(
       rows.map(({ _id, ...reading }) => [
         _id,
         {
           ...reading,
+          declaredChannels: declared.get(reading.deviceId) ?? [],
           humidity: reading.humidity ?? null,
           fanOn: reading.fanOn ?? null,
           fanVoltage: reading.fanVoltage ?? null,

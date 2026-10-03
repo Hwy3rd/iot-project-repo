@@ -78,12 +78,10 @@ Broker bắt buộc đăng nhập (`allow_anonymous false`). Password file và A
 
 | Tài khoản              | Dùng bởi            | Quyền                                                     |
 | ---------------------- | ------------------- | --------------------------------------------------------- |
-| `MQTT_USERNAME`        | Backend (và healthcheck) | Đọc `devices/+/telemetry` và `$SYS/#`                |
-| `MQTT_DEVICE_USERNAME` | Firmware ESP32 (dùng chung) | **Chỉ ghi** `devices/+/telemetry`                 |
+| `MQTT_USERNAME`        | Backend (và healthcheck) | Đọc `devices/+/telemetry`, `devices/+/ack` và `$SYS/#`; ghi `devices/+/commands` |
+| `MQTT_DEVICE_USERNAME` | Firmware ESP32 (dùng chung) | Ghi `devices/+/telemetry`; đọc `devices/<client id>/commands` và ghi `devices/<client id>/ack` (ACL `pattern` với `%c`) |
 
-Nhờ ACL, credential thiết bị bị lộ cũng không đọc được dữ liệu thiết bị khác hay giả danh server. Thư mục `/mosquitto/auth` được `chmod 700`, file `passwd`/`acl` được `chmod 600` và thuộc user `mosquitto`.
-
-Khi `CommandsService` bắt đầu publish lệnh xuống thiết bị, phải thêm quyền ghi tương ứng cho `MQTT_USERNAME` trong entrypoint.
+Nhờ ACL, credential thiết bị bị lộ cũng không đọc được dữ liệu hay lệnh của thiết bị khác, và không giả danh server được. Firmware kết nối với client ID = `unique_id`, nên mỗi board chỉ nhận lệnh của chính nó. Server còn kiểm tra thêm: ack chỉ được chấp nhận khi lệnh thuộc đúng thiết bị có tên trong topic. Thư mục `/mosquitto/auth` được `chmod 700`, file `passwd`/`acl` được `chmod 600` và thuộc user `mosquitto`.
 
 ## 7. Bí mật & cấu hình
 

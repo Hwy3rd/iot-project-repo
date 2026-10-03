@@ -14,6 +14,11 @@ import {
 import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { DevicesService } from './devices.service';
+import {
+  CHANNEL_TYPE_ROLE,
+  DEVICE_DEFAULT_CHANNELS,
+} from '../../libs/constants/device-channel.constant';
+import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Device } from './entities/device.entity';
 
 jest.mock('bcryptjs');
@@ -34,6 +39,8 @@ const createMockRepository = <T extends object>(): MockRepository<T> => ({
 // The EntityManager a lifecycle step's transaction runs with: saves echo
 // back what they were given, creates build a plain object.
 const createMockManager = () => ({
+  // No channels declared yet (the claim then adds the board's defaults).
+  find: jest.fn().mockResolvedValue([]),
   save: jest.fn((_entity: unknown, value: unknown) => Promise.resolve(value)),
   create: jest.fn((_entity: unknown, value: unknown) => value),
 });
@@ -249,6 +256,29 @@ describe('DevicesService', () => {
       expect(result.coldRoomId).toBe('cr1');
       expect(result.claimCodeHash).toBeNull();
       expect(result.claimedAt).not.toBeNull();
+    });
+
+    it("declares the board's default channels in the same transaction", async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'd1',
+        status: DeviceStatus.PROVISIONED,
+        claimCodeHash: 'hash',
+        claimCodeExpiresAt: new Date(Date.now() + 60_000),
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      coldRoomsRepository.findOne!.mockResolvedValue({ id: 'cr1' });
+
+      await service.claim('d1', claimDto, 'u1');
+
+      expect(manager.save).toHaveBeenCalledWith(
+        DeviceChannel,
+        DEVICE_DEFAULT_CHANNELS.map((c) => ({
+          deviceId: 'd1',
+          channelType: c.channelType,
+          channelRole: CHANNEL_TYPE_ROLE[c.channelType],
+          label: c.label,
+        })),
+      );
     });
   });
 

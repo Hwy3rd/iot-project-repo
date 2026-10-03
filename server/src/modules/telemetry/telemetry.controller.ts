@@ -46,4 +46,17 @@ export class TelemetryController {
   ) {
     return this.telemetryService.findRaw(deviceId, query);
   }
+
+  // The device's newest sample (null if it never reported) — an instant
+  // reading, so same audience as `raw`. Drives the per-channel "last value /
+  // no data" view of the device's declared channels.
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TECHNICIAN)
+  @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
+    paramName: 'deviceId',
+  })
+  @Serialize(TelemetryRawResponseDto)
+  @Get('latest')
+  findLatest(@Param('deviceId') deviceId: string) {
+    return this.telemetryService.findLatest(deviceId);
+  }
 }

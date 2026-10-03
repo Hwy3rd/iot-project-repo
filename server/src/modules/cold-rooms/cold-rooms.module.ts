@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Alert } from '../alerts/entities/alert.entity';
 import { BatchesModule } from '../batches/batches.module';
+import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Device } from '../devices/entities/device.entity';
 import { TELEMETRY_MODELS } from '../telemetry/telemetry.models';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
@@ -14,7 +15,13 @@ import { AiPredictionModule } from '../ai-prediction/ai-prediction.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ColdRoom, Warehouse, Device, Alert]),
+    TypeOrmModule.forFeature([
+      ColdRoom,
+      Warehouse,
+      Device,
+      DeviceChannel,
+      Alert,
+    ]),
     // Read-only use of the telemetry collection (latest reading per room);
     // registered here rather than importing TelemetryModule, which pulls in
     // AlertsModule and the ingest side.

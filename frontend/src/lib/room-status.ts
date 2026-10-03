@@ -1,5 +1,6 @@
 import type { ColdRoomStatus, DeviceStatus } from '@/api/types'
 import type { Tone } from '@/components/common/StatusBadge'
+import { fieldPresence } from '@/lib/channel-readings'
 
 // A reading older than this is treated as "no signal": devices normally
 // report much more often, so the room's real state is unknown.
@@ -33,15 +34,18 @@ export function tempState(latest: ColdRoomStatus['latest'], now = Date.now()): T
 }
 
 /**
- * Fan state from the latest reading, or null when the device doesn't report
- * it (older firmware, simulators). A power fault is only reported while the
- * fan is switched on — off with the door open is normal.
+ * Fan state from the latest reading, or null when there is none to show:
+ * the device has no fan channel, or declares one but sent nothing (callers
+ * flag that via fieldPresence). A power fault is only reported while the fan
+ * is switched on — off with the door open is normal.
  */
 export function fanState(
   latest: ColdRoomStatus['latest'],
 ): { label: string; tone: Tone; fault: boolean } | null {
-  if (!latest || latest.fanOn == null) return null
-  if (latest.fanPowerFault) return { label: 'Mất nguồn quạt', tone: 'danger', fault: true }
+  if (!latest || fieldPresence(latest, 'fanOn') !== 'reported') return null
+  if (fieldPresence(latest, 'fanPowerFault') === 'reported' && latest.fanPowerFault) {
+    return { label: 'Mất nguồn quạt', tone: 'danger', fault: true }
+  }
   return latest.fanOn
     ? { label: 'Quạt chạy', tone: 'success', fault: false }
     : { label: 'Quạt tắt', tone: 'neutral', fault: false }

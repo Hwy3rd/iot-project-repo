@@ -158,14 +158,16 @@ describe('AiPredictionService', () => {
       jest.spyOn(Date, 'now').mockReturnValue(now);
     });
 
-    it("returns the room's most serious fresh forecast, without the timestamp", async () => {
+    it("returns the room's most serious fresh forecast, with when it was made", async () => {
       redis.hgetall.mockResolvedValueOnce({
         d1: stored('NORMAL', now - 1_000, 2.5),
         d2: stored('CRITICAL', now - 60_000, 4.6),
         d3: stored('WARNING', now - 1_000, 3.7),
       });
 
+      // The chart plots the forecast at predictedAt + 15 min.
       await expect(service.getLatest('r1')).resolves.toEqual({
+        predictedAt: new Date(now - 60_000),
         predictedTemp15m: 4.6,
         willExceedThreshold: true,
         violationType: 'OVERHEAT',

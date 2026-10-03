@@ -86,6 +86,35 @@ describe('DeviceChannelsService', () => {
     });
   });
 
+  describe('addDefaults', () => {
+    it('adds the missing default channels and returns the full list', async () => {
+      devicesRepository.findOne!.mockResolvedValue({ id: 'd1' });
+      const manager = {
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn((_e: unknown, v: unknown) => v),
+        save: jest.fn((_e: unknown, v: unknown) => Promise.resolve(v)),
+      };
+      (channelsRepository as { manager?: unknown }).manager = manager;
+      channelsRepository.find!.mockResolvedValue([{ id: 'c1' }]);
+
+      await expect(service.addDefaults('d1')).resolves.toEqual([{ id: 'c1' }]);
+      expect(manager.save).toHaveBeenCalledWith(
+        DeviceChannel,
+        expect.arrayContaining([
+          expect.objectContaining({ deviceId: 'd1', channelType: 'fan_motor' }),
+        ]),
+      );
+    });
+
+    it('throws NotFoundException for an unknown device', async () => {
+      devicesRepository.findOne!.mockResolvedValue(null);
+
+      await expect(service.addDefaults('d1')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
   describe('findAllForDevice', () => {
     it('throws NotFoundException when the device does not exist', async () => {
       devicesRepository.findOne!.mockResolvedValue(null);

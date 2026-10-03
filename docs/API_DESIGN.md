@@ -154,8 +154,8 @@ Riêng WebSocket: exception trong handler của `RealtimeGateway` (vd `WsExcepti
 |---|---|---|---|
 | `POST /cold-rooms` | A, M (**P** theo `warehouseId` trong body) | `{ warehouseId, name, tempMin, tempMax, hysteresis?, doorOpenMaxSeconds?, capacityPallets?, capacityWeightKg?, capacityVolumeM3? }` | `ColdRoomResponseDto` |
 | `GET /cold-rooms` | mọi role | `search?` (`name`), `warehouseId?`, `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<ColdRoomResponseDto>` |
-| `GET /cold-rooms/status` | A, M, T, S | `coldRoomIds?` hoặc `warehouseIds?` (danh sách id cách nhau bằng dấu phẩy, ≤ 100, bắt buộc có một trong hai) | `ColdRoomStatus[]`: mỗi phòng có `latest` (mẫu telemetry mới nhất: `ts`, `temperature`, `doorOpen`, `sensorFault`, `outOfRange`; `null` nếu chưa có), `devices` (`total` + số thiết bị theo từng trạng thái), `activeAlerts` (cảnh báo `open`/`acknowledged`). Phòng ngoài phạm vi của caller bị bỏ qua, không báo lỗi. Staff xem được **kể cả khi không trong ca**. Cập nhật trực tiếp qua WebSocket: sự kiện `coldroom:reading` và `alerts:changed` trong room `warehouse:{id}` |
-| `GET /cold-rooms/:id/telemetry` | A, M, T, S (**P**) | `range?` = `1h` \| `6h` (mặc định) \| `24h` | `{ coldRoomId, from, to, bucketMinutes, tempMin, tempMax, points[] }`: nhiệt độ của phòng (gộp mẫu của mọi thiết bị trong phòng) theo từng khoảng 1, 5 hoặc 15 phút, mỗi điểm có `t`, `avg`/`min`/`max` (bỏ qua mẫu lỗi cảm biến), `samples`, và số mẫu `outOfRange`/`doorOpen`/`sensorFault`. Khoảng thời gian không có mẫu thì không có điểm. Staff xem được kể cả khi không trong ca. Dùng cho biểu đồ của màn Giám sát trực tiếp |
+| `GET /cold-rooms/status` | A, M, T, S | `coldRoomIds?` hoặc `warehouseIds?` (danh sách id cách nhau bằng dấu phẩy, ≤ 100, bắt buộc có một trong hai) | `ColdRoomStatus[]`: mỗi phòng có `latest` (mẫu telemetry mới nhất: `ts`, `deviceId`, `declaredChannels` (loại kênh thiết bị đó khai báo), `temperature`, `doorOpen`, `sensorFault`, `outOfRange`, cùng các trường trạng thái thiết bị; `null` nếu chưa có), `devices` (`total` + số thiết bị theo từng trạng thái), `activeAlerts` (cảnh báo `open`/`acknowledged`). Phòng ngoài phạm vi của caller bị bỏ qua, không báo lỗi. Staff xem được **kể cả khi không trong ca**. Cập nhật trực tiếp qua WebSocket: sự kiện `coldroom:reading` và `alerts:changed` trong room `warehouse:{id}` |
+| `GET /cold-rooms/:id/telemetry` | A, M, T, S (**P**) | `range?` = `1h` \| `6h` (mặc định) \| `24h` | `{ coldRoomId, from, to, bucketMinutes, tempMin, tempMax, points[] }`: nhiệt độ của phòng (gộp mẫu của mọi thiết bị trong phòng) theo từng khoảng 1, 5 hoặc 15 phút, mỗi điểm có `t`, `avg`/`min`/`max` (bỏ qua mẫu lỗi cảm biến), `samples`, và số mẫu `outOfRange`/`doorOpen`/`sensorFault`/`fanPowerFault`, độ ẩm trung bình `humidity`. Khoảng thời gian không có mẫu thì không có điểm. Kèm `prediction` (dự báo AI mới nhất của phòng, `null` nếu không có dự báo trong 15 phút gần đây): `predictedAt` (lúc dự báo), `predictedTemp15m`, `willExceedThreshold`, `violationType`, `riskLevel`, `recommendation`. Biểu đồ đặt điểm dự báo tại `predictedAt` + 15 phút. Staff xem được kể cả khi không trong ca. Dùng cho biểu đồ của màn Giám sát trực tiếp |
 | `GET /cold-rooms/:id/inventory` | A, M, S (**P**) | — | `{ coldRoomId, asOf, expiringSoonDays, totalBatches, items[] }`: hàng đang lưu trong phòng (mọi lô chưa xuất kho, kể cả lô đã hết hạn) gộp theo loại sản phẩm. Mỗi item có `productTypeId`, `productTypeName`, `category`, `unit`, `storageTempMin`/`storageTempMax`, `batchCount`, `totalQuantity`, `nearestExpiry`, `expiredBatchCount` (status `expired` hoặc `expiryDate` < `asOf`), `expiringSoonBatchCount` (hết hạn trong `expiringSoonDays` = 7 ngày tới). `asOf` là ngày hôm nay theo giờ Việt Nam (UTC+7). Sắp xếp theo `nearestExpiry` tăng dần. Staff xem được kể cả khi không trong ca (giống `GET /batches`). Dùng cho màn chi tiết phòng lạnh |
 | `GET /cold-rooms/:id` | mọi role, **P** | — | `ColdRoomResponseDto` |
 | `PATCH /cold-rooms/:id` | A, M, **P** | các field như create (trừ `warehouseId`) | `ColdRoomResponseDto` |
@@ -239,7 +239,7 @@ Backend validate: khoảng nhiệt độ khuyến nghị của `product_type` (`
 | `GET /devices/:id` | A, M, T, S (**C** cho Staff) | — | `DeviceResponseDto` |
 | `PATCH /devices/:id` | A, T, **P** | `{ firmwareVersion? }` | `DeviceResponseDto` |
 | `POST /devices/:id/claim-code` | A, T, **P** | — | `ClaimCodeResponseDto { claimCode, claimCodeExpiresAt }` — **mã gốc chỉ trả về đúng lần này**, sau đó chỉ còn hash trong DB |
-| `POST /devices/:id/claim` | A, T (phạm vi tính theo `coldRoomId` đích trong body, không phải phòng hiện tại của thiết bị) | `{ claimCode, coldRoomId }` | `DeviceResponseDto` — gán `coldRoomId`, chuyển `status = active` |
+| `POST /devices/:id/claim` | A, T (phạm vi tính theo `coldRoomId` đích trong body, không phải phòng hiện tại của thiết bị) | `{ claimCode, coldRoomId }` | `DeviceResponseDto` — gán `coldRoomId`, chuyển `status = active`, và khai báo luôn các kênh mặc định của board còn thiếu (`DEVICE_DEFAULT_CHANNELS`) trong cùng transaction |
 | `POST /devices/:id/decommission` | A, T, **P** | — | `DeviceResponseDto` — chuyển `status = decommissioned` (một chiều, không đảo ngược). Ghi audit `device.decommission` |
 | `DELETE /devices/:id` | A | — | `null` (soft delete — tách biệt với `decommission`, dùng cho xoá bản ghi hẳn) |
 
@@ -252,6 +252,7 @@ Cảm biến/cơ cấu chấp hành gắn trên 1 device.
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
 | `POST /devices/:deviceId/channels` | A, T, **P** (theo `deviceId`) | `{ channelType, label? }` | `DeviceChannelResponseDto` — `channelRole` (`sensor`/`actuator`) suy ra tự động từ `channelType`, không nhận từ client |
+| `POST /devices/:deviceId/channels/defaults` | A, T, **P** | — | `DeviceChannelResponseDto[]` (toàn bộ kênh sau khi thêm) — thêm các kênh mặc định của board mà thiết bị chưa có; kênh đã có (kể cả đã đổi tên) giữ nguyên, gọi lại nhiều lần vẫn an toàn |
 | `GET /devices/:deviceId/channels` | A, M, T, S (**C** cho Staff — để chọn kênh khi gửi lệnh) | — | `DeviceChannelResponseDto[]` |
 | `GET /devices/:deviceId/channels/:id` | A, M, T, S (**C** cho Staff) | — | `DeviceChannelResponseDto` |
 | `PATCH /devices/:deviceId/channels/:id` | A, T, **P** | `{ label? }` | `DeviceChannelResponseDto` |
@@ -277,6 +278,7 @@ Chỉ đọc — dữ liệu lưu ở MongoDB (xem `docs/DATABASE_DESIGN.md` §9
 |---|---|---|---|
 | `GET /devices/:deviceId/telemetry/hourly` | A, M, T, S (**C** cho Staff) | `from?`, `to?` (ISO date) | `TelemetryHourlyResponseDto[]` |
 | `GET /devices/:deviceId/telemetry/raw` | A, M, T | `from?`, `to?`, `limit?` (mặc định/giới hạn theo `TELEMETRY_RAW_*` constant) | `TelemetryRawResponseDto[]` |
+| `GET /devices/:deviceId/telemetry/latest` | A, M, T | — | `TelemetryRawResponseDto` mẫu mới nhất, `null` nếu thiết bị chưa gửi gì. Dùng cho giá trị gần nhất của từng kênh ở tab Kênh |
 
 ---
 
@@ -295,15 +297,15 @@ Không có `POST /` — alert được hệ thống tự phát sinh nội bộ, 
 
 ## 15. Commands (điều khiển thiết bị) — `/commands`
 
-Không có `DELETE /:id` — lịch sử lệnh là vĩnh viễn, cùng nguyên tắc với `alerts`/`audit-logs`/`device-status-history`.
+Không có `DELETE /:id` — lịch sử lệnh là vĩnh viễn, cùng nguyên tắc với `alerts`/`audit-logs`/`device-status-history`. Cũng không có route nào để đổi trạng thái lệnh: `sent`/`done`/`failed`/`expired` do server và thiết bị đặt qua MQTT (xem [MESSAGE_QUEUE.md](MESSAGE_QUEUE.md) mục 5).
+
+`CommandResponseDto`: `id, channelId, issuedBy, action, payload, status, createdAt, sentAt, attempts, expiresAt, ackAt, errorReason`.
 
 | Method & Path | Vai trò | Request | Response |
 |---|---|---|---|
-| `POST /commands` | A, T, S (**C** cho Staff, phạm vi theo `channelId` trong body) | `{ channelId, action, payload? }` | `CommandResponseDto` — `status = pending`; `issuedBy` = user đang đăng nhập, không nhận từ body (lệnh do hệ thống tự phát có `issuedBy = null`) |
+| `POST /commands` | A, T, S (**C** cho Staff, phạm vi theo `channelId` trong body) | `{ channelId, action, payload? }` | `CommandResponseDto` — `status = sent` nếu broker đã nhận, `pending` nếu chưa (worker sẽ gửi lại). Các lệnh còn mở của cùng kênh chuyển sang `superseded`. `issuedBy` = user đang đăng nhập, không nhận từ body (lệnh do hệ thống tự phát có `issuedBy = null`) |
 | `GET /commands` | A, M, T, S | `status?`, `action?`, `warehouseId?`, `deviceId?`, `channelId?`, `issuedBy?`, `createdFrom?`/`createdTo?`, `page?`, `limit?` | `Paginated<CommandResponseDto>` |
 | `GET /commands/:id` | A, M, T, S, **P** | — | `CommandResponseDto` |
-| `POST /commands/:id/sent` | A (nội bộ — do cầu nối thiết bị/broker gọi, chưa có cơ chế service-account riêng) | — | `CommandResponseDto` — `status → sent` |
-| `POST /commands/:id/ack` | A (nội bộ) | `{ status: "done" \| "failed" }` | `CommandResponseDto` — set `ackAt` |
 
 ---
 

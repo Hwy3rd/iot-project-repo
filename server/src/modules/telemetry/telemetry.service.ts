@@ -28,6 +28,8 @@ import {
 import { AlertsService } from '../alerts/alerts.service';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { declaredChannelTypes } from '../device-channels/declared-channels';
+import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Device } from '../devices/entities/device.entity';
 import {
   QueryRawTelemetryDto,
@@ -95,6 +97,8 @@ export class TelemetryService {
     private readonly hourlyModel: Model<TelemetryHourly>,
     @InjectRepository(Device)
     private readonly devicesRepository: Repository<Device>,
+    @InjectRepository(DeviceChannel)
+    private readonly channelsRepository: Repository<DeviceChannel>,
     private readonly alertsService: AlertsService,
     private readonly realtime: RealtimeGateway,
     private readonly aiPredictionService: AiPredictionService,
@@ -181,7 +185,7 @@ export class TelemetryService {
       coldRoom: device.coldRoom,
       ...state,
     });
-    this.announceReading({
+    await this.announceReading({
       warehouseId: device.coldRoom.warehouseId,
       coldRoomId: device.coldRoom.id,
       deviceId: device.id,
@@ -415,12 +419,25 @@ export class TelemetryService {
   // Live update for open cold-room/warehouse grids. Best effort: the sample
   // is already stored, and the grids also poll, so a failed push is only
   // logged.
-  private announceReading(event: ColdRoomReadingEvent) {
+  private async announceReading(
+    event: Omit<ColdRoomReadingEvent, 'latest'> & {
+      latest: Omit<ColdRoomReadingEvent['latest'], 'declaredChannels'>;
+    },
+  ) {
     try {
+      const declared = await declaredChannelTypes(this.channelsRepository, [
+        event.deviceId,
+      ]);
       this.realtime.emitToWarehouse(
         event.warehouseId,
         REALTIME_EVENTS.COLD_ROOM_READING,
-        event,
+        {
+          ...event,
+          latest: {
+            ...event.latest,
+            declaredChannels: declared.get(event.deviceId) ?? [],
+          },
+        } satisfies ColdRoomReadingEvent,
       );
     } catch (error) {
       this.logger.warn(
@@ -465,6 +482,11 @@ export class TelemetryService {
       .limit(query.limit ?? TELEMETRY_RAW_DEFAULT_LIMIT)
       .lean()
       .exec();
+  }
+
+  async findLatest(deviceId: string) {
+    await this.assertDeviceExists(deviceId);
+    return this.rawModel.findOne({ deviceId }).sort({ ts: -1 }).lean().exec();
   }
 
   private async assertDeviceExists(deviceId: string) {

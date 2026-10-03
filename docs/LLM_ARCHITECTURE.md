@@ -255,4 +255,5 @@ Các hướng cải thiện chưa làm:
 - Model `flash-lite` không phải lúc nào cũng làm theo gợi ý trong kết quả tool: ví dụ vẫn gọi thêm tool nhiệt độ dù `get_cold_room_detail` đã ghi rõ phòng không có mẫu gần đây.
 - Không streaming: người dùng chỉ thấy câu trả lời khi đã hoàn tất (trong lúc chờ có dòng "Đang tra cứu…").
 - Rate limit dùng cửa sổ cố định: sát ranh giới cửa sổ có thể lọt tới gấp đôi giới hạn.
-- `SYSTEM_OPERATIONS_GUIDE.md` hiện rỗng nên `search_docs` chưa tìm được gì trong file này.
+- Ba file của `search_docs` mới có nội dung về giám sát, kênh thiết bị và điều khiển; các nghiệp vụ khác (lô hàng, ca trực, cảnh báo...) chưa được viết vào đó.
+- Chatbot chỉ đọc, không gửi được lệnh điều khiển; `get_commands` trả cả các trạng thái `expired`/`superseded`.

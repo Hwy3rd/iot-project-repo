@@ -3,4 +3,5 @@ export const QUEUE_NAMES = {
   WORK_SHIFT_MAINTENANCE: 'work-shift-maintenance',
   TELEMETRY_ROLLUP: 'telemetry-rollup',
   ALERT_NOTIFICATIONS: 'alert-notifications',
+  COMMAND_DISPATCH: 'command-dispatch',
 } as const;

@@ -229,6 +229,12 @@ export const devicesApi = {
   /** Admin / Manager / Technician. Defaults to the last hour, oldest first. */
   telemetryRaw: (deviceId: string, q: { from?: string; to?: string; limit?: number } = {}) =>
     api.get<TelemetryRaw[]>(`/devices/${deviceId}/telemetry/raw`, { ...q }),
+  /** Newest sample, null if the device never reported. Admin/Manager/Technician. */
+  telemetryLatest: (deviceId: string) =>
+    api.get<TelemetryRaw | null>(`/devices/${deviceId}/telemetry/latest`),
+  /** Declares whichever of the board's default channels is missing; returns them all. */
+  addDefaultChannels: (deviceId: string) =>
+    api.post<DeviceChannel[]>(`/devices/${deviceId}/channels/defaults`),
 }
 
 export interface CommandQuery extends PageQuery, CreatedRangeQuery {

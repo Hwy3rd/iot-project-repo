@@ -1,6 +1,7 @@
 /*
  * ESP32 - KHO LANH: GIAM SAT NHIET DO, CUA, NGUON QUAT & COI CANH BAO
  * + MQTT TELEMETRY gui du lieu len server qua broker Mosquitto
+ * + NHAN LENH DIEU KHIEN (quat, coi) tu server va gui ack
  * ---------------------------------------------------------------
  *  GPIO 18 - Cong tac hanh trinh (limit switch phat hien cua)
  *  GPIO  4 - DHT11 cam bien nhiet do / do am
@@ -37,6 +38,8 @@
 // Client ID = DEVICE_ID (phai KHOP `unique_id` tren server); topic ghep tu ID
 #define MQTT_CLIENT_ID       DEVICE_ID
 #define MQTT_TOPIC_TELEMETRY "devices/" DEVICE_ID "/telemetry"
+#define MQTT_TOPIC_COMMANDS  "devices/" DEVICE_ID "/commands"
+#define MQTT_TOPIC_ACK       "devices/" DEVICE_ID "/ack"
 
 // ======================== CAU HINH PHAN CUNG ========================
 #define LIMIT_SWITCH_PIN    18
@@ -56,6 +59,14 @@ const float MIN_FAN_RUN_VOLTAGE   = 1.0;   // nguong toi thieu xac nhan quat co 
 
 #define REPORT_INTERVAL_MS 5000   // gui MQTT moi 5 giay
 
+// Lenh tu server ghi de logic tu dong (quat theo cua, coi theo su co) trong
+// khoang nay, sau do thiet bi tu quay lai che do tu dong.
+const unsigned long MANUAL_OVERRIDE_MS = 10UL * 60UL * 1000UL;   // 10 phut
+
+// So lenh gan nhat nho lai de chong chay trung (server gui lai lenh chua co
+// ack; MQTT QoS 1 cung co the giao 1 lenh 2 lan).
+#define RECENT_COMMANDS 8
+
 // ======================== KHOI TAO DOI TUONG ========================
 DHT dht(DHT_PIN, DHT_TYPE);
 WiFiClient   espClient;
@@ -73,6 +84,23 @@ float stableVoltage    = -1.0;
 bool  voltageAnomaly   = false;
 bool  lastRelayCommand = false;
 bool  alarmActive      = false;   // coi dang bao dong (bat ky su co nao)
+
+// Trang thai ghi de bang lenh tu server cho 1 actuator
+struct Override {
+  bool active;
+  bool on;
+  unsigned long until;   // millis() het han
+};
+Override fanOverride    = { false, false, 0 };
+Override buzzerOverride = { false, false, 0 };
+
+// Lenh da xu ly: id + ket qua (error = nullptr nghia la "done")
+struct RecentCommand {
+  char id[40];
+  const char* error;
+};
+RecentCommand recentCommands[RECENT_COMMANDS];
+int recentCommandNext = 0;
 
 // ======================== TIEN ICH ========================
 bool isDoorClosed() {
@@ -139,6 +167,11 @@ bool connectMQTT() {
   // Ma loi 5 = sai username/password.
   if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
     Serial.println("MQTT ket noi thanh cong!");
+    // Clean session: subscription mat sau moi lan ket noi lai -> dang ky lai
+    if (mqttClient.subscribe(MQTT_TOPIC_COMMANDS, 1))
+      Serial.printf("Da subscribe %s\n", MQTT_TOPIC_COMMANDS);
+    else
+      Serial.println("[LOI] Subscribe topic lenh that bai!");
     return true;
   }
   Serial.printf("[LOI] MQTT that bai, ma: %d. Thu lai sau 5s...\n", mqttClient.state());
@@ -205,6 +238,121 @@ void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFaul
     Serial.println("[MQTT] GUI THAT BAI!");
 }
 
+// ======================== LENH DIEU KHIEN ========================
+/*
+ * Lenh server gui xuong topic devices/<DEVICE_ID>/commands:
+ * {
+ *   "id":        "0199a1b2-...",               <- ma lenh, dung de ack/chong trung
+ *   "channel":   "fan_motor",                  <- fan_motor | buzzer
+ *   "label":     null,
+ *   "action":    "on",                         <- on | off
+ *   "expiresAt": "2026-10-03T08:01:00.000Z"    <- qua gio nay thi tu choi
+ * }
+ * Ack gui len devices/<DEVICE_ID>/ack:
+ *   {"id": "...", "status": "done"}
+ *   {"id": "...", "status": "failed", "error": "unsupported_channel"}
+ */
+
+bool overrideActive(Override& o) {
+  if (o.active && (long)(millis() - o.until) >= 0) {
+    o.active = false;
+    Serial.println(">>> [LENH] Het thoi gian ghi de, quay lai che do tu dong");
+  }
+  return o.active;
+}
+
+int findRecentCommand(const char* id) {
+  for (int i = 0; i < RECENT_COMMANDS; i++)
+    if (strcmp(recentCommands[i].id, id) == 0) return i;
+  return -1;
+}
+
+void rememberCommand(const char* id, const char* error) {
+  RecentCommand& slot = recentCommands[recentCommandNext];
+  strlcpy(slot.id, id, sizeof(slot.id));
+  slot.error = error;
+  recentCommandNext = (recentCommandNext + 1) % RECENT_COMMANDS;
+}
+
+// "2026-10-03T08:01:00.000Z" -> da qua chua. Chua co gio NTP thi khong kiem
+// tra duoc -> coi nhu con han (server van tu het han lenh phia minh).
+bool isExpired(const char* iso) {
+  if (!iso || !isTimeSynced()) return false;
+  struct tm t = {};
+  if (sscanf(iso, "%4d-%2d-%2dT%2d:%2d:%2d", &t.tm_year, &t.tm_mon, &t.tm_mday,
+             &t.tm_hour, &t.tm_min, &t.tm_sec) != 6) return false;
+  t.tm_year -= 1900;
+  t.tm_mon  -= 1;
+  return time(nullptr) >= mktime(&t);   // configTime(0, 0) -> mktime la UTC
+}
+
+// Tra ve nullptr neu thuc hien duoc, nguoc lai la ly do loi (gui trong ack).
+const char* executeCommand(const char* channel, const char* action, const char* expiresAt) {
+  bool on;
+  if      (strcmp(action, "on")  == 0) on = true;
+  else if (strcmp(action, "off") == 0) on = false;
+  else return "unsupported_action";
+
+  Override* target;
+  if      (strcmp(channel, "fan_motor") == 0) target = &fanOverride;
+  else if (strcmp(channel, "buzzer")    == 0) target = &buzzerOverride;
+  else return "unsupported_channel";
+
+  if (isExpired(expiresAt)) return "expired";
+
+  target->active = true;
+  target->on     = on;
+  target->until  = millis() + MANUAL_OVERRIDE_MS;
+  Serial.printf(">>> [LENH] %s -> %s (ghi de %lu phut)\n",
+    channel, on ? "BAT" : "TAT", MANUAL_OVERRIDE_MS / 60000UL);
+  return nullptr;
+}
+
+void publishAck(const char* id, const char* error) {
+  StaticJsonDocument<160> doc;
+  doc["id"]     = id;
+  doc["status"] = error ? "failed" : "done";
+  if (error) doc["error"] = error;
+  char payload[160];
+  serializeJson(doc, payload);
+  if (mqttClient.publish(MQTT_TOPIC_ACK, payload))
+    Serial.printf("[MQTT ACK] %s\n", payload);
+  else
+    Serial.println("[MQTT] GUI ACK THAT BAI! (server se gui lai lenh)");
+}
+
+void onMqttMessage(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic, MQTT_TOPIC_COMMANDS) != 0) return;
+
+  StaticJsonDocument<256> doc;
+  if (deserializeJson(doc, (const byte*)payload, length)) {
+    Serial.println("[LENH] Bo qua: JSON khong hop le");
+    return;
+  }
+  const char* id = doc["id"];
+  if (!id || !*id || strlen(id) >= sizeof(RecentCommand::id)) {
+    Serial.println("[LENH] Bo qua: thieu id");   // khong co id thi khong ack duoc
+    return;
+  }
+  // Chep id ra truoc khi publish: bo dem cua PubSubClient dung chung cho
+  // tin nhan den va di.
+  char cmdId[sizeof(RecentCommand::id)];
+  strlcpy(cmdId, id, sizeof(cmdId));
+
+  // Lenh da chay roi (server gui lai vi chua nhan ack) -> chi ack lai
+  int seen = findRecentCommand(cmdId);
+  if (seen >= 0) {
+    publishAck(cmdId, recentCommands[seen].error);
+    return;
+  }
+
+  const char* channel = doc["channel"] | "";
+  const char* action  = doc["action"]  | "";
+  const char* error   = executeCommand(channel, action, doc["expiresAt"]);
+  rememberCommand(cmdId, error);
+  publishAck(cmdId, error);
+}
+
 // ======================== KIEM TRA KHOI DONG ========================
 void testLimitSwitch() {
   pinMode(LIMIT_SWITCH_PIN, SWITCH_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
@@ -262,14 +410,18 @@ void checkVoltageStability(float v) {
 
 void handleFanAndAlarmLogic(float temp, bool doorClosed, float dcVolt) {
   bool tempHigh = (!isnan(temp) && temp >= TEMP_ALARM_THRESHOLD);
-  bool cmd      = doorClosed;  // Relay bat khi cua dong, tat khi cua mo
-  if (cmd != lastRelayCommand) lastRelayCommand = cmd;
-  digitalWrite(PIN_FAN_RELAY, cmd ? HIGH : LOW);
+  // Tu dong: relay bat khi cua dong, tat khi cua mo. Lenh tu server ghi de.
+  bool fanOn = overrideActive(fanOverride) ? fanOverride.on : doorClosed;
+  lastRelayCommand = fanOn;
+  digitalWrite(PIN_FAN_RELAY, fanOn ? HIGH : LOW);
 
   checkVoltageStability(dcVolt);
 
-  // Hu coi khi co bat ky su co nao
-  alarmActive = !doorClosed || tempHigh || voltageAnomaly;
+  // Hu coi khi co bat ky su co nao. Quat dang tat thi 0 V la binh thuong,
+  // chi tinh nguon bat thuong khi quat dang bat. Lenh tu server ghi de
+  // (vd tat coi trong luc dang xu ly su co).
+  bool incident = !doorClosed || tempHigh || (fanOn && voltageAnomaly);
+  alarmActive = overrideActive(buzzerOverride) ? buzzerOverride.on : incident;
   if (alarmActive) {
     if (millis() - lastBuzzerToggle >= 150) {
       lastBuzzerToggle = millis();
@@ -290,11 +442,12 @@ void printStatus(float dcVolt) {
   else          Serial.printf("Nhiet do/Am   : %.1f C  |  %.1f %%\n", t, h);
 
   bool closed = isDoorClosed();
-  const char* fanSt = !closed               ? "TAT (cua mo)"
+  const char* fanSt = !lastRelayCommand      ? (closed ? "TAT" : "TAT (cua mo)")
                     : dcVolt >= MIN_FAN_RUN_VOLTAGE ? "CHAY BINH THUONG"
                     :                          "MAT NGUON!";
-  Serial.printf("Cua           : %-20s | Quat: %s\n",
-    closed ? "DONG" : "[CANH BAO] HO!", fanSt);
+  Serial.printf("Cua           : %-20s | Quat: %s%s\n",
+    closed ? "DONG" : "[CANH BAO] HO!", fanSt,
+    fanOverride.active ? " [LENH]" : "");
   Serial.printf("Dien ap quat  : %.2f V (chuan: %.2f V)  -> %s\n",
     dcVolt,
     stableVoltage > 0 ? stableVoltage : 0.0f,
@@ -306,7 +459,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial.println("\n============================================");
-  Serial.println("  ESP32 KHO LANH  -  MQTT Telemetry v1.1");
+  Serial.println("  ESP32 KHO LANH  -  MQTT Telemetry v1.2");
   Serial.println("============================================");
 
   analogReadResolution(12);
@@ -328,9 +481,11 @@ void setup() {
   mqttClient.setKeepAlive(30);
   // Mac dinh 256 byte (ca topic + header); payload ~180 byte da sat gioi han
   mqttClient.setBufferSize(512);
+  mqttClient.setCallback(onMqttMessage);
   connectMQTT();
 
   Serial.printf("\nTopic MQTT : %s\n", MQTT_TOPIC_TELEMETRY);
+  Serial.printf("Topic lenh : %s\n", MQTT_TOPIC_COMMANDS);
   Serial.println("Bat dau giam sat va gui du lieu...\n");
   lastSwitchState = isDoorClosed() ? 1 : 0;
 }

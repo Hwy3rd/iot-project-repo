@@ -14,7 +14,7 @@ import {
   ColdRoomPrediction,
 } from './dto/ai-prediction.dto';
 
-interface StoredPrediction extends ColdRoomPrediction {
+interface StoredPrediction extends Omit<ColdRoomPrediction, 'predictedAt'> {
   // When it was stored (ms epoch) — fields of one hash share the key's TTL,
   // so freshness per device is checked against this instead.
   at: number;
@@ -143,6 +143,7 @@ export class AiPredictionService {
       }
       if (!worst) return null;
       return {
+        predictedAt: new Date(worst.at),
         predictedTemp15m: worst.predictedTemp15m,
         willExceedThreshold: worst.willExceedThreshold,
         violationType: worst.violationType,

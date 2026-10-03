@@ -18,7 +18,8 @@
 
 // ID thiet bi: DUY NHAT cho moi ESP32, phai KHOP `unique_id` cua thiet bi tren
 // server. Chi gom chu, so, '_', '-', '.' (dung lam segment topic MQTT).
-// Topic gui du lieu tu ghep: devices/<DEVICE_ID>/telemetry
+// Topic tu ghep: devices/<DEVICE_ID>/telemetry, /commands, /ack (broker chi cho
+// doc lenh / gui ack tren topic co dung client ID = DEVICE_ID)
 #define DEVICE_ID         "esp32-coldroom-01"
 
 // May chu NTP lay gio thuc (UTC) cho truong "ts"

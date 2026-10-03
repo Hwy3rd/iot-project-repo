@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CommandStatus } from '../../libs/constants/command.constant';
 import { CommandsController } from './commands.controller';
 import { CommandsService } from './commands.service';
 
@@ -9,8 +8,6 @@ describe('CommandsController', () => {
     create: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
-    markSent: jest.fn(),
-    acknowledge: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -34,19 +31,5 @@ describe('CommandsController', () => {
     await controller.findOne('1');
 
     expect(commandsService.findOne).toHaveBeenCalledWith('1');
-  });
-
-  it('delegates markSent to the service', async () => {
-    await controller.markSent('1');
-
-    expect(commandsService.markSent).toHaveBeenCalledWith('1');
-  });
-
-  it('delegates acknowledge to the service', async () => {
-    const dto = { status: CommandStatus.DONE as const };
-
-    await controller.acknowledge('1', dto);
-
-    expect(commandsService.acknowledge).toHaveBeenCalledWith('1', dto);
   });
 });

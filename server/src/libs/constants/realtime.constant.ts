@@ -1,3 +1,4 @@
+import type { ChannelType } from './device-channel.constant';
 import type { WorkShiftStatus } from './work-shift.constant';
 
 // Warehouse-room events pushed by RealtimeGateway.emitToWarehouse(). Every
@@ -28,6 +29,8 @@ export interface ColdRoomReadingEvent {
     fanVoltage: number | null;
     fanPowerFault: boolean | null;
     alarmActive: boolean | null;
+    // Channel types the device declares — see ColdRoomLatestReading.
+    declaredChannels: ChannelType[];
   };
 }
 

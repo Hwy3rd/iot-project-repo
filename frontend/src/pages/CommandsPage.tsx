@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/table'
 import { emptyFilters, labelOptions, rangeError } from '@/lib/filters'
 import { formatDateTime, formatRelative } from '@/lib/format'
-import { COMMAND_ACTION_LABEL, COMMAND_STATUS_LABEL } from '@/lib/labels'
+import { COMMAND_ACTION_LABEL, COMMAND_ERROR_LABEL, COMMAND_STATUS_LABEL } from '@/lib/labels'
 import { shortId, useUserLookup } from '@/lib/lookups'
 import { param, useListParams } from '@/lib/useListParams'
 import { useCurrentWarehouse } from '@/lib/useCurrentWarehouse'
@@ -41,6 +41,9 @@ const FILTER_KEYS = [
 ] as const
 type Filters = Record<(typeof FILTER_KEYS)[number], string>
 const NO_FILTERS = emptyFilters(FILTER_KEYS)
+
+const OPEN_STATUSES: CommandStatus[] = ['pending', 'sent']
+const OPEN_REFRESH_MS = 3000
 
 function CommandFilterDialog({
   value,
@@ -115,7 +118,6 @@ export function CommandsPage() {
   const f = list.filters
   const users = useUserLookup(isAdmin)
   const rows = useRowDialogs<Command>()
-  const current = rows.item
 
   const params: CommandQuery = {
     page: list.page,
@@ -132,7 +134,13 @@ export function CommandsPage() {
     queryFn: () => commandsApi.list(params),
     placeholderData: keepPreviousData,
     enabled: scope.ready,
+    // Acks, retries and expiry happen server-side within about a minute and
+    // aren't pushed over the socket — poll only while something is in flight.
+    refetchInterval: (q) =>
+      q.state.data?.items.some((c) => OPEN_STATUSES.includes(c.status)) ? OPEN_REFRESH_MS : false,
   })
+  // The open dialog follows the polled row, not the snapshot it was opened with.
+  const current = query.data?.items.find((c) => c.id === rows.item?.id) ?? rows.item
 
   const issuer = (id: string | null) => {
     if (!id) return 'Hệ thống'
@@ -221,8 +229,17 @@ export function CommandsPage() {
             fields={[
               { label: 'Trạng thái', value: <CommandStatusBadge status={current.status} /> },
               { label: 'Người gửi', value: issuer(current.issuedBy) },
-              { label: 'Gửi lúc', value: formatDateTime(current.createdAt) },
+              { label: 'Tạo lúc', value: formatDateTime(current.createdAt) },
+              { label: 'Gửi lúc', value: current.sentAt && formatDateTime(current.sentAt) },
+              { label: 'Số lần gửi', value: current.attempts },
+              { label: 'Hết hạn lúc', value: formatDateTime(current.expiresAt) },
               { label: 'Xác nhận lúc', value: current.ackAt && formatDateTime(current.ackAt) },
+              {
+                label: 'Lý do lỗi',
+                value:
+                  current.errorReason &&
+                  (COMMAND_ERROR_LABEL[current.errorReason] ?? current.errorReason),
+              },
               {
                 label: 'Kênh',
                 value: (
