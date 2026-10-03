@@ -39,6 +39,25 @@ export class TelemetryHourly {
   @Prop({ type: Number, required: true })
   sensorErrorCount!: number;
 
+  // Humidity stats over the samples that reported one; null when none did.
+  @Prop({ type: Number, default: null })
+  avgHumidity!: number | null;
+
+  @Prop({ type: Number, default: null })
+  minHumidity!: number | null;
+
+  @Prop({ type: Number, default: null })
+  maxHumidity!: number | null;
+
+  // Samples with the door open / a fan power fault — with the 5 s report
+  // interval, count x 5 s approximates how long it lasted. Absent on buckets
+  // computed before these fields existed.
+  @Prop({ type: Number, default: null })
+  doorOpenCount!: number | null;
+
+  @Prop({ type: Number, default: null })
+  fanPowerFaultCount!: number | null;
+
   @Prop({ type: Date, required: true })
   computedAt!: Date;
 }

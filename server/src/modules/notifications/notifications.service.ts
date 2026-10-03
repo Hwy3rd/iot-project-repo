@@ -178,6 +178,17 @@ export class NotificationsService {
 
   private composeMessage(alert: Alert): { title: string; body: string } {
     const title = ALERT_TYPE_LABELS[alert.type];
+    // DEVICE_FAULT carries what failed in details, not a triggerValue (see
+    // TelemetryService.evaluateFanPowerAlert).
+    const fault = alert.details as {
+      kind?: string;
+      fanVoltage?: number | null;
+    } | null;
+    if (fault?.kind === 'fan_power') {
+      const voltage =
+        typeof fault.fanVoltage === 'number' ? ` (${fault.fanVoltage} V)` : '';
+      return { title, body: `Nguồn quạt bất thường${voltage}.` };
+    }
     if (alert.triggerValue == null) {
       return { title, body: 'Xem chi tiết trong ứng dụng.' };
     }

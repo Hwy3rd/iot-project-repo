@@ -19,9 +19,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatDateTime, formatRelative, formatTemp } from '@/lib/format'
+import { formatDateTime, formatHumidity, formatRelative, formatTemp, formatVoltage } from '@/lib/format'
 import { AI_RISK_LEVEL_LABEL, AI_VIOLATION_LABEL, ALERT_TYPE_LABEL } from '@/lib/labels'
-import { TEMP_STATE, tempState } from '@/lib/room-status'
+import { TEMP_STATE, fanState, tempState } from '@/lib/room-status'
 import { cn } from '@/lib/utils'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -71,10 +71,11 @@ function RoomDetail({
 
   const latest = status?.latest ?? null
   const state = tempState(latest, now)
+  const fan = fanState(latest)
 
   return (
     <div className="flex flex-col gap-6 px-4 pb-6">
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <section className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Stat
           label="Nhiệt độ"
           value={latest?.temperature != null ? formatTemp(latest.temperature) : '—'}
@@ -85,6 +86,25 @@ function RoomDetail({
           label="Cửa"
           value={latest ? (latest.doorOpen ? 'Đang mở' : 'Đóng') : '—'}
           tone={latest?.doorOpen ? 'text-warning' : undefined}
+        />
+        <Stat label="Độ ẩm" value={formatHumidity(latest?.humidity)} />
+        <Stat
+          label="Quạt"
+          value={
+            fan ? (
+              <>
+                {fan.label}
+                {latest?.fanVoltage != null && (
+                  <span className="ml-1 text-sm font-normal text-muted-foreground">
+                    {formatVoltage(latest.fanVoltage)}
+                  </span>
+                )}
+              </>
+            ) : (
+              '—'
+            )
+          }
+          tone={fan?.fault ? 'text-destructive' : undefined}
         />
         <Stat label="Cập nhật" value={latest ? formatRelative(latest.ts) : '—'} />
       </section>

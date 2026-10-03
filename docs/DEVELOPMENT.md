@@ -140,11 +140,13 @@ Quy ước code backend (module, response envelope, auth, migration) xem [server
 **Gửi telemetry giả lập** (không cần ESP32), dùng tài khoản thiết bị `MQTT_DEVICE_USERNAME/PASSWORD` (mặc định `device` / `password`, khớp `docker-compose.yml`):
 
 ```bash
-# 6 mẫu trong 30 phút gần nhất; --scenario normal | overheat | overcool
+# 6 mẫu trong 30 phút gần nhất; --scenario normal | overheat | overcool | fanfault
 node scripts/simulate_telemetry.js --device <uniqueId> --scenario overheat
 
 # 1 mẫu (cần: pip install paho-mqtt)
 python scripts/simulate_telemetry.py --device <uniqueId> --temperature 3.5
+# quạt bật nhưng mất nguồn -> cảnh báo DEVICE_FAULT
+python scripts/simulate_telemetry.py --device <uniqueId> --temperature 3.5 --door-closed --fan-fault
 ```
 
 `<uniqueId>` là mã thiết bị (cột `unique_id`), và thiết bị phải đang được gán vào một phòng lạnh. Thiết bị không tồn tại thì backend chỉ ghi log rồi bỏ qua.

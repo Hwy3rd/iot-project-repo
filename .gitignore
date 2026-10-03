@@ -4,3 +4,6 @@
 .env
 __pycache__/
 *.pyc
+
+# Firmware config (chua mat khau WiFi/MQTT) — mau la config.example.h
+firmware/cold_room_monitor/config.h

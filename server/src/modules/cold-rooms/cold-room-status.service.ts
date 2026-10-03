@@ -29,6 +29,12 @@ export interface ColdRoomLatestReading {
   doorOpen: boolean;
   sensorFault: boolean;
   outOfRange: boolean;
+  /** Device state with the reading; null when the device doesn't report it. */
+  humidity: number | null;
+  fanOn: boolean | null;
+  fanVoltage: number | null;
+  fanPowerFault: boolean | null;
+  alarmActive: boolean | null;
 }
 
 // Window length and bucket size per range: ~60-100 points each.
@@ -50,6 +56,10 @@ export interface ColdRoomSeriesPoint {
   outOfRange: number;
   doorOpen: number;
   sensorFault: number;
+  /** Average humidity (%) of the samples that reported one; null if none did. */
+  humidity: number | null;
+  /** How many samples reported a fan power fault. */
+  fanPowerFault: number;
 }
 
 export interface ColdRoomSeries {
@@ -171,6 +181,9 @@ export class ColdRoomStatusService {
           outOfRange: { $sum: { $cond: ['$outOfRange', 1, 0] } },
           doorOpen: { $sum: { $cond: ['$doorOpen', 1, 0] } },
           sensorFault: { $sum: { $cond: ['$sensorFault', 1, 0] } },
+          // Skips samples that didn't report humidity (null/missing).
+          humidity: { $avg: '$humidity' },
+          fanPowerFault: { $sum: { $cond: ['$fanPowerFault', 1, 0] } },
         },
       },
       { $sort: { _id: 1 } },
@@ -187,9 +200,11 @@ export class ColdRoomStatusService {
       bucketMinutes: minutes,
       tempMin: room.tempMin,
       tempMax: room.tempMax,
-      points: rows.map(({ _id, avg, ...rest }) => ({
+      points: rows.map(({ _id, avg, humidity, ...rest }) => ({
         t: _id,
         avg: avg === null ? null : Math.round(avg * 100) / 100,
+        humidity:
+          typeof humidity === 'number' ? Math.round(humidity * 10) / 10 : null,
         ...rest,
       })),
       prediction,
@@ -212,16 +227,27 @@ export class ColdRoomStatusService {
           doorOpen: { $first: '$doorOpen' },
           sensorFault: { $first: '$sensorFault' },
           outOfRange: { $first: '$outOfRange' },
+          humidity: { $first: '$humidity' },
+          fanOn: { $first: '$fanOn' },
+          fanVoltage: { $first: '$fanVoltage' },
+          fanPowerFault: { $first: '$fanPowerFault' },
+          alarmActive: { $first: '$alarmActive' },
         },
       },
     ]);
+    // `?? null`: samples stored before these fields existed lack them.
     return new Map(
-      rows.map(
-        ({ _id, ts, temperature, doorOpen, sensorFault, outOfRange }) => [
-          _id,
-          { ts, temperature, doorOpen, sensorFault, outOfRange },
-        ],
-      ),
+      rows.map(({ _id, ...reading }) => [
+        _id,
+        {
+          ...reading,
+          humidity: reading.humidity ?? null,
+          fanOn: reading.fanOn ?? null,
+          fanVoltage: reading.fanVoltage ?? null,
+          fanPowerFault: reading.fanPowerFault ?? null,
+          alarmActive: reading.alarmActive ?? null,
+        },
+      ]),
     );
   }
 

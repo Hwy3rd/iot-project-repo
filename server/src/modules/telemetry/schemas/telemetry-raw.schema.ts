@@ -32,6 +32,24 @@ export class TelemetryRaw {
   @Prop({ type: Boolean, required: true })
   sensorFault!: boolean;
 
+  // Device state reported alongside the reading (see TelemetryMessageDto).
+  // null = the device didn't report it (older firmware, simulators), which
+  // is also what samples stored before these fields existed read back as.
+  @Prop({ type: Number, default: null })
+  humidity!: number | null;
+
+  @Prop({ type: Boolean, default: null })
+  fanOn!: boolean | null;
+
+  @Prop({ type: Number, default: null })
+  fanVoltage!: number | null;
+
+  @Prop({ type: Boolean, default: null })
+  fanPowerFault!: boolean | null;
+
+  @Prop({ type: Boolean, default: null })
+  alarmActive!: boolean | null;
+
   // Evaluated against the room's temp_min/temp_max at ingest time, because
   // those thresholds can change later.
   @Prop({ type: Boolean, required: true })

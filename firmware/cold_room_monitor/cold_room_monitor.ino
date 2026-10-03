@@ -21,23 +21,22 @@
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
+#include <time.h>
+#include <sys/time.h>
 
 // ======================== CAU HINH WIFI & MQTT ========================
-// CHINH SUA 2 dong nay thanh WiFi & IP may tinh cua ban
-#define WIFI_SSID         "TEN_WIFI_CUA_BAN"
-#define WIFI_PASSWORD     "MAT_KHAU_WIFI"
+// WiFi, broker, tai khoan thiet bi, DEVICE_ID, NTP nam trong config.h
+// (gitignore, khong de mat khau trong code): copy config.example.h -> config.h
+// cung thu muc roi sua gia tri.
+#if __has_include("config.h")
+#include "config.h"
+#else
+#error "Thieu config.h: copy config.example.h thanh config.h (cung thu muc) roi sua gia tri"
+#endif
 
-// IP may tinh dang chay Docker (goi `ipconfig` tren Windows de tim)
-// Vi du: 192.168.1.100
-// Khi deploy len server that: thay bang IP/domain public cua server
-#define MQTT_BROKER_HOST  "192.168.1.100"
-#define MQTT_BROKER_PORT  1883
-
-// ID nay phai DUY NHAT cho moi ESP32 trong he thong
-// Va phai KHOP voi truong `unique_id` cua thiet bi trong database server
-// (Nho thong bao cho team backend de ho them device voi ID nay)
-#define MQTT_CLIENT_ID       "esp32-coldroom-01"
-#define MQTT_TOPIC_TELEMETRY "devices/esp32-coldroom-01/telemetry"
+// Client ID = DEVICE_ID (phai KHOP `unique_id` tren server); topic ghep tu ID
+#define MQTT_CLIENT_ID       DEVICE_ID
+#define MQTT_TOPIC_TELEMETRY "devices/" DEVICE_ID "/telemetry"
 
 // ======================== CAU HINH PHAN CUNG ========================
 #define LIMIT_SWITCH_PIN    18
@@ -55,7 +54,7 @@ const float VOLTAGE_DIVIDER_RATIO = 5.0;   // module chia ap 5:1
 const float VOLTAGE_ALARM_DELTA   = 0.5;   // nguong bien dong dien ap (V)
 const float MIN_FAN_RUN_VOLTAGE   = 1.0;   // nguong toi thieu xac nhan quat co dien
 
-#define REPORT_INTERVAL_MS 2000   // gui MQTT moi 2 giay
+#define REPORT_INTERVAL_MS 5000   // gui MQTT moi 5 giay
 
 // ======================== KHOI TAO DOI TUONG ========================
 DHT dht(DHT_PIN, DHT_TYPE);
@@ -73,6 +72,7 @@ bool  buzzerState      = false;
 float stableVoltage    = -1.0;
 bool  voltageAnomaly   = false;
 bool  lastRelayCommand = false;
+bool  alarmActive      = false;   // coi dang bao dong (bat ky su co nao)
 
 // ======================== TIEN ICH ========================
 bool isDoorClosed() {
@@ -104,14 +104,40 @@ void connectWiFi() {
     Serial.println("\n[LOI] Khong ket noi duoc WiFi! Kiem tra SSID/Pass.");
 }
 
+// ======================== THOI GIAN (NTP) ========================
+// SNTP chay ngam, tu dong dong bo lai dinh ky; chi can goi 1 lan.
+void setupTime() {
+  configTime(0, 0, NTP_SERVER_1, NTP_SERVER_2);   // UTC, khong DST
+}
+
+// Truoc khi dong bo, dong ho ESP32 dem tu 1970 -> coi la chua co gio thuc.
+bool isTimeSynced() {
+  return time(nullptr) > 1700000000;   // ~ 11/2023
+}
+
+// Ghi gio hien tai dang ISO 8601 UTC co mili-giay, vd "2026-10-03T08:15:30.123Z".
+// Server dung (deviceId, ts) lam khoa chong trung, nen moi mau phai co ts rieng.
+bool formatIsoTimestamp(char* buf, size_t len) {
+  if (!isTimeSynced()) return false;
+  struct timeval tv;
+  gettimeofday(&tv, nullptr);
+  struct tm utc;
+  gmtime_r(&tv.tv_sec, &utc);
+  size_t n = strftime(buf, len, "%Y-%m-%dT%H:%M:%S", &utc);
+  if (n == 0) return false;
+  snprintf(buf + n, len - n, ".%03ldZ", (long)(tv.tv_usec / 1000));
+  return true;
+}
+
 // ======================== MQTT ========================
 bool connectMQTT() {
   if (mqttClient.connected()) return true;
   if (WiFi.status() != WL_CONNECTED) { connectWiFi(); return false; }
 
   Serial.printf("Dang ket noi MQTT Broker %s:%d ...\n", MQTT_BROKER_HOST, MQTT_BROKER_PORT);
-  // Khong can username/password (mosquitto.conf: allow_anonymous true)
-  if (mqttClient.connect(MQTT_CLIENT_ID)) {
+  // Broker bat buoc dang nhap (mosquitto.conf: allow_anonymous false).
+  // Ma loi 5 = sai username/password.
+  if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
     Serial.println("MQTT ket noi thanh cong!");
     return true;
   }
@@ -122,33 +148,55 @@ bool connectMQTT() {
 /*
  * Format JSON payload gui len server:
  * {
- *   "ts":          "2024-01-15T10:30:00.000Z",  <- ISO 8601 (server can truong nay)
+ *   "ts":          "2024-01-15T10:30:00.000Z",  <- ISO 8601 UTC tu NTP (bat buoc dung gio)
  *   "temperature": 25.5,                         <- null neu cam bien loi
+ *   "humidity":    70.0,                         <- do am %; null neu cam bien loi
  *   "doorOpen":    false,                        <- true = cua dang mo
- *   "sensorFault": false                         <- true = DHT11 bi loi
+ *   "sensorFault": false,                        <- true = DHT11 bi loi
+ *   "fanOn":         true,                       <- relay quat dang bat
+ *   "fanVoltage":    11.82,                      <- dien ap nguon quat (V)
+ *   "fanPowerFault": false,                      <- quat dang bat ma nguon mat/bien dong
+ *   "alarmActive":   false                       <- coi dang bao dong tai cho
  * }
  *
  * Server (NestJS) subscribe topic: devices/+/telemetry
  * Sau do luu vao MongoDB qua TelemetryService.
  */
-void publishTelemetry(float temp, bool doorOpen, bool sensorFault) {
+void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFault, float dcVolt) {
+  // Server luu dung "ts" thiet bi gui (khong dung gio nhan tin): gio sai thi
+  // mau bi loai trung / bi TTL xoa ngay. Chua co gio NTP -> bo qua, khong gui.
+  char ts[32];
+  if (!formatIsoTimestamp(ts, sizeof(ts))) {
+    Serial.println("[NTP] Chua dong bo gio, tam chua gui telemetry...");
+    return;
+  }
+
   if (!mqttClient.connected() && !connectMQTT()) return;
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
 
-  // Ghi chu: Dung "now()" gia - server van chap nhan va luu thoi diem nhan tin.
-  // De chinh xac: tich hop NTPClient -> lay thoi gian thuc, roi format ISO8601.
-  doc["ts"] = "2024-01-01T00:00:00.000Z";
+  doc["ts"] = ts;
 
   if (sensorFault || isnan(temp))
     doc["temperature"] = nullptr;
   else
     doc["temperature"] = (float)(round(temp * 10.0) / 10.0);
 
+  if (sensorFault || isnan(humidity))
+    doc["humidity"] = nullptr;
+  else
+    doc["humidity"] = (float)(round(humidity * 10.0) / 10.0);
+
   doc["doorOpen"]    = doorOpen;
   doc["sensorFault"] = sensorFault;
 
-  char payload[256];
+  // Quat tat (cua mo) thi 0 V la binh thuong -> chi bao loi nguon khi quat dang bat
+  doc["fanOn"]         = lastRelayCommand;
+  doc["fanVoltage"]    = (float)(round(dcVolt * 100.0) / 100.0);
+  doc["fanPowerFault"] = lastRelayCommand && voltageAnomaly;
+  doc["alarmActive"]   = alarmActive;
+
+  char payload[384];
   serializeJson(doc, payload);
 
   if (mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload))
@@ -221,7 +269,8 @@ void handleFanAndAlarmLogic(float temp, bool doorClosed, float dcVolt) {
   checkVoltageStability(dcVolt);
 
   // Hu coi khi co bat ky su co nao
-  if (!doorClosed || tempHigh || voltageAnomaly) {
+  alarmActive = !doorClosed || tempHigh || voltageAnomaly;
+  if (alarmActive) {
     if (millis() - lastBuzzerToggle >= 150) {
       lastBuzzerToggle = millis();
       buzzerState = !buzzerState;
@@ -257,7 +306,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial.println("\n============================================");
-  Serial.println("  ESP32 KHO LANH  -  MQTT Telemetry v1.0");
+  Serial.println("  ESP32 KHO LANH  -  MQTT Telemetry v1.1");
   Serial.println("============================================");
 
   analogReadResolution(12);
@@ -274,8 +323,11 @@ void setup() {
 
   Serial.println("\n[KET NOI MANG & MQTT]");
   connectWiFi();
+  setupTime();
   mqttClient.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
   mqttClient.setKeepAlive(30);
+  // Mac dinh 256 byte (ca topic + header); payload ~180 byte da sat gioi han
+  mqttClient.setBufferSize(512);
   connectMQTT();
 
   Serial.printf("\nTopic MQTT : %s\n", MQTT_TOPIC_TELEMETRY);
@@ -294,6 +346,7 @@ void loop() {
   checkSwitchChange();
 
   float temp   = dht.readTemperature();
+  float hum    = dht.readHumidity();
   bool  closed = isDoorClosed();
   float dcVolt = readDCVoltage();
   bool  fault  = !dhtOK || isnan(temp);
@@ -304,6 +357,6 @@ void loop() {
     lastReport = millis();
     printStatus(dcVolt);
     // Gui telemetry len server qua MQTT
-    publishTelemetry(temp, !closed, fault);
+    publishTelemetry(temp, hum, !closed, fault, dcVolt);
   }
 }

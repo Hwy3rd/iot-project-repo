@@ -5,6 +5,10 @@
  *   node scripts/simulate_telemetry.js --scenario normal
  *   node scripts/simulate_telemetry.js --scenario overheat
  *   node scripts/simulate_telemetry.js --scenario overcool
+ *   node scripts/simulate_telemetry.js --scenario fanfault   (quạt mất nguồn -> cảnh báo DEVICE_FAULT)
+ *
+ * Mỗi điểm đo gửi đủ các trường như firmware ESP32 v1.1 (độ ẩm, trạng thái
+ * quạt, điện áp nguồn quạt, còi), xem firmware/README.md.
  */
 
 const mqtt = require('../server/node_modules/mqtt');
@@ -56,6 +60,9 @@ client.on('connect', () => {
     if (scenario === 'overheat') {
       // Tăng dần từ 3.2°C lên 4.6°C -> Vượt trần 4.0°C
       temp = 3.2 + (5 - i) * 0.28;
+    } else if (scenario === 'fanfault') {
+      // Quạt mất nguồn: nhiệt độ ấm dần từ 2.6°C lên 3.6°C, chưa vượt trần
+      temp = 2.6 + (5 - i) * 0.2;
     } else if (scenario === 'overcool') {
       // Giảm dần từ 1.0°C xuống -0.8°C -> Tụt sàn 0.0°C
       temp = 1.0 - (5 - i) * 0.36;
@@ -64,11 +71,22 @@ client.on('connect', () => {
       temp = 2.4 + (5 - i) * 0.08;
     }
 
+    const doorOpen = scenario === 'overheat' && i === 0; // Kịch bản quá nhiệt do hé cửa
+    // Như firmware: quạt tắt khi cửa mở; ở kịch bản fanfault quạt vẫn bật
+    // nhưng nguồn tụt (2 điểm cuối).
+    const fanOn = !doorOpen;
+    const fanPowerFault = scenario === 'fanfault' && i <= 1;
+    const fanVoltage = !fanOn ? 0 : fanPowerFault ? 0.4 : Math.round((11.8 + Math.random() * 0.3) * 100) / 100;
     points.push({
       ts,
       temperature: Math.round(temp * 100) / 100,
-      doorOpen: scenario === 'overheat' && i === 0, // Kịch bản quá nhiệt do hé cửa
+      humidity: Math.round((82 + Math.random() * 6) * 10) / 10,
+      doorOpen,
       sensorFault: false,
+      fanOn,
+      fanVoltage,
+      fanPowerFault,
+      alarmActive: doorOpen || fanPowerFault,
     });
   }
 
@@ -76,7 +94,7 @@ client.on('connect', () => {
   points.forEach((p, idx) => {
     const payloadStr = JSON.stringify(p);
     client.publish(TOPIC, payloadStr, { qos: 1 });
-    console.log(`  [Điểm ${idx + 1}/6] ${p.ts} -> Nhiệt độ: ${p.temperature}°C (Cửa: ${p.doorOpen ? 'MỞ' : 'ĐÓNG'})`);
+    console.log(`  [Điểm ${idx + 1}/6] ${p.ts} -> Nhiệt độ: ${p.temperature}°C, Độ ẩm: ${p.humidity}% (Cửa: ${p.doorOpen ? 'MỞ' : 'ĐÓNG'}, Quạt: ${p.fanPowerFault ? 'MẤT NGUỒN' : p.fanOn ? 'BẬT' : 'TẮT'} ${p.fanVoltage}V)`);
   });
 
   setTimeout(() => {

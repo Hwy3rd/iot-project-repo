@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { dayjs, formatDateTime, formatTemp } from '@/lib/format'
+import { dayjs, formatDateTime, formatHumidity, formatTemp } from '@/lib/format'
 import { mutationErrorText } from '@/lib/forms'
 import {
   CHANNEL_ROLE_LABEL,
@@ -386,8 +386,11 @@ function TelemetryPanel({ device }: { device: Device }) {
             max: h.maxTemp,
             samples: h.sampleCount,
             outOfRange: h.outOfRangeCount,
-            doorOpen: 0,
+            // Absent on hours rolled up before these counts existed.
+            doorOpen: h.doorOpenCount ?? 0,
             sensorFault: h.sensorErrorCount,
+            humidity: h.avgHumidity ?? null,
+            fanPowerFault: h.fanPowerFaultCount ?? 0,
           })),
         }
       : null
@@ -440,7 +443,9 @@ function TelemetryPanel({ device }: { device: Device }) {
                   <TableRow>
                     <TableHead className="pl-3">Thời điểm</TableHead>
                     <TableHead className="text-right">Nhiệt độ</TableHead>
+                    <TableHead className="text-right">Độ ẩm</TableHead>
                     <TableHead>Cửa</TableHead>
+                    <TableHead>Quạt</TableHead>
                     <TableHead>Ghi chú</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -449,9 +454,17 @@ function TelemetryPanel({ device }: { device: Device }) {
                     <TableRow key={r.ts}>
                       <TableCell className="pl-3 tabular-nums">{dayjs(r.ts).format('HH:mm:ss')}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatTemp(r.temperature)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatHumidity(r.humidity)}</TableCell>
                       <TableCell>{r.doorOpen ? 'Mở' : 'Đóng'}</TableCell>
+                      <TableCell>{r.fanOn == null ? '—' : r.fanOn ? 'Bật' : 'Tắt'}</TableCell>
                       <TableCell className="text-sm">
-                        {[r.outOfRange && 'Vượt ngưỡng', r.sensorFault && 'Lỗi cảm biến'].filter(Boolean).join(', ') || '—'}
+                        {[
+                          r.outOfRange && 'Vượt ngưỡng',
+                          r.sensorFault && 'Lỗi cảm biến',
+                          r.fanPowerFault && 'Mất nguồn quạt',
+                        ]
+                          .filter(Boolean)
+                          .join(', ') || '—'}
                       </TableCell>
                     </TableRow>
                   ))}

@@ -1,9 +1,9 @@
 import type { ColdRoom, ColdRoomStatus, Device } from '@/api/types'
 import { DeviceStatusBadge, ToneBadge } from '@/components/common/StatusBadge'
-import { formatDateTime, formatNumber, formatRelative, formatTemp } from '@/lib/format'
-import { TEMP_STATE, tempState, type TempState } from '@/lib/room-status'
+import { formatDateTime, formatHumidity, formatNumber, formatRelative, formatTemp } from '@/lib/format'
+import { TEMP_STATE, fanState, tempState, type TempState } from '@/lib/room-status'
 import { cn } from '@/lib/utils'
-import { DoorClosed, DoorOpen, Siren, TriangleAlert } from 'lucide-react'
+import { DoorClosed, DoorOpen, Droplets, Fan, Siren, TriangleAlert } from 'lucide-react'
 
 const ACCENT: Record<TempState, string> = {
   ok: 'border-l-success',
@@ -43,6 +43,7 @@ export function RoomTile({
 }) {
   const latest = status?.latest ?? null
   const state = tempState(latest, now)
+  const fan = fanState(latest)
 
   return (
     <button
@@ -87,6 +88,18 @@ export function RoomTile({
               <span className="inline-flex items-center gap-1 font-medium text-destructive">
                 <TriangleAlert className="size-4" aria-hidden="true" />
                 Lỗi cảm biến
+              </span>
+            )}
+            {latest.humidity != null && (
+              <span className="inline-flex items-center gap-1 tabular-nums">
+                <Droplets className="size-4" aria-hidden="true" />
+                {formatHumidity(latest.humidity)}
+              </span>
+            )}
+            {fan && (
+              <span className={cn('inline-flex items-center gap-1', fan.fault && 'font-medium text-destructive')}>
+                <Fan className="size-4" aria-hidden="true" />
+                {fan.label}
               </span>
             )}
             <time dateTime={latest.ts} title={formatDateTime(latest.ts)}>

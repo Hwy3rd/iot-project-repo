@@ -55,6 +55,15 @@ describe('TelemetryService', () => {
     doorOpen: false,
     sensorFault: false,
   };
+  // What a sample without the optional device state (older firmware,
+  // simulators) is stored/pushed with.
+  const unreportedState = {
+    humidity: null,
+    fanOn: null,
+    fanVoltage: null,
+    fanPowerFault: null,
+    alarmActive: null,
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -119,6 +128,7 @@ describe('TelemetryService', () => {
             doorOpen: false,
             sensorFault: false,
             outOfRange: false,
+            ...unreportedState,
           },
         },
       );
@@ -196,6 +206,7 @@ describe('TelemetryService', () => {
         doorOpen: false,
         sensorFault: false,
         outOfRange: false,
+        ...unreportedState,
       });
       // -18 is within the recovered band [-19,-16] (tempMax=-15, hysteresis=1)
       // — see the "temperature alert wiring" tests for the boundary cases.
@@ -272,6 +283,44 @@ describe('TelemetryService', () => {
         );
       },
     );
+
+    it('stores and pushes the device state reported with the reading', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      rawModel.create.mockResolvedValue({});
+      const state = {
+        humidity: 71.5,
+        fanOn: true,
+        fanVoltage: 11.82,
+        fanPowerFault: false,
+        alarmActive: false,
+      };
+
+      await service.ingest('d1', { ...sample, ...state });
+
+      expect(rawModel.create).toHaveBeenCalledWith(
+        expect.objectContaining(state),
+      );
+      const [, , event] = realtime.emitToWarehouse.mock.calls[0] as [
+        string,
+        string,
+        { latest: Record<string, unknown> },
+      ];
+      expect(event.latest).toMatchObject(state);
+    });
+
+    it('stores a non-finite humidity or fan voltage as not reported', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+
+      await service.ingest('d1', {
+        ...sample,
+        humidity: NaN,
+        fanVoltage: Infinity,
+      });
+
+      expect(rawModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ humidity: null, fanVoltage: null }),
+      );
+    });
 
     it('returns stored: false for a duplicate (deviceId, ts)', async () => {
       devicesRepository.findOne.mockResolvedValue(activeDevice);
@@ -367,6 +416,62 @@ describe('TelemetryService', () => {
 
       // In range (-20..-15) but warmer than the -16 recovery boundary.
       await service.ingest('d1', { ...sample, temperature: -15.5 });
+
+      expect(alertsService.raise).not.toHaveBeenCalled();
+      expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fan power alert wiring', () => {
+    // Inside the hysteresis gap, so the temperature alert wiring stays out
+    // of the way (neither raise nor resolve) and only the fan's calls show.
+    const quietSample = { ...sample, temperature: -15.5 };
+
+    it('raises DEVICE_FAULT when the device reports a fan power fault', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+
+      await service.ingest('d1', {
+        ...quietSample,
+        fanOn: true,
+        fanVoltage: 0.3,
+        fanPowerFault: true,
+      });
+
+      expect(alertsService.raise).toHaveBeenCalledWith({
+        coldRoomId: 'c1',
+        deviceId: 'd1',
+        type: AlertType.DEVICE_FAULT,
+        details: { kind: 'fan_power', fanVoltage: 0.3 },
+      });
+      expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+    });
+
+    it('auto-resolves once the fan runs on a healthy supply', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+
+      await service.ingest('d1', {
+        ...quietSample,
+        fanOn: true,
+        fanVoltage: 11.9,
+        fanPowerFault: false,
+      });
+
+      expect(alertsService.resolveAuto).toHaveBeenCalledWith({
+        type: AlertType.DEVICE_FAULT,
+        deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
+      });
+      expect(alertsService.raise).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the fan is switched off', { fanOn: false, fanPowerFault: false }],
+      ['the device does not report fan state', {}],
+    ])('does neither when %s', async (_label, state) => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+
+      await service.ingest('d1', { ...quietSample, ...state });
 
       expect(alertsService.raise).not.toHaveBeenCalled();
       expect(alertsService.resolveAuto).not.toHaveBeenCalled();

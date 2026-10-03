@@ -114,6 +114,50 @@ describe('MqttIngestService', () => {
     );
   });
 
+  it('passes the optional device state through to ingest', async () => {
+    devicesRepository.findOne!.mockResolvedValue({
+      id: 'device-uuid',
+      uniqueId: 'esp32-1',
+    });
+    const state = {
+      humidity: 73,
+      fanOn: false,
+      fanVoltage: 0,
+      fanPowerFault: false,
+      alarmActive: true,
+    };
+
+    await publish('devices/esp32-1/telemetry', {
+      ts: '2026-01-01T00:00:00.000Z',
+      temperature: 3.5,
+      doorOpen: true,
+      sensorFault: false,
+      ...state,
+    });
+
+    expect(telemetryService.ingest).toHaveBeenCalledWith(
+      'device-uuid',
+      expect.objectContaining(state),
+    );
+  });
+
+  it('rejects an out-of-range humidity', async () => {
+    devicesRepository.findOne!.mockResolvedValue({
+      id: 'device-uuid',
+      uniqueId: 'esp32-1',
+    });
+
+    await publish('devices/esp32-1/telemetry', {
+      ts: '2026-01-01T00:00:00.000Z',
+      temperature: 3.5,
+      doorOpen: false,
+      sensorFault: false,
+      humidity: 150,
+    });
+
+    expect(telemetryService.ingest).not.toHaveBeenCalled();
+  });
+
   it('ignores messages on topics that are not device telemetry', async () => {
     await publish('some/other/topic', {});
 

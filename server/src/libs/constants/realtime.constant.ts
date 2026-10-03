@@ -23,6 +23,11 @@ export interface ColdRoomReadingEvent {
     doorOpen: boolean;
     sensorFault: boolean;
     outOfRange: boolean;
+    humidity: number | null;
+    fanOn: boolean | null;
+    fanVoltage: number | null;
+    fanPowerFault: boolean | null;
+    alarmActive: boolean | null;
   };
 }
 
