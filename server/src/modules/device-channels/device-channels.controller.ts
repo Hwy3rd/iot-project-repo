@@ -8,6 +8,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { Audit } from '../../common/decorators/audit.decorator';
+import { Device } from '../devices/entities/device.entity';
 import { DeviceChannel } from './entities/device-channel.entity';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
@@ -49,6 +50,23 @@ export class DeviceChannelsController {
     @Body() createDeviceChannelDto: CreateDeviceChannelDto,
   ) {
     return this.deviceChannelsService.create(deviceId, createDeviceChannelDto);
+  }
+
+  // Declared before the `:id` routes so "defaults" is never read as an id.
+  @Roles(...CHANNEL_MANAGE_ROLES)
+  @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
+    paramName: 'deviceId',
+  })
+  @Serialize(DeviceChannelResponseDto)
+  @Audit({
+    action: 'device_channel.add_defaults',
+    targetType: 'device',
+    entity: Device,
+    idParam: 'deviceId',
+  })
+  @Post('defaults')
+  addDefaults(@Param('deviceId') deviceId: string) {
+    return this.deviceChannelsService.addDefaults(deviceId);
   }
 
   @Roles(...CHANNEL_VIEW_ROLES)

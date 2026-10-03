@@ -22,6 +22,8 @@ export interface AiPredictResponseDto {
 // Kept here rather than in cold-rooms so the telemetry side can store it
 // without importing the cold-rooms module.
 export interface ColdRoomPrediction {
+  // When the forecast was made; predictedTemp15m is for 15 minutes later.
+  predictedAt: Date;
   predictedTemp15m: number;
   willExceedThreshold: boolean;
   violationType: string;

@@ -157,8 +157,12 @@ erDiagram
     varchar36 issued_by FK "nullable — null nếu tự động"
     enum action "on | off"
     json payload
-    enum status "pending | sent | done | failed"
+    enum status "pending | sent | done | failed | expired | superseded"
+    timestamp sent_at
+    int attempts
+    timestamp expires_at
     timestamp ack_at
+    varchar error_reason
   }
   DEVICE_STATUS_HISTORY {
     varchar36 id PK
@@ -383,6 +387,10 @@ Một ngoại vi (cảm biến/cơ cấu chấp hành) gắn trên một device.
 
 Không có ràng buộc unique trên `(device_id, channel_type)`: một device được phép có nhiều channel cùng loại (vd 2 quạt).
 
+**Kênh mặc định.** Khi claim, thiết bị được khai báo sẵn các kênh của board đang dùng (`DEVICE_DEFAULT_CHANNELS` trong `libs/constants/device-channel.constant.ts`): cảm biến nhiệt ẩm, công tắc cửa, nguồn quạt (`current_sensor`), quạt, còi. Board lắp khác thì sửa/xoá kênh sau. Thiết bị claim từ trước dùng `POST /devices/:id/channels/defaults` để bổ sung.
+
+**Kênh quyết định chỉ số nào được hiển thị.** Telemetry vẫn gửi theo thiết bị, không theo kênh, nhưng mỗi trường tuỳ chọn gắn với một loại kênh (`TELEMETRY_FIELD_CHANNEL`): `humidity` → `temp_humidity_sensor`, `fanOn` → `fan_motor`, `fanVoltage`/`fanPowerFault` → `current_sensor`, `alarmActive` → `buzzer`. Giao diện chỉ hiện trường của kênh đã khai báo, và cảnh báo "thiếu dữ liệu" khi kênh đã khai báo mà trường luôn `null` (vd board chạy firmware cũ). Thiết bị chưa khai báo kênh nào thì hiện mọi thứ nó gửi, như trước. `temperature`/`doorOpen` luôn hiện vì mọi thiết bị đều bắt buộc gửi. Để làm việc này, `latest` của `GET /cold-rooms/status` và sự kiện `coldroom:reading` có thêm `deviceId` và `declaredChannels`.
+
 ### `commands`
 
 Lệnh điều khiển gửi tới một channel.
@@ -394,8 +402,16 @@ Lệnh điều khiển gửi tới một channel.
 | `issued_by` | FK → `users.id`, nullable | `NULL` khi lệnh do rule tự động phát ra (vd cảnh báo quá nhiệt tự bật buzzer) |
 | `action` | `enum` | `on \| off` |
 | `payload` | `json` nullable | tham số riêng theo loại actuator (tốc độ quạt, kiểu còi...) |
-| `status` | `enum`, default `pending` | `pending → sent → done \| failed` |
-| `ack_at` | `timestamp` nullable | |
+| `status` | `enum`, default `pending` | `pending → sent → done \| failed`; lệnh còn mở (`pending`/`sent`) có thể thành `expired` (quá `expires_at`) hoặc `superseded` (có lệnh mới hơn cho cùng channel) |
+| `sent_at` | `timestamp` nullable | lần publish lên broker gần nhất (đã nhận PUBACK); worker tính khoảng retry từ đây |
+| `attempts` | `int`, default `0` | số lần đã publish, tối đa `COMMAND_MAX_ATTEMPTS` (5) |
+| `expires_at` | `timestamp` | `created_at` + 60 s; quá mốc này thì không gửi nữa và thiết bị cũng từ chối |
+| `ack_at` | `timestamp` nullable | lúc nhận ack của thiết bị |
+| `error_reason` | `varchar(255)` nullable | lý do thiết bị báo `failed` (vd `unsupported_channel`) |
+
+Index `(channel_id, status)` cho việc supersede lệnh còn mở của một channel; `(status, expires_at)` cho job quét retry/hết hạn.
+
+Mọi lần chuyển trạng thái đều là `UPDATE ... WHERE status IN ('pending', 'sent')`, nên ack đến muộn, ack trùng hay hai tiến trình cùng xử lý một lệnh không ghi đè được trạng thái cuối.
 
 Không cascade xoá trên FK: lịch sử lệnh phải tồn tại độc lập với channel/user bị xoá sau này (phục vụ audit).
 
@@ -580,7 +596,7 @@ Redis không lưu dữ liệu nghiệp vụ, chỉ phục vụ 2 việc:
 | `device_channels.channel_type` | `limit_switch`, `temp_humidity_sensor`, `current_sensor`, `fan_motor`, `indicator_light`, `buzzer` |
 | `device_channels.channel_role` | `sensor`, `actuator` |
 | `commands.action` | `on`, `off` |
-| `commands.status` | `pending`, `sent`, `done`, `failed` |
+| `commands.status` | `pending`, `sent`, `done`, `failed`, `expired`, `superseded` |
 | `alerts.type` | `temperature_out_of_range`, `temperature_predicted`, `device_fault`, `offline`, `door_open_too_long`, `batch_temperature_out_of_range`, `batch_expiring_soon` |
 | `alerts.status` | `open`, `acknowledged`, `resolved` |
 | `alerts.resolution` | `auto`, `manual` |

@@ -6,6 +6,8 @@ import { In } from 'typeorm';
 import { UserRole } from '../../libs/constants/user.constant';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { Alert } from '../alerts/entities/alert.entity';
+import { ChannelType } from '../../libs/constants/device-channel.constant';
+import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Device } from '../devices/entities/device.entity';
 import { TelemetryRaw } from '../telemetry/schemas/telemetry-raw.schema';
 import { ColdRoomStatusService } from './cold-room-status.service';
@@ -34,6 +36,7 @@ describe('ColdRoomStatusService', () => {
   const devices = { createQueryBuilder: jest.fn() };
   const alerts = { createQueryBuilder: jest.fn() };
   const raw = { aggregate: jest.fn() };
+  const channels = { find: jest.fn().mockResolvedValue([]) };
   const aiPrediction = {
     predict: jest.fn(),
     getLatest: jest.fn().mockResolvedValue(null),
@@ -54,6 +57,7 @@ describe('ColdRoomStatusService', () => {
         { provide: getRepositoryToken(ColdRoom), useValue: coldRooms },
         { provide: getRepositoryToken(Device), useValue: devices },
         { provide: getRepositoryToken(Alert), useValue: alerts },
+        { provide: getRepositoryToken(DeviceChannel), useValue: channels },
         { provide: getModelToken(TelemetryRaw.name), useValue: raw },
         { provide: AiPredictionService, useValue: aiPrediction },
       ],
@@ -77,6 +81,7 @@ describe('ColdRoomStatusService', () => {
       {
         _id: 'r1',
         ts,
+        deviceId: 'd1',
         temperature: -19.5,
         doorOpen: false,
         sensorFault: false,
@@ -92,6 +97,12 @@ describe('ColdRoomStatusService', () => {
     alerts.createQueryBuilder.mockReturnValue(
       rawQuery([{ coldRoomId: 'r2', n: '3' }]),
     );
+    // Duplicate types (two fans) are reported once.
+    channels.find.mockResolvedValue([
+      { deviceId: 'd1', channelType: ChannelType.TEMP_HUMIDITY_SENSOR },
+      { deviceId: 'd1', channelType: ChannelType.FAN_MOTOR },
+      { deviceId: 'd1', channelType: ChannelType.FAN_MOTOR },
+    ]);
 
     await expect(
       service.findStatuses({ coldRoomIds: ['r1', 'r2'] }, access(null)),
@@ -101,6 +112,11 @@ describe('ColdRoomStatusService', () => {
         warehouseId: 'w1',
         latest: {
           ts,
+          deviceId: 'd1',
+          declaredChannels: [
+            ChannelType.TEMP_HUMIDITY_SENSOR,
+            ChannelType.FAN_MOTOR,
+          ],
           temperature: -19.5,
           doorOpen: false,
           sensorFault: false,

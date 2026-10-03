@@ -8,7 +8,7 @@ import { dayjs, formatDateTime, formatTemp } from '@/lib/format'
 import { ALERT_TYPE_LABEL } from '@/lib/labels'
 import { useAlertActions } from '@/lib/useAlertActions'
 import { cn } from '@/lib/utils'
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 
@@ -87,27 +87,37 @@ export function AlertStream({
   warehouseId,
   roomName,
   onSelectRoom,
+  focusRoomId,
 }: {
   warehouseId: string
   roomName: (coldRoomId: string) => string
   onSelectRoom: (coldRoomId: string) => void
+  /** The room open on the page: the stream can narrow to it (the default). */
+  focusRoomId?: string | null
 }) {
+  const [wholeWarehouse, setWholeWarehouse] = useState(false)
+  const coldRoomId = focusRoomId && !wholeWarehouse ? focusRoomId : undefined
   const query = useQuery({
-    queryKey: ['alerts', { warehouseId, limit: STREAM_SIZE }],
-    queryFn: () => alertsApi.list({ warehouseId, limit: STREAM_SIZE }),
+    queryKey: ['alerts', { warehouseId, coldRoomId, limit: STREAM_SIZE }],
+    queryFn: () => alertsApi.list({ warehouseId, coldRoomId, limit: STREAM_SIZE }),
     refetchInterval: REFRESH_MS,
+    placeholderData: keepPreviousData,
   })
+  // What "already seen" is tracked against: switching room/scope shows a
+  // different list, which must not flash as newly arrived.
+  const scope = `${warehouseId}:${coldRoomId ?? '*'}`
   const alerts = query.data?.items ?? []
   const ids = alerts.map((a) => a.id).join()
 
   // Ids already on screen. The first load counts as seen (nothing flashes on
   // open); anything that arrives later is "fresh" until the timer below
   // folds it in. Reset when the warehouse changes.
-  const [known, setKnown] = useState<{ warehouseId: string; ids: Set<string> } | null>(null)
-  if (query.data && known?.warehouseId !== warehouseId) {
-    setKnown({ warehouseId, ids: new Set(alerts.map((a) => a.id)) })
+  const [known, setKnown] = useState<{ scope: string; ids: Set<string> } | null>(null)
+  // Not from placeholder data: that's still the previous scope's list.
+  if (query.data && !query.isPlaceholderData && known?.scope !== scope) {
+    setKnown({ scope, ids: new Set(alerts.map((a) => a.id)) })
   }
-  const fresh = new Set(known ? alerts.filter((a) => !known.ids.has(a.id)).map((a) => a.id) : [])
+  const fresh = new Set(known && known.scope === scope ? alerts.filter((a) => !known.ids.has(a.id)).map((a) => a.id) : [])
 
   useEffect(() => {
     if (!ids) return
@@ -122,9 +132,30 @@ export function AlertStream({
 
   return (
     <section aria-label="Luồng cảnh báo" className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-2 border-b px-4 py-3">
-        <h2 className="font-semibold">Cảnh báo</h2>
-        <span className="text-sm text-muted-foreground tabular-nums">{openCount} chưa xử lý</span>
+      <header className="flex flex-col gap-2 border-b px-4 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-semibold">Cảnh báo</h2>
+          <span className="text-sm text-muted-foreground tabular-nums">{openCount} chưa xử lý</span>
+        </div>
+        {focusRoomId && (
+          <div role="group" aria-label="Phạm vi cảnh báo" className="flex rounded-lg border bg-muted p-0.5">
+            {[
+              { whole: false, label: 'Phòng này' },
+              { whole: true, label: 'Toàn kho' },
+            ].map((o) => (
+              <Button
+                key={o.label}
+                size="sm"
+                variant={wholeWarehouse === o.whole ? 'outline' : 'ghost'}
+                aria-pressed={wholeWarehouse === o.whole}
+                className={cn('flex-1', wholeWarehouse === o.whole ? 'bg-card shadow-xs' : 'text-muted-foreground')}
+                onClick={() => setWholeWarehouse(o.whole)}
+              >
+                {o.label}
+              </Button>
+            ))}
+          </div>
+        )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite" aria-relevant="additions">
         {query.isPending ? (
@@ -136,7 +167,10 @@ export function AlertStream({
         ) : query.isError ? (
           <ErrorState error={query.error} onRetry={() => query.refetch()} />
         ) : alerts.length === 0 ? (
-          <EmptyState title="Chưa có cảnh báo" description="Kho này chưa phát sinh cảnh báo nào." />
+          <EmptyState
+            title="Chưa có cảnh báo"
+            description={coldRoomId ? 'Phòng này chưa phát sinh cảnh báo nào.' : 'Kho này chưa phát sinh cảnh báo nào.'}
+          />
         ) : (
           <ul>
             {alerts.map((a) => (

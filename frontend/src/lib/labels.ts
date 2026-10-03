@@ -84,6 +84,15 @@ export const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
   sent: 'Đã gửi',
   done: 'Thành công',
   failed: 'Thất bại',
+  expired: 'Hết hạn',
+  superseded: 'Bị thay thế',
+}
+
+/** Reasons the firmware puts in a failed ack; anything else is shown as-is. */
+export const COMMAND_ERROR_LABEL: Record<string, string> = {
+  unsupported_channel: 'Thiết bị không hỗ trợ kênh này',
+  unsupported_action: 'Thiết bị không hỗ trợ lệnh này',
+  expired: 'Lệnh tới thiết bị khi đã hết hạn',
 }
 
 export const CHANNEL_TYPE_LABEL: Record<ChannelType, string> = {

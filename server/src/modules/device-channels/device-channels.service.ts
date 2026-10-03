@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { addMissingDefaultChannels } from './default-channels';
 import { CHANNEL_TYPE_ROLE } from '../../libs/constants/device-channel.constant';
 import { CreateDeviceChannelDto } from './dto/create-device-channel.dto';
 import { UpdateDeviceChannelDto } from './dto/update-device-channel.dto';
@@ -38,6 +39,15 @@ export class DeviceChannelsService {
       label: createDeviceChannelDto.label ?? null,
     });
     return this.channelsRepository.save(channel);
+  }
+
+  // For devices claimed before claims declared channels (or whose channels
+  // were removed): adds whatever default channel is missing, keeps the rest.
+  // Returns the device's full channel list afterwards.
+  async addDefaults(deviceId: string) {
+    await this.assertDeviceExists(deviceId);
+    await addMissingDefaultChannels(this.channelsRepository.manager, deviceId);
+    return this.channelsRepository.find({ where: { deviceId } });
   }
 
   async findAllForDevice(deviceId: string) {

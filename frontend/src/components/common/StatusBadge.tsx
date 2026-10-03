@@ -77,6 +77,8 @@ const COMMAND_TONE: Record<CommandStatus, Tone> = {
   sent: 'info',
   done: 'success',
   failed: 'danger',
+  expired: 'warning',
+  superseded: 'neutral',
 }
 
 export function CommandStatusBadge({ status }: { status: CommandStatus }) {

@@ -27,5 +27,17 @@ export class CommandResponseDto {
   createdAt!: Date;
 
   @Expose()
+  sentAt!: Date | null;
+
+  @Expose()
+  attempts!: number;
+
+  @Expose()
+  expiresAt!: Date;
+
+  @Expose()
   ackAt!: Date | null;
+
+  @Expose()
+  errorReason!: string | null;
 }

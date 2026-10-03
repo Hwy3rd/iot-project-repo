@@ -281,6 +281,8 @@ Lệnh này build lại image `app`/`worker` từ `./server` và chỉ thay hai 
 
 Nếu bản mới có sửa `ai-service/` (code, thư viện, hoặc file model), chạy thêm `./run.sh rebuild ai-service`. Trong lúc nó được thay, hệ thống vẫn chạy bình thường, chỉ thiếu dự báo.
 
+Nếu bản mới có sửa `mosquitto/entrypoint.sh` hoặc `mosquitto/mosquitto.conf` (ví dụ thêm quyền ACL cho topic mới), restart broker để áp dụng: `docker restart mosquitto_broker`. Thiết bị, `app` và `worker` tự kết nối lại sau khoảng 5 giây, có thể mất 1–2 mẫu telemetry trong lúc đó.
+
 `rebuild` **không đụng** datastore hay `cloudflared`, kể cả khi định nghĩa của chúng trong compose đã đổi (ví dụ đổi image MinIO). Những thay đổi đó phải làm riêng và có chủ đích (`docker compose -f docker-compose.production.yml up -d <svc>`), sau khi đã làm các bước chuẩn bị cần thiết, như chown `minio_data` ở mục 7.
 
 ### Truy cập datastore ở production
@@ -308,9 +310,9 @@ Hoặc chạy cả stack trong container bằng `docker compose up -d --build`, 
 
 ## 9. Kết nối thiết bị IoT (MQTT)
 
-ESP32 publish telemetry lên topic `devices/{uniqueId}/telemetry` tới broker ở `<IP máy chủ>:1883`. Đây là cổng duy nhất publish ra host ở production, **không** đi qua Cloudflare Tunnel (tunnel chỉ proxy HTTP).
+ESP32 kết nối tới broker ở `<IP máy chủ>:1883` với client ID = `unique_id`, dùng 3 topic: publish `devices/{uniqueId}/telemetry`, subscribe `devices/{uniqueId}/commands` (lệnh điều khiển) và publish `devices/{uniqueId}/ack` (kết quả lệnh). Chi tiết luồng xem [MESSAGE_QUEUE.md](MESSAGE_QUEUE.md) mục 5. Cổng 1883 là cổng duy nhất publish ra host ở production, **không** đi qua Cloudflare Tunnel (tunnel chỉ proxy HTTP).
 
-Cấu hình broker ([mosquitto/mosquitto.conf](../mosquitto/mosquitto.conf)): một listener `1883`, bật persistence, log ra stdout. Hiện đang **cho phép anonymous và không có TLS** (xem mục 10).
+Cấu hình broker ([mosquitto/mosquitto.conf](../mosquitto/mosquitto.conf)): một listener `1883`, bật persistence, log ra stdout, **bắt buộc đăng nhập**, chưa có TLS (xem mục 10). File mật khẩu và ACL do [mosquitto/entrypoint.sh](../mosquitto/entrypoint.sh) sinh lại từ `.env` mỗi lần container khởi động (quyền từng tài khoản xem [SECURITY.md](SECURITY.md)). Entrypoint xoá file mật khẩu cũ trước khi tạo mới, vì `mosquitto_passwd -c` (Mosquitto 2.1) từ chối ghi đè file đã có: thiếu bước này thì `docker restart` làm broker khởi động lại liên tục.
 
 ### Máy chủ là WSL2 trên Windows
 

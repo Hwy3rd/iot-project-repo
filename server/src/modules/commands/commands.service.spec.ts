@@ -3,12 +3,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import {
+  COMMAND_TTL_MS,
   CommandAction,
   CommandStatus,
 } from '../../libs/constants/command.constant';
 import { UserRole } from '../../libs/constants/user.constant';
 import { ChannelRole } from '../../libs/constants/device-channel.constant';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
+import { CommandDispatcherService } from './command-dispatcher.service';
 import { CommandsService } from './commands.service';
 import { Command } from './entities/command.entity';
 
@@ -25,10 +27,21 @@ const createMockRepository = <T extends object>(): MockRepository<T> => ({
   delete: jest.fn(),
 });
 
+// The EntityManager handed to the transaction callback in create().
+const createMockManager = () => ({
+  findOne: jest.fn(),
+  update: jest.fn().mockResolvedValue({ affected: 0 }),
+  create: jest.fn((_entity: unknown, v: Partial<Command>) => v),
+  save: jest.fn((v: Partial<Command>) => Promise.resolve({ id: 'cmd1', ...v })),
+});
+
 describe('CommandsService', () => {
   let service: CommandsService;
-  let commandsRepository: MockRepository<Command>;
-  let channelsRepository: MockRepository<DeviceChannel>;
+  let commandsRepository: Omit<MockRepository<Command>, 'manager'> & {
+    manager?: unknown;
+  };
+  let manager: ReturnType<typeof createMockManager>;
+  const dispatcher = { dispatch: jest.fn() };
 
   const dto = { channelId: 'c1', action: CommandAction.ON };
 
@@ -40,16 +53,21 @@ describe('CommandsService', () => {
           provide: getRepositoryToken(Command),
           useValue: createMockRepository<Command>(),
         },
-        {
-          provide: getRepositoryToken(DeviceChannel),
-          useValue: createMockRepository<DeviceChannel>(),
-        },
+        { provide: CommandDispatcherService, useValue: dispatcher },
       ],
     }).compile();
 
     service = module.get<CommandsService>(CommandsService);
     commandsRepository = module.get(getRepositoryToken(Command));
-    channelsRepository = module.get(getRepositoryToken(DeviceChannel));
+    manager = createMockManager();
+    commandsRepository.manager = {
+      transaction: (cb: (m: typeof manager) => unknown) => cb(manager),
+    };
+    commandsRepository.findOne!.mockResolvedValue({
+      id: 'cmd1',
+      status: CommandStatus.SENT,
+    });
+    dispatcher.dispatch.mockReset().mockResolvedValue(true);
   });
 
   it('should be defined', () => {
@@ -57,16 +75,19 @@ describe('CommandsService', () => {
   });
 
   describe('create', () => {
+    const actuator = { id: 'c1', channelRole: ChannelRole.ACTUATOR };
+
     it('throws NotFoundException when the channel does not exist', async () => {
-      channelsRepository.findOne!.mockResolvedValue(null);
+      manager.findOne.mockResolvedValue(null);
 
       await expect(service.create(dto, 'u1')).rejects.toThrow(
         NotFoundException,
       );
+      expect(dispatcher.dispatch).not.toHaveBeenCalled();
     });
 
     it('throws ConflictException when the channel is a sensor', async () => {
-      channelsRepository.findOne!.mockResolvedValue({
+      manager.findOne.mockResolvedValue({
         id: 'c1',
         channelRole: ChannelRole.SENSOR,
       });
@@ -74,83 +95,52 @@ describe('CommandsService', () => {
       await expect(service.create(dto, 'u1')).rejects.toThrow(
         ConflictException,
       );
+      expect(manager.save).not.toHaveBeenCalled();
     });
 
-    it('creates the command as pending', async () => {
-      channelsRepository.findOne!.mockResolvedValue({
-        id: 'c1',
-        channelRole: ChannelRole.ACTUATOR,
-      });
-      commandsRepository.create!.mockImplementation((v: Partial<Command>) => v);
-      commandsRepository.save!.mockImplementation((v: Partial<Command>) => ({
-        id: 'cmd1',
-        ...v,
-      }));
+    it('locks the channel and supersedes its open commands first', async () => {
+      manager.findOne.mockResolvedValue(actuator);
+
+      await service.create(dto, 'u1');
+
+      expect(manager.findOne).toHaveBeenCalledWith(
+        DeviceChannel,
+        expect.objectContaining({ lock: { mode: 'pessimistic_write' } }),
+      );
+      expect(manager.update).toHaveBeenCalledWith(
+        Command,
+        {
+          channelId: 'c1',
+          status: In([CommandStatus.PENDING, CommandStatus.SENT]),
+        },
+        { status: CommandStatus.SUPERSEDED },
+      );
+      expect(manager.update.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.save.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('saves the command as pending with an expiry, then dispatches it', async () => {
+      manager.findOne.mockResolvedValue(actuator);
+      const before = Date.now();
 
       const result = await service.create(dto, 'u1');
 
-      expect(commandsRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channelId: 'c1',
-          issuedBy: 'u1',
-          status: CommandStatus.PENDING,
-        }),
+      const saved = manager.save.mock.calls[0][0] as Command;
+      expect(saved).toMatchObject({
+        channelId: 'c1',
+        issuedBy: 'u1',
+        status: CommandStatus.PENDING,
+        attempts: 0,
+      });
+      expect(saved.expiresAt.getTime()).toBeGreaterThanOrEqual(
+        before + COMMAND_TTL_MS,
       );
-      expect(result).toMatchObject({
-        id: 'cmd1',
-        status: CommandStatus.PENDING,
-      });
-    });
-  });
-
-  describe('markSent', () => {
-    it('throws ConflictException when the command is not pending', async () => {
-      commandsRepository.findOne!.mockResolvedValue({
-        id: 'cmd1',
-        status: CommandStatus.SENT,
-      });
-
-      await expect(service.markSent('cmd1')).rejects.toThrow(ConflictException);
-    });
-
-    it('moves pending to sent', async () => {
-      const command = { id: 'cmd1', status: CommandStatus.PENDING };
-      commandsRepository.findOne!.mockResolvedValue(command);
-      commandsRepository.save!.mockImplementation((v: Command) => v);
-
-      const result = await service.markSent('cmd1');
-
-      expect(result.status).toBe(CommandStatus.SENT);
-    });
-  });
-
-  describe('acknowledge', () => {
-    it('throws ConflictException when the command was not sent', async () => {
-      commandsRepository.findOne!.mockResolvedValue({
-        id: 'cmd1',
-        status: CommandStatus.PENDING,
-      });
-
-      await expect(
-        service.acknowledge('cmd1', { status: CommandStatus.DONE }),
-      ).rejects.toThrow(ConflictException);
-    });
-
-    it('moves sent to done and sets ack_at', async () => {
-      const command = {
-        id: 'cmd1',
-        status: CommandStatus.SENT,
-        ackAt: null,
-      };
-      commandsRepository.findOne!.mockResolvedValue(command);
-      commandsRepository.save!.mockImplementation((v: Command) => v);
-
-      const result = await service.acknowledge('cmd1', {
-        status: CommandStatus.DONE,
-      });
-
-      expect(result.status).toBe(CommandStatus.DONE);
-      expect(result.ackAt).not.toBeNull();
+      expect(dispatcher.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'cmd1' }),
+      );
+      // Returned as re-read after the dispatch, i.e. with its new status.
+      expect(result).toMatchObject({ id: 'cmd1', status: CommandStatus.SENT });
     });
   });
 

@@ -10,6 +10,8 @@ import { AlertType } from '../../libs/constants/alert.constant';
 import { DeviceStatus } from '../../libs/constants/device.constant';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AlertsService } from '../alerts/alerts.service';
+import { ChannelType } from '../../libs/constants/device-channel.constant';
+import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Device } from '../devices/entities/device.entity';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { TelemetryHourly } from './schemas/telemetry-hourly.schema';
@@ -29,12 +31,20 @@ const createQueryChain = (result: unknown[] = []) => {
 
 describe('TelemetryService', () => {
   let service: TelemetryService;
-  let rawModel: { create: jest.Mock; find: jest.Mock };
+  let rawModel: { create: jest.Mock; find: jest.Mock; findOne: jest.Mock };
   let hourlyModel: { find: jest.Mock };
   let devicesRepository: { findOne: jest.Mock; existsBy: jest.Mock };
   let alertsService: { raise: jest.Mock; resolveAuto: jest.Mock };
   let realtime: { emitToWarehouse: jest.Mock };
   let aiPrediction: { predict: jest.Mock; saveLatest: jest.Mock };
+  // The device declares the board's fan channel; nothing else.
+  const channelsRepository = {
+    find: jest
+      .fn()
+      .mockResolvedValue([
+        { deviceId: 'd1', channelType: ChannelType.FAN_MOTOR },
+      ]),
+  };
 
   // tempMax=-15, hysteresis=1 → the alert only auto-resolves at <= -16, not
   // merely back inside [-20,-15] — see the "hysteresis band" tests below.
@@ -71,7 +81,7 @@ describe('TelemetryService', () => {
         TelemetryService,
         {
           provide: getModelToken(TelemetryRaw.name),
-          useValue: { create: jest.fn(), find: jest.fn() },
+          useValue: { create: jest.fn(), find: jest.fn(), findOne: jest.fn() },
         },
         {
           provide: getModelToken(TelemetryHourly.name),
@@ -80,6 +90,10 @@ describe('TelemetryService', () => {
         {
           provide: getRepositoryToken(Device),
           useValue: { findOne: jest.fn(), existsBy: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(DeviceChannel),
+          useValue: channelsRepository,
         },
         {
           provide: AlertsService,
@@ -109,7 +123,7 @@ describe('TelemetryService', () => {
   });
 
   describe('ingest', () => {
-    it('pushes the stored reading to the warehouse room', async () => {
+    it('pushes the stored reading to the warehouse room, with the channels the device declares', async () => {
       devicesRepository.findOne.mockResolvedValue(activeDevice);
       rawModel.create.mockResolvedValue({});
 
@@ -129,6 +143,7 @@ describe('TelemetryService', () => {
             sensorFault: false,
             outOfRange: false,
             ...unreportedState,
+            declaredChannels: [ChannelType.FAN_MOTOR],
           },
         },
       );
@@ -745,6 +760,29 @@ describe('TelemetryService', () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+  });
+
+  describe('findLatest', () => {
+    it("returns the device's newest sample", async () => {
+      devicesRepository.existsBy.mockResolvedValue(true);
+      const sample = { deviceId: 'd1', ts: new Date() };
+      const query = {
+        sort: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockReturnThis(),
+        exec: jest.fn().mockResolvedValue(sample),
+      };
+      rawModel.findOne.mockReturnValue(query);
+
+      await expect(service.findLatest('d1')).resolves.toBe(sample);
+      expect(rawModel.findOne).toHaveBeenCalledWith({ deviceId: 'd1' });
+      expect(query.sort).toHaveBeenCalledWith({ ts: -1 });
+    });
+
+    it('throws NotFoundException when the device does not exist', async () => {
+      devicesRepository.existsBy.mockResolvedValue(false);
+
+      await expect(service.findLatest('d1')).rejects.toThrow(NotFoundException);
     });
   });
 

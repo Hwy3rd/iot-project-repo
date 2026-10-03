@@ -1,5 +1,5 @@
 import { devicesApi } from '@/api/endpoints'
-import type { ChannelType, ColdRoomSeries, Device, DeviceChannel } from '@/api/types'
+import type { ChannelType, ColdRoomSeries, Device, DeviceChannel, TelemetryRaw } from '@/api/types'
 import { useAuth } from '@/auth/auth-context'
 import { hasRole } from '@/auth/permissions'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
@@ -9,7 +9,15 @@ import { TemperatureChart } from '@/components/monitoring/TemperatureChart'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -18,7 +26,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { dayjs, formatDateTime, formatHumidity, formatTemp } from '@/lib/format'
+import { DeviceControls } from '@/components/commands/DeviceControls'
+import { DEFAULT_CHANNEL_TYPES } from '@/lib/channel-readings'
+import { dayjs, formatDateTime, formatHumidity, formatRelative, formatTemp, formatVoltage } from '@/lib/format'
+import { STALE_AFTER_MS } from '@/lib/room-status'
 import { mutationErrorText } from '@/lib/forms'
 import {
   CHANNEL_ROLE_LABEL,
@@ -28,7 +39,7 @@ import {
 import { useColdRoomLookup, useUserLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Check, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ArrowRight, Check, Loader2, Pencil, Plus, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useId, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 
@@ -54,6 +65,7 @@ export function DeviceDetailTabs({ device, info }: { device: Device; info: React
 
   return (
     <div className="flex flex-col gap-4">
+      <DeviceControls device={device} title={<h3 className="font-semibold">Điều khiển nhanh</h3>} />
       <div role="tablist" aria-label="Thông tin thiết bị" className="flex gap-1 overflow-x-auto border-b">
         {tabs.map((t) => (
           <button
@@ -90,6 +102,61 @@ export function DeviceDetailTabs({ device, info }: { device: Device; info: React
 // ---------------------------------------------------------------------------
 
 const CHANNEL_TYPES = Object.keys(CHANNEL_TYPE_LABEL) as ChannelType[]
+// Mirrors the server's CHANNEL_TYPE_ROLE: only these take commands.
+const ACTUATOR_TYPES: ChannelType[] = ['fan_motor', 'indicator_light', 'buzzer']
+// Grouped so it's clear which channels can be controlled — adding only
+// sensors leaves the device with nothing to send a command to.
+const CHANNEL_TYPE_GROUPS = [
+  { label: 'Điều khiển (nhận lệnh)', types: CHANNEL_TYPES.filter((t) => ACTUATOR_TYPES.includes(t)) },
+  { label: 'Cảm biến (chỉ đọc)', types: CHANNEL_TYPES.filter((t) => !ACTUATOR_TYPES.includes(t)) },
+]
+
+const LATEST_REFRESH_MS = 15_000
+
+interface ChannelReading {
+  text: string
+  /** ok = normal value, alert = the value itself is bad, missing = declared but not sent. */
+  tone: 'ok' | 'alert' | 'missing' | 'muted'
+}
+
+const READING_TONE: Record<ChannelReading['tone'], string> = {
+  ok: 'text-foreground',
+  alert: 'font-medium text-destructive',
+  missing: 'font-medium text-warning',
+  muted: 'text-muted-foreground',
+}
+
+const MISSING_HINT = 'Kênh đã khai báo nhưng thiết bị không gửi dữ liệu — kiểm tra firmware hoặc dây cảm biến'
+const NO_DATA: ChannelReading = { text: 'Không có dữ liệu', tone: 'missing' }
+
+// What the device's latest sample says about one channel. A declared channel
+// whose field is null is flagged — e.g. a board on firmware that predates it.
+function channelReading(type: ChannelType, s: TelemetryRaw): ChannelReading {
+  switch (type) {
+    case 'temp_humidity_sensor': {
+      if (s.sensorFault || s.temperature == null) return { text: 'Lỗi cảm biến', tone: 'alert' }
+      const temp = formatTemp(s.temperature)
+      return s.humidity == null
+        ? { text: `${temp} · không có độ ẩm`, tone: 'missing' }
+        : { text: `${temp} · ${formatHumidity(s.humidity)}`, tone: 'ok' }
+    }
+    case 'limit_switch':
+      return s.doorOpen ? { text: 'Cửa đang mở', tone: 'alert' } : { text: 'Cửa đóng', tone: 'ok' }
+    case 'current_sensor':
+      if (s.fanVoltage == null) return NO_DATA
+      return s.fanPowerFault
+        ? { text: `${formatVoltage(s.fanVoltage)} · mất nguồn`, tone: 'alert' }
+        : { text: formatVoltage(s.fanVoltage), tone: 'ok' }
+    case 'fan_motor':
+      if (s.fanOn == null) return NO_DATA
+      return { text: s.fanOn ? 'Đang chạy' : 'Đang tắt', tone: 'ok' }
+    case 'buzzer':
+      if (s.alarmActive == null) return NO_DATA
+      return s.alarmActive ? { text: 'Đang báo động', tone: 'alert' } : { text: 'Tắt', tone: 'ok' }
+    case 'indicator_light':
+      return { text: 'Thiết bị không báo trạng thái kênh này', tone: 'muted' }
+  }
+}
 
 function ChannelsPanel({ device }: { device: Device }) {
   const { user } = useAuth()
@@ -99,8 +166,24 @@ function ChannelsPanel({ device }: { device: Device }) {
     queryKey: ['devices', device.id, 'channels'],
     queryFn: () => devicesApi.channels(device.id),
   })
+  // Instant readings are Admin/Manager/Technician only (like raw telemetry).
+  const canSeeReadings = hasRole(user?.role, ['admin', 'manager', 'technician'])
+  const latest = useQuery({
+    queryKey: ['devices', device.id, 'telemetry', 'latest'],
+    queryFn: () => devicesApi.telemetryLatest(device.id),
+    enabled: canSeeReadings,
+    refetchInterval: LATEST_REFRESH_MS,
+  })
   const [removing, setRemoving] = useState<DeviceChannel | null>(null)
   const invalidate = () => qc.invalidateQueries({ queryKey: ['devices', device.id, 'channels'] })
+  const addDefaults = useMutation({
+    mutationFn: () => devicesApi.addDefaultChannels(device.id),
+    onSuccess: () => {
+      toast.success('Đã thêm các kênh mặc định')
+      void invalidate()
+    },
+    onError: (err) => toast.error('Không thêm được kênh', { description: mutationErrorText(err) }),
+  })
   const remove = useMutation({
     mutationFn: (c: DeviceChannel) => devicesApi.removeChannel(device.id, c.id),
     onSuccess: () => {
@@ -114,16 +197,57 @@ function ChannelsPanel({ device }: { device: Device }) {
   if (channels.isPending) return <Spinner />
   if (channels.isError) return <ErrorState error={channels.error} onRetry={() => channels.refetch()} />
 
+  const missingDefaults = DEFAULT_CHANNEL_TYPES.filter(
+    (t) => !channels.data.some((c) => c.channelType === t),
+  )
+  const sample = canSeeReadings && latest.isSuccess ? latest.data : undefined
+  // Judged at fetch time (refetched every LATEST_REFRESH_MS), keeping render pure.
+  const stale = sample != null && latest.dataUpdatedAt - new Date(sample.ts).getTime() > STALE_AFTER_MS
+
   return (
     <div className="flex flex-col gap-3">
+      {canSeeReadings && latest.isSuccess && (
+        <p className={cn('text-sm', stale || !sample ? 'text-warning' : 'text-muted-foreground')}>
+          {!sample
+            ? 'Thiết bị chưa gửi dữ liệu nào.'
+            : `Số đo gần nhất ${formatRelative(sample.ts)}${stale ? ' — thiết bị có thể đã mất kết nối' : ''}.`}
+        </p>
+      )}
       {channels.data.length === 0 ? (
         <p className="text-muted-foreground">Thiết bị chưa khai báo kênh nào.</p>
       ) : (
         <ul className="divide-y rounded-md border">
           {channels.data.map((c) => (
-            <ChannelRow key={c.id} device={device} channel={c} canManage={canManage} onRemove={() => setRemoving(c)} />
+            <ChannelRow
+              key={c.id}
+              device={device}
+              channel={c}
+              canManage={canManage}
+              onRemove={() => setRemoving(c)}
+              reading={sample ? channelReading(c.channelType, sample) : null}
+            />
           ))}
         </ul>
+      )}
+      {canManage && missingDefaults.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-md border border-dashed p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-muted-foreground">
+            Board chuẩn còn thiếu kênh:{' '}
+            <span className="font-medium text-foreground">
+              {missingDefaults.map((t) => CHANNEL_TYPE_LABEL[t]).join(', ')}
+            </span>
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={addDefaults.isPending}
+            onClick={() => addDefaults.mutate()}
+          >
+            {addDefaults.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}
+            Thêm kênh mặc định
+          </Button>
+        </div>
       )}
       {canManage && <AddChannelForm device={device} onAdded={invalidate} />}
       <ConfirmDialog
@@ -145,11 +269,14 @@ function ChannelRow({
   channel,
   canManage,
   onRemove,
+  reading,
 }: {
   device: Device
   channel: DeviceChannel
   canManage: boolean
   onRemove: () => void
+  /** What the latest sample says about this channel; null when not shown. */
+  reading: ChannelReading | null
 }) {
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
@@ -208,6 +335,18 @@ function ChannelRow({
             {channel.label && `${typeLabel} · `}
             {CHANNEL_ROLE_LABEL[channel.channelRole]}
           </span>
+          {reading && (
+            <span
+              className={cn(
+                'mt-0.5 flex items-center gap-1 text-sm tabular-nums',
+                READING_TONE[reading.tone],
+              )}
+              title={reading.tone === 'missing' ? MISSING_HINT : undefined}
+            >
+              {reading.tone === 'missing' && <TriangleAlert className="size-3.5" aria-hidden="true" />}
+              {reading.text}
+            </span>
+          )}
         </span>
       )}
       {canManage && !editing && (
@@ -257,10 +396,15 @@ function AddChannelForm({ device, onAdded }: { device: Device; onAdded: () => vo
             <SelectValue placeholder="Chọn…" />
           </SelectTrigger>
           <SelectContent>
-            {CHANNEL_TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {CHANNEL_TYPE_LABEL[t]}
-              </SelectItem>
+            {CHANNEL_TYPE_GROUPS.map((g) => (
+              <SelectGroup key={g.label}>
+                <SelectLabel>{g.label}</SelectLabel>
+                {g.types.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {CHANNEL_TYPE_LABEL[t]}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             ))}
           </SelectContent>
         </Select>

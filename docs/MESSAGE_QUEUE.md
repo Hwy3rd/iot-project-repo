@@ -1,6 +1,6 @@
 # Message Queue & Messaging
 
-> Hệ thống có hai kênh truyền message bất đồng bộ: **BullMQ trên Redis** cho job nền giữa `app` và `worker`, và **MQTT (Mosquitto)** để nhận telemetry từ thiết bị. Tài liệu này mô tả từng queue, job, lịch chạy, cách hệ thống xử lý lỗi, cách vận hành, và cách thêm queue mới. Chi tiết nghiệp vụ gửi thông báo xem [NOTIFICATION.md](NOTIFICATION.md), còn hạ tầng Redis/Mosquitto xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
+> Hệ thống có hai kênh truyền message bất đồng bộ: **BullMQ trên Redis** cho job nền giữa `app` và `worker`, và **MQTT (Mosquitto)** để nhận telemetry từ thiết bị và gửi lệnh điều khiển xuống thiết bị. Tài liệu này mô tả từng queue, job, lịch chạy, cách hệ thống xử lý lỗi, cách vận hành, và cách thêm queue mới. Chi tiết nghiệp vụ gửi thông báo xem [NOTIFICATION.md](NOTIFICATION.md), còn hạ tầng Redis/Mosquitto xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
 
 ---
 
@@ -15,13 +15,17 @@ ESP32 ──devices/{uniqueId}/telemetry──▶ mosquitto ──▶ app ──
                                                                   ▲
                                           job scheduler lặp ──────┘
                                           (telemetry-rollup, batch-maintenance,
-                                           work-shift-maintenance)
+                                           work-shift-maintenance, command-dispatch)
+
+app ──devices/{uniqueId}/commands──▶ mosquitto ──▶ ESP32     (lệnh điều khiển)
+app ◀──devices/{uniqueId}/ack─────── mosquitto ◀── ESP32     (kết quả lệnh)
+worker ──(gửi lại lệnh chưa có ack)──▶ mosquitto
 ```
 
 | Kênh       | Thư viện                                  | Chiều                    | Dùng cho                                                     |
 | ---------- | ----------------------------------------- | ------------------------ | ------------------------------------------------------------ |
 | BullMQ     | `bullmq` ^6 + `@nestjs/bullmq` ^12 | `app` → Redis → `worker` | Việc chậm hoặc có I/O mạng (Web Push), việc định kỳ (rollup, sweep) |
-| MQTT       | `mqtt` ^5, broker `eclipse-mosquitto:2`   | Thiết bị → `app`         | Nhận telemetry từ ESP32                                      |
+| MQTT       | `mqtt` ^5, broker `eclipse-mosquitto:2`   | Thiết bị ⇄ `app`, `worker` → thiết bị | Nhận telemetry và ack từ ESP32; gửi lệnh điều khiển |
 
 Hai kênh này độc lập với nhau. MQTT **không** đi qua BullMQ: `app` nhận message MQTT và xử lý ngay trong tiến trình. Chỉ khi quá trình xử lý đó sinh ra alert mới thì `app` mới đẩy một job vào BullMQ.
 
@@ -55,6 +59,7 @@ Tên queue được khai báo tập trung ở `server/src/libs/constants/queue.c
 | `telemetry-rollup`       | `rollup` | Scheduler `telemetry-hourly-rollup`               | `TelemetryRollupProcessor`   | Cron `5 * * * *`, múi giờ UTC         | Hoạt động  |
 | `batch-maintenance`      | `sweep`  | Scheduler `batch-expiry-sweep`                    | `BatchExpiryProcessor`       | `every: 1h`                           | **TODO**, chỉ log |
 | `work-shift-maintenance` | `sweep`  | Scheduler `work-shift-sweep`                      | `WorkShiftSweepProcessor`    | `every: 5m`                           | Đã có             |
+| `command-dispatch`       | `sweep`  | Scheduler `command-retry-sweep`                   | `CommandRetryProcessor`      | `every: 5s`, tự xoá job đã xong       | Hoạt động         |
 
 ### 3.1 `alert-notifications`
 
@@ -102,11 +107,27 @@ Giới hạn: raw có TTL 30 ngày (`TELEMETRY_RAW_TTL_DAYS`). Với giờ mà r
 
 Khi viết logic cho hai job này, cần giữ chúng **idempotent**: dùng `UPDATE ... WHERE status = <cũ> AND <điều kiện thời gian>` để chạy trùng hay chạy chồng lần trước cũng không sai.
 
+### 3.4 `command-dispatch`
+
+`CommandRetryProcessor` đưa mọi lệnh còn mở về trạng thái cuối mà không cần ai can thiệp. Mỗi lần chạy:
+
+1. Lệnh `pending`/`sent` đã quá `expires_at` (tạo lúc + 60 s) → `expired`.
+2. Lệnh `pending` (lần publish đầu chưa tới được broker) → publish.
+3. Lệnh `sent` chưa có ack sau 10 s → publish lại, tối đa 5 lần tính cả lần đầu. Hết số lần thì để lệnh tự hết hạn.
+
+Lệnh được gửi tuần tự, cũ trước, tối đa 100 lệnh mỗi lần chạy. Hằng số nằm ở `libs/constants/command.constant.ts`.
+
+Gửi lại là an toàn vì firmware nhớ id của 8 lệnh gần nhất: lệnh đã chạy rồi thì thiết bị chỉ gửi lại ack cũ. Phía server, mọi lần chuyển trạng thái đều là `UPDATE ... WHERE status IN ('pending', 'sent')`.
+
+Processor chạy trong `worker`, nên `WorkerModule` import `MqttModule`. Kết nối này chỉ publish, không subscribe; ack do `app` nhận.
+
+Scheduler đặt `removeOnComplete: true, removeOnFail: 100`. Khác với các job chạy theo giờ, job này chạy khoảng 17.000 lần/ngày, nên không thể để job đã xong tích tụ trong Redis.
+
 ---
 
 ## 4. Xử lý lỗi, retry & độ tin cậy
 
-Hiện **không queue nào đặt job options** (`attempts`, `backoff`, `removeOnComplete`, `removeOnFail`), cũng không đặt `concurrency`. Vì vậy tất cả đang chạy theo mặc định của BullMQ:
+Hiện **không queue nào đặt job options** (`attempts`, `backoff`, `removeOnComplete`, `removeOnFail`), trừ `command-dispatch` (chỉ đặt `removeOnComplete`/`removeOnFail`, mục 3.4). Cũng không queue nào đặt `concurrency`. Vì vậy các queue đang chạy theo mặc định của BullMQ:
 
 | Hành vi                  | Giá trị hiện tại               | Hệ quả                                                                                                   |
 | ------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------------------- |
@@ -122,6 +143,7 @@ Hiện **không queue nào đặt job options** (`attempts`, `backoff`, `removeO
 | `telemetry-rollup`       | ✅ Có. `$merge` replace nên kết quả không đổi                                                                                          |
 | `alert-notifications`    | ❌ Chưa. `notifyNewAlert()` INSERT notification mà không có ràng buộc unique `(alert_id, user_id)`, nên chạy lại sẽ tạo notification và push trùng |
 | `*-maintenance`          | Hiện không làm gì. Khi viết logic cần giữ idempotent (mục 3.3)                                                                        |
+| `command-dispatch`       | ✅ Có. Chuyển trạng thái có điều kiện, và firmware bỏ qua lệnh trùng (mục 3.4)                                                         |
 
 **Shutdown:** `workers/main.ts` không gọi `enableShutdownHooks()`, nên khi container nhận SIGTERM (khi deploy hoặc `./run.sh stop`), `worker` không đóng BullMQ worker một cách êm. Job đang chạy dở sẽ bị BullMQ coi là stalled và chạy lại khi `worker` lên lại. Với `alert-notifications`, điều này có thể gây thông báo trùng (xem bảng trên).
 
@@ -129,7 +151,7 @@ Hiện **không queue nào đặt job options** (`attempts`, `backoff`, `removeO
 
 ---
 
-## 5. MQTT: kênh telemetry từ thiết bị
+## 5. MQTT: telemetry, lệnh điều khiển và ack
 
 ### Topic & payload
 
@@ -153,9 +175,9 @@ Tất cả trường đều bắt buộc. Nếu cảm biến lỗi, `temperature
 
 ### Client phía server
 
-- Toàn tiến trình `app` dùng chung **một** kết nối (`libs/mqtt/mqtt.module.ts`, token `MQTT_CLIENT`). Kết nối này cũng dự kiến dùng cho chiều publish lệnh xuống thiết bị sau này.
+- Toàn tiến trình `app` dùng chung **một** kết nối (`libs/mqtt/mqtt.module.ts`, token `MQTT_CLIENT`) cho cả nhận telemetry, nhận ack và publish lệnh. `worker` có kết nối riêng, chỉ để gửi lại lệnh (mục 3.4). Topic thiết bị được dựng bằng `libs/mqtt/device-topics.ts`.
 - `clientId` là `iot-app-<uuid ngẫu nhiên>` và `clean: true`, tức không giữ session qua các lần restart. **Message được publish trong lúc `app` đang offline sẽ không được giao lại.**
-- Client tự reconnect mỗi 5 giây, đăng nhập bằng `MQTT_USERNAME`/`MQTT_PASSWORD` (broker không cho anonymous). Theo ACL, tài khoản này chỉ được đọc `devices/+/telemetry` và `$SYS/#`; khi làm chiều gửi lệnh cần thêm quyền write trong `mosquitto/entrypoint.sh`.
+- Client tự reconnect mỗi 5 giây, đăng nhập bằng `MQTT_USERNAME`/`MQTT_PASSWORD` (broker không cho anonymous). Theo ACL, tài khoản này đọc `devices/+/telemetry`, `devices/+/ack` và `$SYS/#`, ghi `devices/+/commands` (`mosquitto/entrypoint.sh`).
 
 ### Xử lý message (`MqttIngestService`, chạy trong `app`)
 
@@ -170,9 +192,24 @@ Message hợp lệ được lưu vào `telemetry_raw`, rồi so sánh với ngư
 
 **Chống trùng:** QoS 1 có thể giao lại cùng một message. `telemetry_raw` có khoá `(deviceId, ts)` nên sample trùng không được lưu hai lần. Alert thì đã được chống trùng bằng `active_key`.
 
+### Lệnh điều khiển (server → thiết bị)
+
+| Bước | Ai | Topic | Trạng thái lệnh |
+| ---- | -- | ----- | --------------- |
+| 1. `POST /commands` | `CommandsService` (`app`) | — | lệnh cũ còn mở của cùng channel → `superseded`; lệnh mới `pending` |
+| 2. Publish | `CommandDispatcherService` (`app`, lần sau do `worker`) | `devices/{uniqueId}/commands`, QoS 1 | nhận PUBACK → `sent`, `attempts + 1` |
+| 3. Thực thi | firmware | — | — |
+| 4. Ack | firmware → `CommandAckService` (`app`) | `devices/{uniqueId}/ack` | `done` hoặc `failed` + `error_reason` |
+| — | `CommandRetryProcessor` (`worker`) | — | chưa có ack thì gửi lại; quá `expires_at` → `expired` |
+
+Message lệnh có dạng `{ id, channel, label, action, expiresAt }`, trong đó `channel` là `channel_type`. Ack có dạng `{ id, status: "done" | "failed", error? }`. Chi tiết phía thiết bị xem `firmware/README.md`.
+
+- Broker chưa kết nối hoặc không trả PUBACK trong 3 s: lệnh vẫn `pending`, worker sẽ gửi. `POST /commands` không báo lỗi trong trường hợp này.
+- Ack chỉ được chấp nhận khi lệnh thuộc thiết bị có `unique_id` trong topic, và lệnh còn đang mở. Ack đến muộn (lệnh đã `expired`/`superseded`) hoặc ack trùng bị bỏ qua.
+- Thiết bị dùng clean session nên không nhận lệnh gửi trong lúc nó offline. Worker gửi lại cho tới khi hết hạn, nên thiết bị kết nối lại trong vòng 60 s vẫn nhận được lệnh.
+
 ### Chưa có
 
-- **Chiều server → thiết bị** (gửi lệnh bật/tắt actuator): `CommandsService` mới chỉ ghi `Command` vào MySQL, chưa publish gì lên MQTT.
 - TLS cho broker; thiết bị vẫn dùng chung một tài khoản `MQTT_DEVICE_USERNAME` thay vì mỗi thiết bị một credential (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 10).
 
 ---
@@ -222,6 +259,16 @@ q.add('rollup', { hour: '2026-09-24T08:00:00Z' }).then(j => { console.log('enque
 ```bash
 # Xem telemetry đang đến broker (tài khoản backend — chỉ nó được đọc)
 docker exec mosquitto_broker sh -c 'mosquitto_sub -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "devices/+/telemetry" -v'
+
+# Xem lệnh server gửi xuống và ack thiết bị gửi lên
+docker exec mosquitto_broker sh -c 'mosquitto_sub -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "devices/+/ack" -v'
+
+# Giả lập thiết bị nhận lệnh (client ID phải bằng unique_id, theo ACL)
+docker exec mosquitto_broker sh -c 'mosquitto_sub -i <uniqueId> -u "$MQTT_DEVICE_USERNAME" -P "$MQTT_DEVICE_PASSWORD" -t "devices/<uniqueId>/commands" -q 1 -v'
+
+# Giả lập thiết bị gửi ack cho một lệnh
+docker exec mosquitto_broker sh -c 'mosquitto_pub -i <uniqueId> -u "$MQTT_DEVICE_USERNAME" -P "$MQTT_DEVICE_PASSWORD" -t "devices/<uniqueId>/ack" -q 1 \
+  -m "{\"id\":\"<commandId>\",\"status\":\"done\"}"'
 
 # Giả lập một thiết bị gửi telemetry (tài khoản thiết bị)
 docker exec mosquitto_broker sh -c 'mosquitto_pub -u "$MQTT_DEVICE_USERNAME" -P "$MQTT_DEVICE_PASSWORD" -t "devices/<uniqueId>/telemetry" -q 1 \

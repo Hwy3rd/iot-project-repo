@@ -22,7 +22,7 @@ export type ChannelType =
   | 'indicator_light'
   | 'buzzer'
 export type CommandAction = 'on' | 'off'
-export type CommandStatus = 'pending' | 'sent' | 'done' | 'failed'
+export type CommandStatus = 'pending' | 'sent' | 'done' | 'failed' | 'expired' | 'superseded'
 export type AlertType =
   | 'temperature_out_of_range'
   | 'temperature_predicted'
@@ -277,7 +277,14 @@ export interface Command {
   payload: Record<string, unknown> | null
   status: CommandStatus
   createdAt: string
+  /** Last publish to the broker; null while still pending. */
+  sentAt: string | null
+  /** Publishes so far (the server retries until an ack or expiresAt). */
+  attempts: number
+  expiresAt: string
   ackAt: string | null
+  /** Device-reported reason when status is failed. */
+  errorReason: string | null
 }
 
 export interface AuditLog {
@@ -403,6 +410,14 @@ export interface ColdRoomStatus {
   /** Newest sample from any device in the room; null if none is kept. */
   latest: ({
     ts: string
+    /** The device that sent this sample. */
+    deviceId?: string
+    /**
+     * Channel types that device declares; decides which optional fields to
+     * show or flag as missing (lib/channel-readings.ts). Absent from older
+     * servers, [] when the device declares none.
+     */
+    declaredChannels?: ChannelType[]
     temperature: number | null
     doorOpen: boolean
     sensorFault: boolean
@@ -422,6 +437,8 @@ export type AiViolationType = 'NONE' | 'OVERHEAT' | 'FREEZING'
 export type AiRiskLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'
 
 export interface ColdRoomPrediction {
+  /** When the forecast was made; predictedTemp15m is for 15 minutes later. */
+  predictedAt: string
   predictedTemp15m: number
   willExceedThreshold: boolean
   violationType: AiViolationType

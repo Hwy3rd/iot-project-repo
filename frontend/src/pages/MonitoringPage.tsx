@@ -6,7 +6,8 @@ import { EmptyState, ErrorState } from '@/components/common/States'
 import { ToneBadge } from '@/components/common/StatusBadge'
 import { AlertStream } from '@/components/monitoring/AlertStream'
 import { LiveBadge } from '@/components/monitoring/LiveBadge'
-import { RoomDetailSheet } from '@/components/monitoring/RoomDetailSheet'
+import { RoomFocus } from '@/components/monitoring/RoomFocus'
+import { RoomSwitcher } from '@/components/monitoring/RoomSwitcher'
 import { RoomTile } from '@/components/monitoring/RoomTile'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -21,22 +22,27 @@ import { useWarehouseLive } from '@/lib/useWarehouseLive'
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 
 // A warehouse has a bounded number of rooms/devices; one page of 100 covers it.
 const ALL = { limit: 100 } as const
 // Readings/alerts arrive over the socket; these only cover what it doesn't
-// push (device status) or a dropped connection.
+// push (device status) or a dropped connection — in which case readings are
+// polled often enough to stay current (devices report every few seconds).
 const STATUS_FALLBACK_MS = 5 * 60_000
+const STATUS_OFFLINE_MS = 10_000
 const DEVICES_REFRESH_MS = 60_000
 // Re-evaluates "stale" (no sample for 10 min) while nothing new arrives.
 const CLOCK_MS = 15_000
 
 /**
- * Real-time board for one warehouse: every cold room's live reading and
- * device states, a collapsible alert stream, and a per-room detail panel
- * with a temperature chart. The warehouse is the header's current one; the
- * open room lives in the URL (?room=…).
+ * Real-time board for one warehouse, in two modes sharing the alert column:
+ * - the board: every cold room's live reading and device states;
+ * - one room open (?room=…, so Back works): its details and controls take
+ *   the board's place, with a compact strip of all rooms on top to keep an
+ *   eye on the rest and switch in one click.
+ * The warehouse is the header's current one.
  */
 export function MonitoringPage() {
   const [params, setParams] = useSearchParams()
@@ -53,11 +59,12 @@ export function MonitoringPage() {
     queryFn: () => coldRoomsApi.list({ warehouseId, ...ALL }),
     enabled: !!warehouseId,
   })
+  const live = useWarehouseLive(warehouseId ? [warehouseId] : [], !!warehouseId)
   const statuses = useQuery({
     queryKey: ['cold-rooms', 'status', { warehouseIds: [warehouseId] }],
     queryFn: () => coldRoomsApi.status({ warehouseIds: [warehouseId] }),
     enabled: !!warehouseId,
-    refetchInterval: STATUS_FALLBACK_MS,
+    refetchInterval: live ? STATUS_FALLBACK_MS : STATUS_OFFLINE_MS,
   })
   const devices = useQuery({
     queryKey: ['devices', { warehouseId, ...ALL }],
@@ -65,8 +72,6 @@ export function MonitoringPage() {
     enabled: !!warehouseId,
     refetchInterval: DEVICES_REFRESH_MS,
   })
-  const live = useWarehouseLive(warehouseId ? [warehouseId] : [], !!warehouseId)
-
   const statusByRoom = new Map((statuses.data ?? []).map((s) => [s.coldRoomId, s]))
   const devicesByRoom = new Map<string, Device[]>()
   for (const d of devices.data?.items ?? []) {
@@ -76,6 +81,18 @@ export function MonitoringPage() {
   const roomList = rooms.data?.items ?? []
   const roomName = (id: string) => roomList.find((r) => r.id === id)?.name ?? 'Phòng lạnh'
   const selectedRoom = roomList.find((r) => r.id === roomId)
+
+  // Opening a room from far down the board: bring its details into view.
+  // Switching between rooms keeps the position (the strip is at the top),
+  // and so does landing on a ?room= link (nothing to scroll past yet).
+  const topRef = useRef<HTMLDivElement>(null)
+  const hadRoom = useRef(!!roomId)
+  // Keyed on the URL, not on the loaded room: while the rooms load the room
+  // is briefly unknown, which must not count as "came from the board".
+  useEffect(() => {
+    if (roomId && !hadRoom.current) topRef.current?.scrollIntoView({ block: 'start' })
+    hadRoom.current = !!roomId
+  }, [roomId])
 
   const byState: Partial<Record<TempState, number>> = {}
   for (const r of roomList) {
@@ -131,9 +148,9 @@ export function MonitoringPage() {
         }
       />
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+      <div ref={topRef} className="flex scroll-mt-4 flex-col gap-4 lg:flex-row lg:items-start">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          {roomList.length > 0 && (
+          {roomList.length > 0 && !selectedRoom && (
             <div className="flex flex-wrap items-center gap-2" aria-label="Tóm tắt trạng thái phòng">
               <span className="font-medium">{formatNumber(roomList.length)} phòng lạnh:</span>
               {TEMP_STATE_ORDER.filter((s) => byState[s]).map((s) => (
@@ -144,7 +161,26 @@ export function MonitoringPage() {
             </div>
           )}
 
-          {rooms.isPending ? (
+          {selectedRoom ? (
+            <>
+              <RoomSwitcher
+                rooms={roomList}
+                statusByRoom={statusByRoom}
+                selectedId={selectedRoom.id}
+                now={now}
+                onSelect={selectRoom}
+                onShowAll={() => selectRoom(null)}
+              />
+              <RoomFocus
+                key={selectedRoom.id}
+                room={selectedRoom}
+                warehouseName={warehouse ? `${warehouse.name} (${warehouse.code})` : ''}
+                status={statusByRoom.get(selectedRoom.id)}
+                devices={devicesByRoom.get(selectedRoom.id) ?? []}
+                now={now}
+              />
+            </>
+          ) : rooms.isPending ? (
             <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
               {Array.from({ length: 6 }, (_, i) => (
                 <Skeleton key={i} className="h-64 rounded-xl" />
@@ -182,19 +218,15 @@ export function MonitoringPage() {
 
         {panelOpen && warehouseId && (
           <Card className="h-[28rem] gap-0 overflow-hidden py-0 shadow-sm lg:sticky lg:top-4 lg:h-[calc(100dvh-8rem)] lg:w-96 lg:shrink-0">
-            <AlertStream warehouseId={warehouseId} roomName={roomName} onSelectRoom={selectRoom} />
+            <AlertStream
+              warehouseId={warehouseId}
+              roomName={roomName}
+              onSelectRoom={selectRoom}
+              focusRoomId={selectedRoom?.id}
+            />
           </Card>
         )}
       </div>
-
-      <RoomDetailSheet
-        room={selectedRoom}
-        warehouseName={warehouse ? `${warehouse.name} (${warehouse.code})` : ''}
-        status={selectedRoom ? statusByRoom.get(selectedRoom.id) : undefined}
-        devices={selectedRoom ? (devicesByRoom.get(selectedRoom.id) ?? []) : []}
-        now={now}
-        onClose={() => selectRoom(null)}
-      />
     </>
   )
 }

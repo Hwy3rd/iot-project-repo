@@ -67,7 +67,14 @@ export function CreateCommandDialog() {
     mutationFn: (body: CreateCommandBody) => commandsApi.create(body),
     onSuccess: (c) => {
       qc.invalidateQueries({ queryKey: ['commands'] })
-      toast.success('Đã gửi lệnh', { description: COMMAND_ACTION_LABEL[c.action] })
+      // `pending` = the broker didn't take it yet; the server keeps retrying.
+      if (c.status === 'pending') {
+        toast.info('Đã tạo lệnh, đang chờ gửi tới thiết bị', {
+          description: COMMAND_ACTION_LABEL[c.action],
+        })
+      } else {
+        toast.success('Đã gửi lệnh tới thiết bị', { description: COMMAND_ACTION_LABEL[c.action] })
+      }
       setOpen(false)
       reset(EMPTY)
     },
@@ -88,9 +95,14 @@ export function CreateCommandDialog() {
     ? 'Chọn thiết bị trước…'
     : channels.isPending
       ? 'Đang tải…'
-      : channelOptions.length === 0
-        ? 'Thiết bị không có kênh điều khiển'
-        : 'Chọn…'
+      : channels.isError
+        ? 'Không tải được danh sách kênh'
+        : channelOptions.length === 0
+          ? 'Không có kênh điều khiển'
+          : 'Chọn…'
+  // Sensor-only devices are common right after setup: say how to fix it
+  // instead of leaving an empty dropdown.
+  const noActuators = !!deviceId && channels.isSuccess && channelOptions.length === 0
 
   return (
     <FormDialog
@@ -99,7 +111,7 @@ export function CreateCommandDialog() {
       onClosed={() => reset(EMPTY)}
       triggerLabel="Gửi lệnh"
       title="Gửi lệnh điều khiển"
-      description="Lệnh được gửi tới thiết bị qua MQTT và lưu lại kèm tên bạn."
+      description="Lệnh được gửi tới thiết bị qua MQTT và lưu lại kèm tên bạn. Lệnh ghi đè chế độ tự động của kênh trong 10 phút; thiết bị không nhận được trong 1 phút thì lệnh hết hạn."
       onSubmit={onSubmit}
       pending={create.isPending}
       submitLabel="Gửi lệnh"
@@ -126,7 +138,7 @@ export function CreateCommandDialog() {
           id="cmd-channel"
           label="Kênh"
           options={channelOptions}
-          disabled={!deviceId || channels.isPending}
+          disabled={!deviceId || channels.isPending || channelOptions.length === 0}
           placeholder={channelPlaceholder}
         />
         <SelectField
@@ -138,6 +150,13 @@ export function CreateCommandDialog() {
           options={labelOptions(COMMAND_ACTION_LABEL)}
         />
       </div>
+      {noActuators && (
+        <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+          Thiết bị này chỉ có kênh cảm biến, nên chưa nhận được lệnh. Admin hoặc Kỹ thuật viên thêm
+          kênh <span className="font-medium text-foreground">Quạt</span> hoặc{' '}
+          <span className="font-medium text-foreground">Còi</span> ở trang Thiết bị, tab Kênh.
+        </p>
+      )}
     </FormDialog>
   )
 }

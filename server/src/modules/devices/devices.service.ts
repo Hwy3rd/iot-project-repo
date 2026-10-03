@@ -18,6 +18,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcryptjs';
 import { randomInt } from 'crypto';
 import {
+  EntityManager,
   FindOptionsWhere,
   In,
   IsNull,
@@ -29,6 +30,7 @@ import {
   DeviceStatusChangeTrigger,
 } from '../../libs/constants/device.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { addMissingDefaultChannels } from '../device-channels/default-channels';
 import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { ClaimDeviceDto } from './dto/claim-device.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
@@ -51,13 +53,16 @@ export class DevicesService {
   // Saves a lifecycle step and, when it changed the status, the matching
   // device_status_history row — in one transaction, so the history can
   // never disagree with the device. Every step here is a person's action.
+  // `alsoDo` runs in the same transaction (e.g. the claim's default channels).
   private transition(
     device: Device,
     oldStatus: DeviceStatus,
     actorId: string | null,
+    alsoDo?: (manager: EntityManager) => Promise<unknown>,
   ): Promise<Device> {
     return this.devicesRepository.manager.transaction(async (manager) => {
       const saved = await manager.save(Device, device);
+      if (alsoDo) await alsoDo(manager);
       if (saved.status !== oldStatus) {
         await manager.save(
           DeviceStatusHistory,
@@ -202,7 +207,12 @@ export class DevicesService {
     device.claimedAt = new Date();
     device.claimCodeHash = null;
     device.claimCodeExpiresAt = null;
-    return this.transition(device, DeviceStatus.PROVISIONED, actorId);
+    // A claimed device starts with the board's channels declared, so the
+    // UI knows which readings to expect and commands have a target without
+    // anyone adding channels by hand (or picking the wrong ones).
+    return this.transition(device, DeviceStatus.PROVISIONED, actorId, (m) =>
+      addMissingDefaultChannels(m, device.id),
+    );
   }
 
   async decommission(id: string, actorId: string | null = null) {

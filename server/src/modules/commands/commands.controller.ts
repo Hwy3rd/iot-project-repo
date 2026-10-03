@@ -12,7 +12,6 @@ import { UserRole } from '../../libs/constants/user.constant';
 import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.constant';
 import { QueryCommandDto } from './dto/query-command.dto';
 import { CommandsService } from './commands.service';
-import { AcknowledgeCommandDto } from './dto/acknowledge-command.dto';
 import { CommandResponseDto } from './dto/command-response.dto';
 import { CreateCommandDto } from './dto/create-command.dto';
 
@@ -26,6 +25,9 @@ const VIEW_ROLES = [
 // Deliberately no DELETE route — commands are permanent history, same as
 // alerts/audit-logs/device-status-history (see Command entity's header
 // comment: history must survive the issuing user/channel being removed).
+// No routes for the sent/done/failed transitions either: those come from
+// the broker (CommandDispatcherService, CommandAckService), never from a
+// user.
 @Controller('commands')
 export class CommandsController {
   constructor(private readonly commandsService: CommandsService) {}
@@ -64,25 +66,5 @@ export class CommandsController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.commandsService.findOne(id);
-  }
-
-  // Called by the device/broker bridge to report delivery/execution, not by
-  // an end user — no service-account mechanism exists yet, so restricted to
-  // Admin until one is added (see docs/rbac.md).
-  @Roles(UserRole.ADMIN)
-  @Serialize(CommandResponseDto)
-  @Post(':id/sent')
-  markSent(@Param('id') id: string) {
-    return this.commandsService.markSent(id);
-  }
-
-  @Roles(UserRole.ADMIN)
-  @Serialize(CommandResponseDto)
-  @Post(':id/ack')
-  acknowledge(
-    @Param('id') id: string,
-    @Body() acknowledgeCommandDto: AcknowledgeCommandDto,
-  ) {
-    return this.commandsService.acknowledge(id, acknowledgeCommandDto);
   }
 }

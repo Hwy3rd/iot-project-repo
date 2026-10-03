@@ -26,6 +26,20 @@ import {
 } from 'recharts'
 import type { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent'
 
+// One source for every mark's look: the chart draws with these and the
+// legend renders its swatches from them, so the two can't drift apart.
+const STYLE = {
+  temp: 'var(--chart-temp)',
+  limit: 'var(--chart-limit)',
+  bandOpacity: 0.14,
+  limitDash: '6 4',
+  forecastDash: '4 4',
+  forecastSafe: '#8b5cf6',
+  forecastRisk: '#f97316',
+} as const
+
+const FORECAST_MINUTES = 15
+
 type Point = ColdRoomSeries['points'][number] & {
   ts: number
   band: [number, number] | null
@@ -74,12 +88,16 @@ function toPoints(series: ColdRoomSeries): Point[] {
         break
       }
     }
-    if (lastValidIdx !== -1) {
+    // From when the forecast was made, not from the last bucket's start —
+    // with 15-minute buckets those can be most of a bucket apart.
+    const predTs = new Date(series.prediction.predictedAt).getTime() + FORECAST_MINUTES * 60_000
+    // Always true while the server keeps a forecast (15 min TTL); guards
+    // against clock skew drawing the line backwards.
+    if (lastValidIdx !== -1 && predTs > out[out.length - 1].ts) {
       const lastPoint = out[lastValidIdx]
       // Anchor forecast at last known measured reading so dashed line starts smoothly
       lastPoint.forecast = lastPoint.avg
 
-      const predTs = lastPoint.ts + 15 * 60_000
       out.push({
         t: new Date(predTs).toISOString(),
         ts: predTs,
@@ -113,9 +131,12 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
       <div className="rounded-lg border border-purple-500/40 bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg backdrop-blur-sm">
         <div className="flex items-center gap-1.5 font-semibold text-purple-600 dark:text-purple-400">
           <Sparkles className="h-4 w-4" />
-          <span>Dự báo AI (+15 phút)</span>
+          <span>Dự báo AI (+{FORECAST_MINUTES} phút)</span>
         </div>
-        <p className="font-medium tabular-nums text-muted-foreground">{dayjs(p.ts).format('DD/MM HH:mm')}</p>
+        <p className="font-medium tabular-nums text-muted-foreground">
+          Cho lúc {dayjs(p.ts).format('DD/MM HH:mm')} · dự báo lúc{' '}
+          {dayjs(meta.predictedAt).format('HH:mm')}
+        </p>
         <p className="mt-1 text-base font-bold tabular-nums">
           Dự báo: <span className="text-purple-600 dark:text-purple-400">{formatTemp(p.forecast)}</span>
         </p>
@@ -175,28 +196,100 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
 
 function OutOfRangeDot(props: { cx?: number; cy?: number; payload?: Point }) {
   const { cx, cy, payload } = props
-  if (cx === undefined || cy === undefined || !payload?.outOfRange || payload?.isPredictionPoint) return null
+  if (cx === undefined || cy === undefined || !payload || !isOutOfRangeDot(payload)) return null
   return (
-    <circle cx={cx} cy={cy} r={4.5} fill="var(--chart-limit)" stroke="var(--card)" strokeWidth={2} />
+    <circle cx={cx} cy={cy} r={4.5} fill={STYLE.limit} stroke="var(--card)" strokeWidth={2} />
   )
 }
 
 function PredictionDot(props: { cx?: number; cy?: number; payload?: Point }) {
   const { cx, cy, payload } = props
   if (cx === undefined || cy === undefined || !payload?.isPredictionPoint) return null
-  const isWarn = payload.predictionMeta?.willExceedThreshold
+  const color = forecastColor(payload.predictionMeta)
   return (
     <g>
-      <circle cx={cx} cy={cy} r={7} fill={isWarn ? '#f97316' : '#8b5cf6'} fillOpacity={0.3} />
+      <circle cx={cx} cy={cy} r={7} fill={color} fillOpacity={0.3} />
       <circle
         cx={cx}
         cy={cy}
         r={4.5}
-        fill={isWarn ? '#f97316' : '#8b5cf6'}
+        fill={color}
         stroke="var(--card)"
         strokeWidth={2}
       />
     </g>
+  )
+}
+
+function forecastColor(prediction: ColdRoomSeries['prediction'] | undefined) {
+  return prediction?.willExceedThreshold ? STYLE.forecastRisk : STYLE.forecastSafe
+}
+
+function isOutOfRangeDot(p: Point) {
+  return p.outOfRange > 0 && !p.isPredictionPoint && p.avg !== null
+}
+
+function LineSwatch({ color, dash }: { color: string; dash?: string }) {
+  return (
+    <svg width="22" height="10" aria-hidden className="shrink-0">
+      <line x1="1" y1="5" x2="21" y2="5" stroke={color} strokeWidth={2} strokeDasharray={dash} />
+    </svg>
+  )
+}
+
+function LegendItem({ swatch, children }: { swatch: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <li className="flex items-center gap-1.5">
+      {swatch}
+      <span>{children}</span>
+    </li>
+  )
+}
+
+// Lists exactly the marks the chart below draws, in the same colors and
+// dash patterns (STYLE). Items for marks that aren't on screen are left out.
+function ChartLegend({
+  prediction,
+  hasOutOfRange,
+}: {
+  prediction: ColdRoomSeries['prediction'] | undefined
+  hasOutOfRange: boolean
+}) {
+  return (
+    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+      <LegendItem swatch={<LineSwatch color={STYLE.temp} />}>Nhiệt độ trung bình</LegendItem>
+      <LegendItem
+        swatch={
+          <svg width="22" height="10" aria-hidden className="shrink-0">
+            <rect x="1" y="1" width="20" height="8" rx="1.5" fill={STYLE.temp} fillOpacity={STYLE.bandOpacity * 2} />
+          </svg>
+        }
+      >
+        Dải thấp nhất – cao nhất
+      </LegendItem>
+      <LegendItem swatch={<LineSwatch color={STYLE.limit} dash={STYLE.limitDash} />}>
+        Ngưỡng cho phép (sàn / trần)
+      </LegendItem>
+      {hasOutOfRange && (
+        <LegendItem
+          swatch={
+            <svg width="22" height="10" aria-hidden className="shrink-0">
+              <circle cx="11" cy="5" r="4" fill={STYLE.limit} />
+            </svg>
+          }
+        >
+          Có mẫu vượt ngưỡng
+        </LegendItem>
+      )}
+      {prediction && (
+        <LegendItem swatch={<LineSwatch color={forecastColor(prediction)} dash={STYLE.forecastDash} />}>
+          <span style={{ color: forecastColor(prediction) }} className="font-medium">
+            Dự báo AI +{FORECAST_MINUTES} phút
+            {prediction.willExceedThreshold ? ' (nguy cơ vượt ngưỡng)' : ' (trong ngưỡng)'}
+          </span>
+        </LegendItem>
+      )}
+    </ul>
   )
 }
 
@@ -226,21 +319,22 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
   return (
     <figure className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <figcaption className="text-sm text-muted-foreground flex flex-wrap items-center gap-3">
-          <span>Nhiệt độ TB mỗi {series.bucketMinutes}p (dải nhạt: thấp – cao)</span>
-          <span className="flex items-center gap-1.5 text-xs">
-            <span className="inline-block h-0.5 w-3.5 rounded-full bg-[var(--chart-temp)]" /> Thực tế
-          </span>
-          {series.prediction && (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-purple-600 dark:text-purple-400">
-              <span className="inline-block h-0.5 w-3.5 border-b-2 border-dashed border-purple-500" /> Dự báo AI (+15p)
-            </span>
-          )}
+        <figcaption className="text-sm text-muted-foreground">
+          Nhiệt độ theo thời gian, gộp mỗi {series.bucketMinutes} phút
         </figcaption>
         <Button variant="ghost" size="sm" onClick={() => setAsTable((v) => !v)}>
           {asTable ? 'Xem biểu đồ' : 'Xem dạng bảng'}
         </Button>
       </div>
+
+      {points.length > 0 && !asTable && (
+        <ChartLegend
+          // Only when the forecast point was actually placed (toPoints skips it
+          // without a usable predictedAt).
+          prediction={points.some((p) => p.isPredictionPoint) ? series.prediction : null}
+          hasOutOfRange={points.some(isOutOfRangeDot)}
+        />
+      )}
 
       {points.length === 0 ? (
         <p className="rounded-lg border border-dashed px-4 py-10 text-center text-muted-foreground">
@@ -300,7 +394,8 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
       ) : (
         <div className="h-72 w-full" role="img" aria-label="Biểu đồ nhiệt độ phòng lạnh theo thời gian">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={points} margin={{ top: 16, right: 56, bottom: 0, left: 0 }}>
+            {/* Right margin fits the threshold labels, e.g. "Trần -18 °C". */}
+            <ComposedChart data={points} margin={{ top: 16, right: 76, bottom: 0, left: 0 }}>
               <CartesianGrid stroke="var(--border)" strokeDasharray="0" vertical={false} />
               <XAxis
                 dataKey="ts"
@@ -327,46 +422,46 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
               />
               <ReferenceLine
                 y={tempMax}
-                stroke="var(--chart-limit)"
-                strokeDasharray="6 4"
+                stroke={STYLE.limit}
+                strokeDasharray={STYLE.limitDash}
                 strokeWidth={1.5}
                 label={{ value: `Trần ${formatTemp(tempMax)}`, position: 'right', fill: 'var(--muted-foreground)', fontSize: 12 }}
               />
               <ReferenceLine
                 y={tempMin}
-                stroke="var(--chart-limit)"
-                strokeDasharray="6 4"
+                stroke={STYLE.limit}
+                strokeDasharray={STYLE.limitDash}
                 strokeWidth={1.5}
                 label={{ value: `Sàn ${formatTemp(tempMin)}`, position: 'right', fill: 'var(--muted-foreground)', fontSize: 12 }}
               />
               <Area
                 dataKey="band"
                 stroke="none"
-                fill="var(--chart-temp)"
-                fillOpacity={0.14}
+                fill={STYLE.temp}
+                fillOpacity={STYLE.bandOpacity}
                 isAnimationActive={false}
                 connectNulls={false}
                 activeDot={false}
               />
               <Line
                 dataKey="avg"
-                stroke="var(--chart-temp)"
+                stroke={STYLE.temp}
                 strokeWidth={2}
                 dot={OutOfRangeDot}
-                activeDot={{ r: 5, stroke: 'var(--card)', strokeWidth: 2, fill: 'var(--chart-temp)' }}
+                activeDot={{ r: 5, stroke: 'var(--card)', strokeWidth: 2, fill: STYLE.temp }}
                 isAnimationActive={false}
                 connectNulls={false}
               />
               {series.prediction && (
                 <Line
                   dataKey="forecast"
-                  stroke={series.prediction.willExceedThreshold ? '#f97316' : '#8b5cf6'}
+                  stroke={forecastColor(series.prediction)}
                   strokeWidth={2}
-                  strokeDasharray="4 4"
+                  strokeDasharray={STYLE.forecastDash}
                   dot={PredictionDot}
                   activeDot={{
                     r: 6,
-                    fill: series.prediction.willExceedThreshold ? '#f97316' : '#8b5cf6',
+                    fill: forecastColor(series.prediction),
                     stroke: 'var(--card)',
                     strokeWidth: 2,
                   }}
