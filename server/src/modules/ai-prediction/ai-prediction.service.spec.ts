@@ -7,6 +7,7 @@ import {
 } from '../../libs/constants/ai-prediction.constant';
 import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { AiPredictionService } from './ai-prediction.service';
+import { AiPredictRequestDto } from './dto/ai-prediction.dto';
 
 describe('AiPredictionService', () => {
   let service: AiPredictionService;
@@ -33,6 +34,15 @@ describe('AiPredictionService', () => {
     recommendation: 'Warning overheat',
   };
 
+  const request = (temperature: number): AiPredictRequestDto => ({
+    feature_schema: 'temperature-history-v1',
+    temperature,
+    temperature_history: Array.from({ length: 13 }, (_, i) => ({
+      ts: new Date(Date.UTC(2026, 9, 4, 9, i * 5)).toISOString(),
+      temperature,
+    })),
+  });
+
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
@@ -57,13 +67,19 @@ describe('AiPredictionService', () => {
     });
 
     const result = await service.predict({
-      temperature: 8.2,
+      ...request(8.2),
       temp_min: 2.0,
       temp_max: 8.0,
-      hour_of_day: 14,
     });
 
     expect(result).toEqual(mockResponse);
+    expect(
+      JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body),
+    ).toEqual({
+      ...request(8.2),
+      temp_min: 2,
+      temp_max: 8,
+    });
     expect(global.fetch).toHaveBeenCalledWith(
       'http://localhost:8000/internal/ai/predict',
       expect.objectContaining({
@@ -81,7 +97,7 @@ describe('AiPredictionService', () => {
     });
 
     const result = await service.predict({
-      temperature: 4.5,
+      ...request(4.5),
     });
 
     expect(result).toBeNull();
@@ -93,7 +109,7 @@ describe('AiPredictionService', () => {
       .mockRejectedValue(new Error('Connection refused / timeout'));
 
     const result = await service.predict({
-      temperature: 4.5,
+      ...request(4.5),
     });
 
     expect(result).toBeNull();
@@ -104,15 +120,15 @@ describe('AiPredictionService', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('down'));
 
     for (let i = 0; i < AI_PREDICTION_FAILURE_THRESHOLD; i++) {
-      await service.predict({ temperature: 4.5 });
+      await service.predict(request(4.5));
     }
     expect(global.fetch).toHaveBeenCalledTimes(AI_PREDICTION_FAILURE_THRESHOLD);
 
-    await expect(service.predict({ temperature: 4.5 })).resolves.toBeNull();
+    await expect(service.predict(request(4.5))).resolves.toBeNull();
     expect(global.fetch).toHaveBeenCalledTimes(AI_PREDICTION_FAILURE_THRESHOLD);
 
     now.mockReturnValue(1_000_000 + AI_PREDICTION_COOLDOWN_MS);
-    await service.predict({ temperature: 4.5 });
+    await service.predict(request(4.5));
     expect(global.fetch).toHaveBeenCalledTimes(
       AI_PREDICTION_FAILURE_THRESHOLD + 1,
     );

@@ -5,12 +5,13 @@ WORKDIR /app
 # Prevent Python from writing .pyc files and enable unbuffered stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV OMP_NUM_THREADS=4
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ai_service.py .
-COPY temperature_model_hgb.pkl .
+COPY ai_service.py temperature_features.py ./
+COPY temperature_model_history.pkl ./
 
 # Runs unprivileged; the app only reads its own files under /app.
 RUN useradd --system --no-create-home --uid 10001 aiservice

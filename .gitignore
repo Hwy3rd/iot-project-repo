@@ -7,3 +7,4 @@ __pycache__/
 
 # Firmware config (chua mat khau WiFi/MQTT) — mau la config.example.h
 firmware/cold_room_monitor/config.h
+.venv-ai/

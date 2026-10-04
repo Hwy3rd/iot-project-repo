@@ -8,7 +8,7 @@ Tác giả: Senior Machine Learning & IoT Engineer
 ==============================================================================
 
 Chức năng:
-- Tải mô hình máy học đã huấn luyện `temperature_model.pkl` lên bộ nhớ RAM khi khởi động (Lifespan).
+- Tải mô hình máy học đã huấn luyện `temperature_model_history.pkl` lên bộ nhớ RAM khi khởi động (Lifespan).
 - Cung cấp API nội bộ:
     POST /internal/ai/predict : Dự báo nhiệt độ sau 15 phút từ dữ liệu cảm biến
     GET  /health              : Kiểm tra trạng thái hoạt động của service và thông tin mô hình
@@ -22,7 +22,8 @@ import io
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Literal
 
 # Đảm bảo in tiếng Việt không bị lỗi encoding trên Windows Console
 if sys.platform == "win32":
@@ -38,9 +39,12 @@ if sys.platform == "win32":
 
 import joblib
 import numpy as np
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Response, status
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from temperature_features import (
+    FEATURE_NAMES, FEATURE_SCHEMA, HISTORY_SAMPLES, SAMPLING_SECONDS,
+    MAX_SAMPLE_AGE_SECONDS, SUPPORTED_MIN_TEMP, SUPPORTED_MAX_TEMP, build_features,
+)
 
 # Cấu hình logging chuyên nghiệp
 logging.basicConfig(
@@ -50,75 +54,53 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ai_service")
 
-# Đường dẫn file mô hình: Ưu tiên HistGradientBoosting (nhẹ 0.36MB, F1 cao hơn RF, không cần GPU)
-DEFAULT_MODEL = "temperature_model_hgb.pkl" if os.path.exists("temperature_model_hgb.pkl") else "temperature_model.pkl"
-MODEL_PATH = os.getenv("MODEL_PATH", DEFAULT_MODEL)
+# Resolve independently of the process working directory.
+DEFAULT_MODEL = Path(__file__).with_name("temperature_model_history.pkl")
+MODEL_PATH = os.getenv("MODEL_PATH", str(DEFAULT_MODEL))
 DEFAULT_TEMP_MIN = 2.0     # Ngưỡng sàn an toàn mặc định (°C)
 DEFAULT_TEMP_MAX = 8.0     # Ngưỡng trần an toàn mặc định (°C)
 CRITICAL_THRESHOLD = DEFAULT_TEMP_MAX  # Giữ tương thích ngược
 WARNING_THRESHOLD = 7.0                # Giữ tương thích ngược
 
 # Biến toàn cục lưu trữ mô hình và metadata
-model_artifacts = {
-    "model": None,
-    "feature_names": [
-        "hour_of_day",
-        "temperature",
-        "humidity",
-        "temp_delta",
-        "temp_moving_avg",
-        "ambient_temp",
-    ],
-    "metrics": None,
-    "loaded_at": None,
-}
+model_artifacts = {"model": None, "metrics": None, "loaded_at": None}
+
+
+def validate_artifact(loaded):
+    expected = {
+        "feature_schema": FEATURE_SCHEMA, "feature_names": FEATURE_NAMES,
+        "prediction_mode": "temperature_change", "target_name": "temp_change_15m",
+        "horizon_minutes": 15, "history_samples": HISTORY_SAMPLES,
+        "sampling_seconds": SAMPLING_SECONDS, "max_sample_age_seconds": MAX_SAMPLE_AGE_SECONDS,
+        "supported_temperature_range": [SUPPORTED_MIN_TEMP, SUPPORTED_MAX_TEMP],
+    }
+    if not isinstance(loaded, dict) or any(loaded.get(k) != v for k, v in expected.items()):
+        raise ValueError("Incompatible model artifact: temperature-history-v1 required")
+    model = loaded.get("model")
+    if model is None or list(getattr(model, "feature_names_in_", [])) != FEATURE_NAMES:
+        raise ValueError("Model feature order does not match temperature-history-v1")
+    return model
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Quản lý vòng đời ứng dụng (Lifespan context manager).
-    Tải file mô hình lên RAM khi khởi động server và giải phóng khi tắt server.
-    """
-    logger.info("=" * 60)
-    logger.info("ĐANG KHỞI ĐỘNG AI MICROSERVICE...")
-    logger.info(f"Đường dẫn file mô hình: {os.path.abspath(MODEL_PATH)}")
-
-    if not os.path.exists(MODEL_PATH):
-        logger.error(f"❌ Không tìm thấy file mô hình tại {MODEL_PATH}! Vui lòng chạy 'train_model.py'.")
-        # Không ngắt hẳn process để container/server có thể báo lỗi qua /health
-    else:
-        try:
-            loaded = joblib.load(MODEL_PATH)
-            if isinstance(loaded, dict) and "model" in loaded:
-                model_artifacts["model"] = loaded["model"]
-                model_artifacts["feature_names"] = loaded.get("feature_names", model_artifacts["feature_names"])
-                model_artifacts["metrics"] = loaded.get("metrics")
-            else:
-                model_artifacts["model"] = loaded
-                model_artifacts["feature_names"] = getattr(
-                    loaded, "feature_names_in_", model_artifacts["feature_names"]
-                )
-
-            model_artifacts["loaded_at"] = datetime.now().isoformat()
-            logger.info(f"✅ Mô hình '{MODEL_PATH}' đã được nạp thành công vào RAM!")
-            logger.info(f"Danh sách đặc trưng: {model_artifacts['feature_names']}")
-            if model_artifacts["metrics"]:
-                logger.info(f"Độ chính xác MAE đã lưu: {model_artifacts['metrics'].get('mae', 'N/A')} °C")
-        except Exception as e:
-            logger.error(f"❌ Lỗi khi tải mô hình: {str(e)}", exc_info=True)
-
-    yield  # Ứng dụng lắng nghe request tại đây
-
-    logger.info("Đang tắt AI Microservice, giải phóng bộ nhớ...")
+    model_artifacts.update(model=None, metrics=None, loaded_at=None)
+    try:
+        loaded = joblib.load(MODEL_PATH)
+        model = validate_artifact(loaded)
+        model_artifacts.update(model=model, metrics=loaded.get("metrics"),
+                               loaded_at=datetime.now().isoformat())
+        logger.info("Loaded temperature-history-v1 model from %s", MODEL_PATH)
+    except Exception:
+        logger.exception("AI model unavailable or incompatible: %s", MODEL_PATH)
+    yield
     model_artifacts["model"] = None
 
 
-# Khởi tạo ứng dụng FastAPI với metadata chi tiết
 app = FastAPI(
     title="Cold Chain Temperature Forecasting Microservice",
     description="Microservice AI dự báo nhiệt độ chuỗi lạnh 15 phút tới từ dữ liệu cảm biến IoT",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -130,63 +112,35 @@ app = FastAPI(
 # SCHEMAS (PYDANTIC MODELS)
 # ==============================================================================
 
+class HistoryReading(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ts: AwareDatetime
+    temperature: float = Field(ge=SUPPORTED_MIN_TEMP, le=SUPPORTED_MAX_TEMP, allow_inf_nan=False)
+
+
 class SensorDataRequest(BaseModel):
-    """
-    Payload dữ liệu cảm biến đo tức thời từ thiết bị IoT gửi lên.
-    Hỗ trợ xử lý thông minh nếu một số giá trị tính toán chưa sẵn sàng.
-    """
-    temperature: float = Field(
-        ...,
-        ge=-40.0,
-        le=60.0,
-        description="Nhiệt độ hiện tại trong ngăn lạnh (°C)",
-        examples=[4.5],
-    )
-    humidity: Optional[float] = Field(
-        default=65.0,
-        ge=0.0,
-        le=100.0,
-        description="Độ ẩm tương đối trong ngăn lạnh (%). Mặc định 65.0%",
-        examples=[75.2],
-    )
-    ambient_temp: Optional[float] = Field(
-        default=30.0,
-        ge=-10.0,
-        le=65.0,
-        description="Nhiệt độ môi trường bên ngoài kho/tủ (°C). Mặc định 30.0°C",
-        examples=[32.0],
-    )
-    temp_min: Optional[float] = Field(
-        default=DEFAULT_TEMP_MIN,
-        ge=-40.0,
-        le=50.0,
-        description="Ngưỡng nhiệt độ sàn an toàn (°C). Mặc định 2.0°C (chuỗi lạnh/vắc-xin)",
-        examples=[2.0],
-    )
-    temp_max: Optional[float] = Field(
-        default=DEFAULT_TEMP_MAX,
-        ge=-30.0,
-        le=60.0,
-        description="Ngưỡng nhiệt độ trần an toàn (°C). Mặc định 8.0°C (chuỗi lạnh/vắc-xin)",
-        examples=[8.0],
-    )
-    temp_delta: Optional[float] = Field(
-        default=None,
-        description="Tốc độ biến thiên nhiệt độ (T_t - T_{t-1}). Nếu không truyền, mặc định = 0.0",
-        examples=[0.25],
-    )
-    temp_moving_avg: Optional[float] = Field(
-        default=None,
-        description="Nhiệt độ trung bình trượt 5 chu kỳ. Nếu không truyền, mặc định bằng nhiệt độ hiện tại",
-        examples=[4.3],
-    )
-    hour_of_day: Optional[int] = Field(
-        default=None,
-        ge=0,
-        le=23,
-        description="Giờ trong ngày (0-23). Nếu không truyền, tự động lấy theo giờ hệ thống hiện tại",
-        examples=[14],
-    )
+    model_config = ConfigDict(extra="forbid")
+    feature_schema: Literal["temperature-history-v1"]
+    temperature: float = Field(ge=SUPPORTED_MIN_TEMP, le=SUPPORTED_MAX_TEMP, allow_inf_nan=False)
+    temperature_history: list[HistoryReading] = Field(min_length=HISTORY_SAMPLES, max_length=HISTORY_SAMPLES)
+    temp_min: float = Field(default=DEFAULT_TEMP_MIN, ge=-40, le=50, allow_inf_nan=False)
+    temp_max: float = Field(default=DEFAULT_TEMP_MAX, ge=-30, le=60, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_history(self):
+        if self.temp_min >= self.temp_max:
+            raise ValueError("temp_min must be less than temp_max")
+        history = self.temperature_history
+        if abs(history[-1].temperature - self.temperature) > 1e-9:
+            raise ValueError("Current temperature must match the latest history reading")
+        latest = history[-1].ts
+        for index, reading in enumerate(history):
+            if index and reading.ts <= history[index - 1].ts:
+                raise ValueError("History timestamps must be strictly increasing")
+            age = (latest - reading.ts).total_seconds() - (HISTORY_SAMPLES - 1 - index) * SAMPLING_SECONDS
+            if age < 0 or age > MAX_SAMPLE_AGE_SECONDS:
+                raise ValueError("History must cover 60 minutes at five-minute checkpoints (up to 60s old)")
+        return self
 
 
 class PredictionResponse(BaseModel):
@@ -252,7 +206,7 @@ def generate_recommendation(
         if temp_delta > 0.1:
             recommendation = (
                 f"CẢNH BÁO QUÁ NHIỆT NGUY CẤP: Nhiệt độ dự báo đạt {predicted_temp:.2f}°C "
-                f"(vượt ngưỡng trần {temp_max:.1f}°C) và đang tăng nhanh (+{temp_delta:.2f}°C/chu kỳ). "
+                f"(vượt ngưỡng trần {temp_max:.1f}°C) và đang tăng nhanh (+{temp_delta:.2f}°C/5 phút). "
                 f"Hành động khẩn cấp: Kiểm tra ngay cửa phòng lạnh, kích hoạt quạt làm lạnh tăng cường (Super Cool) "
                 f"hoặc chuyển hàng sang kho dự phòng nếu không thể hạ nhiệt!"
             )
@@ -269,15 +223,15 @@ def generate_recommendation(
         risk_level = "CRITICAL"
         if temp_delta < -0.1:
             recommendation = (
-                f"CẢNH BÁO ĐÓNG BĂNG NGUY CẤP: Nhiệt độ dự báo tụt xuống {predicted_temp:.2f}°C "
-                f"(dưới ngưỡng sàn an toàn {temp_min:.1f}°C) và đang giảm nhanh ({temp_delta:.2f}°C/chu kỳ). "
-                f"Nguy cơ đông đá/hỏng vắc-xin và dập nát nông sản! "
+                f"CẢNH BÁO QUÁ LẠNH NGUY CẤP: Nhiệt độ dự báo tụt xuống {predicted_temp:.2f}°C "
+                f"(dưới ngưỡng sàn an toàn {temp_min:.1f}°C) và đang giảm nhanh ({temp_delta:.2f}°C/5 phút). "
+                f"Nhiệt độ thấp hơn mức vận hành cho phép của phòng. "
                 f"Hành động khẩn cấp: Ngắt ngay lốc làm lạnh phụ trợ, kiểm tra van tiết lưu và điều chỉnh nhiệt độ máy nén!"
             )
         else:
             recommendation = (
                 f"CẢNH BÁO QUÁ LẠNH: Nhiệt độ dự báo sau 15 phút là {predicted_temp:.2f}°C "
-                f"(dưới ngưỡng sàn an toàn {temp_min:.1f}°C). Nguy cơ đóng băng hàng hóa! "
+                f"(dưới ngưỡng sàn an toàn {temp_min:.1f}°C). Cần đưa nhiệt độ trở lại dải vận hành. "
                 f"Yêu cầu nhân viên kiểm tra cài đặt rơ-le nhiệt độ (Thermostat)."
             )
 
@@ -296,7 +250,7 @@ def generate_recommendation(
         risk_level = "WARNING"
         recommendation = (
             f"CẢNH GIÁC: Nhiệt độ dự báo {predicted_temp:.2f}°C đang tiệm cận ngưỡng sàn ({temp_min:.1f}°C). "
-            f"Theo dõi sát máy nén để tránh nhiệt độ tụt sâu xuống ngưỡng đóng băng."
+            f"Theo dõi sát máy nén để tránh nhiệt độ tụt dưới ngưỡng vận hành."
         )
 
     # 5. Hoạt động an toàn tối ưu
@@ -345,6 +299,7 @@ async def health_check(response: Response):
         "model_loaded": model_loaded,
         "loaded_at": model_artifacts["loaded_at"],
         "metrics": model_artifacts["metrics"],
+        "feature_schema": FEATURE_SCHEMA,
     }
 
 
@@ -372,32 +327,16 @@ def predict_temperature(payload: SensorDataRequest):
             detail="AI Model chưa sẵn sàng. Vui lòng kiểm tra lại file mô hình.",
         )
 
-    # 1. Điền giá trị mặc định thông minh nếu client không gửi (Fallback handling)
-    hour = payload.hour_of_day if payload.hour_of_day is not None else datetime.now().hour
-    humidity = payload.humidity if payload.humidity is not None else 65.0
-    ambient_temp = payload.ambient_temp if payload.ambient_temp is not None else 30.0
-    temp_delta = payload.temp_delta if payload.temp_delta is not None else 0.0
-    temp_moving_avg = payload.temp_moving_avg if payload.temp_moving_avg is not None else payload.temperature
-
-    # 2. Chuẩn bị DataFrame đặc trưng theo đúng thứ tự lúc huấn luyện
-    feature_dict = {
-        "hour_of_day": [hour],
-        "temperature": [payload.temperature],
-        "humidity": [humidity],
-        "temp_delta": [temp_delta],
-        "temp_moving_avg": [temp_moving_avg],
-        "ambient_temp": [ambient_temp],
-    }
-
     try:
-        X_infer = pd.DataFrame(feature_dict)[model_artifacts["feature_names"]]
-        
-        # 3. Thực hiện dự báo
-        raw_pred = model.predict(X_infer)[0]
+        X_infer = build_features([reading.temperature for reading in payload.temperature_history])
+        # The regressor predicts a change, so restore the absolute temperature.
+        raw_pred = float(model.predict(X_infer)[0]) + payload.temperature
+        if not np.isfinite(raw_pred):
+            raise ValueError("Non-finite model output")
         predicted_temp = float(np.round(raw_pred, 2))
-
-        temp_min = payload.temp_min if payload.temp_min is not None else DEFAULT_TEMP_MIN
-        temp_max = payload.temp_max if payload.temp_max is not None else DEFAULT_TEMP_MAX
+        temp_delta = float(X_infer.iloc[0]["temp_delta"])
+        temp_moving_avg = float(X_infer.iloc[0]["temp_moving_avg"])
+        temp_min, temp_max = payload.temp_min, payload.temp_max
 
         # 4. Xác định cảnh báo và mức độ rủi ro (kiểm tra cả 2 đầu: temp_min và temp_max)
         will_exceed = bool(predicted_temp > temp_max or predicted_temp < temp_min)
@@ -422,7 +361,11 @@ def predict_temperature(payload: SensorDataRequest):
             recommendation=recommendation,
             metadata={
                 "inferred_at": datetime.now().isoformat(),
-                "hour_of_day_used": hour,
+                "feature_schema": FEATURE_SCHEMA,
+                "prediction_mode": "temperature_change",
+                "history_samples": HISTORY_SAMPLES,
+                "as_of": payload.temperature_history[-1].ts.isoformat(),
+                "horizon_minutes": 15,
                 "temp_delta_used": temp_delta,
                 "temp_moving_avg_used": temp_moving_avg,
                 "temp_min_used": temp_min,

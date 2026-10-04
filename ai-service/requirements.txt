@@ -1,6 +1,6 @@
 # Cold Chain Monitoring - AI Forecasting Microservice
 #
-# Pinned exactly, not ">=": temperature_model_hgb.pkl is a scikit-learn
+# Pinned exactly, not ">=": temperature_model_history.pkl is a scikit-learn
 # pickle written by scikit-learn 1.7.2, and pickles are only guaranteed to
 # load into the version that wrote them. Retrain the model before bumping
 # scikit-learn (and keep numpy/scipy within what that version supports).
