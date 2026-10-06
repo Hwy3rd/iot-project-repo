@@ -1,6 +1,11 @@
 import { ApiError } from '@google/genai';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
-import { MessageRole } from '../../libs/constants/chatbot.constant';
+import {
+  CHATBOT_TURN_TIMEOUT_MS,
+  CHATBOT_TOOL_RESULT_MAX_BYTES,
+  CHATBOT_TURN_TOOL_RESULTS_MAX_BYTES,
+  MessageRole,
+} from '../../libs/constants/chatbot.constant';
 import { UserRole } from '../../libs/constants/user.constant';
 import { ChatbotOrchestratorService } from './chatbot-orchestrator.service';
 
@@ -23,7 +28,7 @@ describe('ChatbotOrchestratorService', () => {
   let llmService: { generateContent: jest.Mock };
   let toolExecutor: { execute: jest.Mock; resolveWorkingWarehouse: jest.Mock };
   let realtime: { emitToUser: jest.Mock };
-  let redis: { set: jest.Mock; eval: jest.Mock };
+  let redis: { set: jest.Mock; get: jest.Mock; eval: jest.Mock };
   let orchestrator: ChatbotOrchestratorService;
 
   beforeEach(() => {
@@ -55,6 +60,9 @@ describe('ChatbotOrchestratorService', () => {
     realtime = { emitToUser: jest.fn() };
     redis = {
       set: jest.fn().mockResolvedValue('OK'),
+      get: jest.fn(() =>
+        Promise.resolve((redis.set.mock.calls as unknown[][]).at(-1)?.[1]),
+      ),
       eval: jest.fn().mockResolvedValue(1),
     };
     orchestrator = new ChatbotOrchestratorService(
@@ -356,6 +364,189 @@ describe('ChatbotOrchestratorService', () => {
       ).rejects.toThrow('db down');
       expect(emitted()).toContain('u1:chatbot:error');
       expect(redis.eval).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe('empty replies', () => {
+    it.each([
+      {},
+      textResponse('   '),
+      { candidates: [{ finishReason: 'SAFETY' }] },
+    ])(
+      'stores and emits a visible fallback instead of an empty final message',
+      async (response) => {
+        llmService.generateContent.mockResolvedValue(response);
+        const reply = await orchestrator.sendMessage('c1', caller, 'Question');
+        expect(reply.content?.trim()).toBeTruthy();
+        expect(reply.content).toContain('chưa nhận được');
+        expect(chatbotService.appendAssistantMessage).toHaveBeenCalledTimes(1);
+        const last = (realtime.emitToUser.mock.calls as unknown[][]).at(
+          -1,
+        )?.[2] as {
+          content: string;
+        };
+        expect(last.content.trim()).toBeTruthy();
+      },
+    );
+  });
+
+  describe('turn deadlines', () => {
+    it('aborts a stalled model, ends the turn before lease expiry and ignores its late reply', async () => {
+      jest.useFakeTimers();
+      let resolveOld!: (value: unknown) => void;
+      llmService.generateContent.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveOld = resolve;
+          }),
+      );
+      const turn = await orchestrator.startTurn('c1', caller, 'Old question');
+      await jest.advanceTimersByTimeAsync(CHATBOT_TURN_TIMEOUT_MS);
+      const reply = await turn.completion;
+      expect(reply.content).toContain('quá nhiều thời gian');
+      const [params] = llmService.generateContent.mock.calls[0] as [
+        { config: { abortSignal: AbortSignal } },
+      ];
+      expect(params.config.abortSignal.aborted).toBe(true);
+      expect(redis.eval).toHaveBeenCalledTimes(1);
+      llmService.generateContent.mockResolvedValueOnce(
+        textResponse('New reply'),
+      );
+      await orchestrator.sendMessage('c1', caller, 'New question');
+      resolveOld(textResponse('Late old reply'));
+      await jest.advanceTimersByTimeAsync(0);
+      expect(
+        (chatbotService.appendAssistantMessage.mock.calls as unknown[][]).map(
+          (call) => call[1],
+        ),
+      ).toEqual([reply.content, 'New reply']);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('ignores a tool result arriving after the shared deadline', async () => {
+      jest.useFakeTimers();
+      let resolveTool!: (value: unknown) => void;
+      llmService.generateContent.mockResolvedValueOnce({
+        functionCalls: [{ name: 'get_alerts', args: {} }],
+      });
+      toolExecutor.execute.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveTool = resolve;
+          }),
+      );
+      const turn = await orchestrator.startTurn('c1', caller, 'Question');
+      await jest.advanceTimersByTimeAsync(CHATBOT_TURN_TIMEOUT_MS);
+      expect((await turn.completion).content).toContain('quá nhiều thời gian');
+      resolveTool({ result: ['late data'] });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(chatbotService.appendToolMessage).not.toHaveBeenCalled();
+      expect(llmService.generateContent).toHaveBeenCalledTimes(1);
+    });
+
+    it('shares one deadline across multiple model calls', async () => {
+      jest.useFakeTimers();
+      llmService.generateContent
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(
+                () =>
+                  resolve({
+                    functionCalls: [{ name: 'get_alerts', args: {} }],
+                  }),
+                80_000,
+              ),
+            ),
+        )
+        .mockImplementationOnce(() => new Promise(() => {}));
+      const turn = await orchestrator.startTurn('c1', caller, 'Question');
+      await jest.advanceTimersByTimeAsync(80_000);
+      expect(llmService.generateContent).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(CHATBOT_TURN_TIMEOUT_MS - 80_000);
+      expect((await turn.completion).content).toContain('quá nhiều thời gian');
+    });
+
+    it('does not append a reply when its lease belongs to another turn', async () => {
+      llmService.generateContent.mockResolvedValue(textResponse('Stale reply'));
+      redis.get.mockResolvedValue('another-token');
+      await expect(
+        orchestrator.sendMessage('c1', caller, 'Question'),
+      ).rejects.toThrow(ConflictException);
+      expect(chatbotService.appendAssistantMessage).not.toHaveBeenCalled();
+      expect(
+        (realtime.emitToUser.mock.calls as unknown[][]).map((call) => call[1]),
+      ).toEqual(['chatbot:message']);
+    });
+
+    it('does not write a timeout fallback after losing the lease', async () => {
+      jest.useFakeTimers();
+      llmService.generateContent.mockImplementationOnce(
+        () => new Promise(() => {}),
+      );
+      const turn = await orchestrator.startTurn('c1', caller, 'Question');
+      const rejected = expect(turn.completion).rejects.toThrow(
+        ConflictException,
+      );
+      redis.get.mockResolvedValue(null);
+      await jest.advanceTimersByTimeAsync(CHATBOT_TURN_TIMEOUT_MS);
+      await rejected;
+      expect(chatbotService.appendAssistantMessage).not.toHaveBeenCalled();
+      expect(
+        (realtime.emitToUser.mock.calls as unknown[][]).map((call) => call[1]),
+      ).toEqual(['chatbot:message']);
+    });
+  });
+
+  describe('tool result budgets', () => {
+    it('replaces an oversized Unicode result with a valid error payload before storage and replay', async () => {
+      llmService.generateContent
+        .mockResolvedValueOnce({
+          functionCalls: [{ name: 'get_alerts', args: {} }],
+        })
+        .mockResolvedValueOnce(textResponse('Please narrow the range'));
+      toolExecutor.execute.mockResolvedValue({
+        result: 'đ'.repeat(CHATBOT_TOOL_RESULT_MAX_BYTES),
+      });
+      await orchestrator.sendMessage('c1', caller, 'Question');
+      const serialized = (
+        chatbotService.appendToolMessage.mock.calls as unknown[][]
+      )[0][3] as string;
+      expect(JSON.parse(serialized) as unknown).toEqual({
+        error: expect.stringContaining('quá lớn') as unknown,
+      });
+      expect(Buffer.byteLength(serialized, 'utf8')).toBeLessThan(
+        CHATBOT_TOOL_RESULT_MAX_BYTES,
+      );
+      const [params] = llmService.generateContent.mock.calls[1] as [
+        {
+          contents: { parts: { functionResponse?: { response: unknown } }[] }[];
+        },
+      ];
+      expect(
+        params.contents.at(-1)?.parts[0].functionResponse?.response,
+      ).toEqual(JSON.parse(serialized) as unknown);
+    });
+
+    it('counts tool payloads across iterations, not just within each call', async () => {
+      const response = { functionCalls: [{ name: 'get_alerts', args: {} }] };
+      llmService.generateContent
+        .mockResolvedValueOnce(response)
+        .mockResolvedValueOnce(response)
+        .mockResolvedValueOnce(response)
+        .mockResolvedValueOnce(textResponse('Reply'));
+      toolExecutor.execute.mockResolvedValue({ result: 'x'.repeat(25_000) });
+      await orchestrator.sendMessage('c1', caller, 'Question');
+      const payloads = (
+        chatbotService.appendToolMessage.mock.calls as unknown[][]
+      ).map((call) => call[3] as string);
+      expect(payloads.map((p) => JSON.parse(p) as unknown)).toEqual([
+        { output: 'x'.repeat(25_000) },
+        { output: 'x'.repeat(25_000) },
+        { error: expect.stringContaining('quá lớn') as unknown },
+      ]);
+      expect(
+        payloads.reduce((sum, p) => sum + Buffer.byteLength(p), 0),
+      ).toBeLessThanOrEqual(CHATBOT_TURN_TOOL_RESULTS_MAX_BYTES);
     });
   });
 });

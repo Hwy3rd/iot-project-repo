@@ -3,6 +3,15 @@ import { MessageRole } from '../../libs/constants/chatbot.constant';
 import { UserRole } from '../../libs/constants/user.constant';
 import { ChatbotGateway } from './chatbot.gateway';
 
+// Unit-test the socket handler without loading the services' infrastructure graph.
+// Their behaviour is exercised separately by the orchestrator/executor suites.
+jest.mock('./chatbot-orchestrator.service', () => ({
+  ChatbotOrchestratorService: jest.fn(),
+}));
+jest.mock('./guards/chatbot-rate-limiter.service', () => ({
+  ChatbotRateLimiterService: jest.fn(),
+}));
+
 describe('ChatbotGateway', () => {
   let orchestrator: { startTurn: jest.Mock };
   let rateLimiter: { consume: jest.Mock };

@@ -17,6 +17,8 @@ import {
   CHATBOT_EVENTS,
   CHATBOT_HISTORY_LIMIT,
   CHATBOT_TIMEZONE,
+  CHATBOT_TOOL_RESULT_MAX_BYTES,
+  CHATBOT_TURN_TOOL_RESULTS_MAX_BYTES,
   CHATBOT_TURN_LOCK_TTL_SECONDS,
   MessageRole,
 } from '../../libs/constants/chatbot.constant';
@@ -24,6 +26,10 @@ import { UserRole } from '../../libs/constants/user.constant';
 import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { ChatbotService } from './chatbot.service';
+import {
+  ChatbotTurnDeadline,
+  ChatbotTurnTimeoutError,
+} from './chatbot-turn-deadline';
 import {
   buildChatbotSystemInstruction,
   ChatbotWorkingWarehouse,
@@ -52,6 +58,11 @@ const TURN_FAILED_MESSAGE =
 const LLM_UNAVAILABLE_MESSAGE =
   'Xin lỗi, trợ lý tạm thời không phản hồi được. Bạn vui lòng thử lại sau.';
 
+const TURN_TIMEOUT_MESSAGE =
+  'Trợ lý mất quá nhiều thời gian để xử lý câu hỏi này. Bạn vui lòng thử lại hoặc hỏi trong phạm vi nhỏ hơn.';
+const EMPTY_REPLY_MESSAGE =
+  'Trợ lý chưa nhận được câu trả lời có nội dung từ dịch vụ AI. Bạn vui lòng thử lại hoặc diễn đạt câu hỏi khác.';
+
 const turnLockKey = (conversationId: string) =>
   `chatbot:turn:${conversationId}`;
 
@@ -61,6 +72,9 @@ if redis.call('GET', KEYS[1]) == ARGV[1] then
 end
 return 0
 `;
+
+// A stale turn must not emit an error that clears a newer turn's UI state.
+class ChatbotTurnLockLostError extends ConflictException {}
 
 export interface ChatbotTurn {
   userMessage: Message;
@@ -115,6 +129,7 @@ export class ChatbotOrchestratorService {
       ? await this.toolExecutor.resolveWorkingWarehouse(caller, warehouseId)
       : null;
     const lockToken = await this.acquireTurnLock(conversationId);
+    const deadline = new ChatbotTurnDeadline();
 
     let userMessage: Message;
     try {
@@ -124,6 +139,7 @@ export class ChatbotOrchestratorService {
         { content },
       );
     } catch (error) {
+      deadline.dispose();
       await this.releaseTurnLock(conversationId, lockToken);
       throw error;
     }
@@ -133,12 +149,21 @@ export class ChatbotOrchestratorService {
       conversation,
       { ...caller, workingWarehouseId: working?.id },
       working,
+      deadline,
+      lockToken,
     )
-      .then((reply) => {
+      .then(async (reply) => {
+        await this.assertTurnLockOwned(conversationId, lockToken);
         this.emitMessage(caller.id, reply);
         return reply;
       })
       .catch((error: unknown) => {
+        if (error instanceof ChatbotTurnLockLostError) {
+          this.logger.warn(
+            'Discarded a chatbot turn that no longer owns its lease.',
+          );
+          throw error;
+        }
         this.logger.error(
           `Chatbot turn failed for conversation ${conversationId}`,
           error instanceof Error ? error.stack : String(error),
@@ -149,7 +174,10 @@ export class ChatbotOrchestratorService {
         });
         throw error;
       })
-      .finally(() => this.releaseTurnLock(conversationId, lockToken));
+      .finally(async () => {
+        deadline.dispose();
+        await this.releaseTurnLock(conversationId, lockToken);
+      });
 
     return { userMessage, completion };
   }
@@ -176,12 +204,44 @@ export class ChatbotOrchestratorService {
     conversation: Conversation,
     caller: ChatbotToolCaller,
     workingWarehouse: ChatbotWorkingWarehouse | null,
+    deadline: ChatbotTurnDeadline,
+    lockToken: string,
+  ): Promise<Message> {
+    try {
+      return await this.runTurnLoop(
+        conversation,
+        caller,
+        workingWarehouse,
+        deadline,
+        lockToken,
+      );
+    } catch (error) {
+      if (!(error instanceof ChatbotTurnTimeoutError)) throw error;
+      // This terminal write runs after cancellation. Late model/tool results
+      // have no continuation into this loop and cannot append another reply.
+      await this.assertTurnLockOwned(conversation.id, lockToken);
+      return this.chatbotService.appendAssistantMessage(
+        conversation,
+        TURN_TIMEOUT_MESSAGE,
+      );
+    }
+  }
+
+  private async runTurnLoop(
+    conversation: Conversation,
+    caller: ChatbotToolCaller,
+    workingWarehouse: ChatbotWorkingWarehouse | null,
+    deadline: ChatbotTurnDeadline,
+    lockToken: string,
   ): Promise<Message> {
     const conversationId = conversation.id;
-    const history = await this.chatbotService.findRecentHistory(
-      conversationId,
-      CHATBOT_HISTORY_LIMIT,
+    const history = await deadline.wait(() =>
+      this.chatbotService.findRecentHistory(
+        conversationId,
+        CHATBOT_HISTORY_LIMIT,
+      ),
     );
+    let toolResultBytes = 0;
     const contents: Content[] = mergeConsecutiveRoles(
       history.map((message) => this.toGeminiContent(message)),
     );
@@ -195,22 +255,29 @@ export class ChatbotOrchestratorService {
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
       let response: Awaited<ReturnType<LlmService['generateContent']>>;
       try {
-        response = await this.llmService.generateContent({
-          contents,
-          config: {
-            systemInstruction,
-            tools:
-              toolDeclarations.length > 0
-                ? [{ functionDeclarations: toolDeclarations }]
-                : undefined,
-          },
-        });
+        response = await deadline.wait(() =>
+          this.llmService.generateContent({
+            contents,
+            config: {
+              systemInstruction,
+              abortSignal: deadline.signal,
+              tools:
+                toolDeclarations.length > 0
+                  ? [{ functionDeclarations: toolDeclarations }]
+                  : undefined,
+            },
+          }),
+        );
       } catch (error) {
+        deadline.assertActive();
         // Reached only after LlmService's own retries gave up (quota
         // exhausted, Gemini down, network). End the turn with a visible
         // reply instead of a 500: the user's message is already stored,
         // and a closing assistant row keeps the history well-formed even
         // if this failed mid tool-loop (after a tool result).
+        await deadline.wait(() =>
+          this.assertTurnLockOwned(conversationId, lockToken),
+        );
         return this.endTurnWithLlmFailure(conversation, error);
       }
 
@@ -222,9 +289,12 @@ export class ChatbotOrchestratorService {
 
       const functionCalls = response.functionCalls ?? [];
       if (functionCalls.length === 0) {
+        await deadline.wait(() =>
+          this.assertTurnLockOwned(conversationId, lockToken),
+        );
         return this.chatbotService.appendAssistantMessage(
           conversation,
-          text ?? '',
+          text?.trim() ? text : EMPTY_REPLY_MESSAGE,
         );
       }
 
@@ -236,6 +306,9 @@ export class ChatbotOrchestratorService {
         name: call.name ?? '',
         arguments: call.args ?? {},
       }));
+      await deadline.wait(() =>
+        this.assertTurnLockOwned(conversationId, lockToken),
+      );
       await this.chatbotService.appendAssistantMessage(
         conversation,
         text,
@@ -259,6 +332,7 @@ export class ChatbotOrchestratorService {
           ),
       );
 
+      deadline.assertActive();
       this.realtime.emitToUser(caller.id, CHATBOT_EVENTS.TOOL_CALL, {
         conversationId,
         tools: toolCalls.map((call) => call.name),
@@ -266,22 +340,52 @@ export class ChatbotOrchestratorService {
 
       // The calls of one step are independent reads — run them together,
       // then store/replay the results in the model's order.
-      const execResults = await Promise.all(
-        toolCalls.map((call) =>
-          this.toolExecutor.execute(call.name, call.arguments, caller),
+      const execResults = await deadline.wait(() =>
+        Promise.all(
+          toolCalls.map((call) =>
+            this.toolExecutor.execute(call.name, call.arguments, caller),
+          ),
         ),
       );
       const responseParts: Part[] = [];
       for (const [index, call] of toolCalls.entries()) {
         const execResult = execResults[index];
-        const payload = execResult.error
+        let payload: Record<string, unknown> = execResult.error
           ? { error: execResult.error }
           : { output: execResult.result ?? null };
+        let serialized = JSON.stringify(payload);
+        const bytes = Buffer.byteLength(serialized, 'utf8');
+        if (
+          bytes > CHATBOT_TOOL_RESULT_MAX_BYTES ||
+          toolResultBytes + bytes > CHATBOT_TURN_TOOL_RESULTS_MAX_BYTES
+        ) {
+          payload = {
+            error:
+              'Kết quả truy vấn quá lớn để xử lý trong lượt này. Hãy thu hẹp khoảng thời gian, bộ lọc hoặc giảm limit; không suy luận từ dữ liệu chưa được cung cấp.',
+          };
+          serialized = JSON.stringify(payload);
+        }
+        if (
+          toolResultBytes + Buffer.byteLength(serialized, 'utf8') >
+          CHATBOT_TURN_TOOL_RESULTS_MAX_BYTES
+        ) {
+          await deadline.wait(() =>
+            this.assertTurnLockOwned(conversationId, lockToken),
+          );
+          return this.chatbotService.appendAssistantMessage(
+            conversation,
+            'Lượt này đã đạt giới hạn dữ liệu tra cứu. Bạn vui lòng hỏi trong phạm vi nhỏ hơn.',
+          );
+        }
+        toolResultBytes += Buffer.byteLength(serialized, 'utf8');
+        await deadline.wait(() =>
+          this.assertTurnLockOwned(conversationId, lockToken),
+        );
         await this.chatbotService.appendToolMessage(
           conversation,
           call.id,
           call.name,
-          JSON.stringify(payload),
+          serialized,
         );
         responseParts.push({
           functionResponse: {
@@ -294,6 +398,9 @@ export class ChatbotOrchestratorService {
       contents.push(createUserContent(responseParts));
     }
 
+    await deadline.wait(() =>
+      this.assertTurnLockOwned(conversationId, lockToken),
+    );
     // Hit the cap without a final text answer — persist a safe fallback so
     // the turn ends with something the user can see, instead of the
     // request just hanging or throwing after burning MAX_TOOL_ITERATIONS
@@ -323,6 +430,17 @@ export class ChatbotOrchestratorService {
       // shape chatbot-tools.definitions.ts already writes.
       parametersJsonSchema: tool.input_schema,
     }));
+  }
+
+  private async assertTurnLockOwned(
+    conversationId: string,
+    token: string,
+  ): Promise<void> {
+    if ((await this.redis.get(turnLockKey(conversationId))) !== token) {
+      throw new ChatbotTurnLockLostError(
+        'Lượt xử lý đã mất khóa cuộc trò chuyện.',
+      );
+    }
   }
 
   private async acquireTurnLock(conversationId: string): Promise<string> {

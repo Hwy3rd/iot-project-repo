@@ -18,3 +18,5 @@ export const DEFAULT_LLM_RETRY_ATTEMPTS = 3;
 // error (e.g. bad API key, malformed request), since those fail the same
 // way every time and retrying just wastes the attempt budget.
 export const LLM_RETRY_STATUS_CODES = [429, 500, 502, 503, 504];
+
+export const DEFAULT_LLM_REQUEST_TIMEOUT_MS = 30_000;

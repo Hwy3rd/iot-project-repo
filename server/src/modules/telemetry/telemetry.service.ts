@@ -26,6 +26,7 @@ import {
   TELEMETRY_RAW_DEFAULT_LIMIT,
   TELEMETRY_RAW_DEFAULT_RANGE_MS,
   TELEMETRY_RAW_MAX_RANGE_MS,
+  TELEMETRY_RAW_MAX_LIMIT,
 } from '../../libs/constants/telemetry.constant';
 import { AlertsService } from '../alerts/alerts.service';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
@@ -474,8 +475,117 @@ export class TelemetryService {
       .exec();
   }
 
-  // Oldest-first and capped at `limit`: if the window holds more samples than
-  // that, the newest ones are cut off — page forward by moving `from`.
+  // Whole-range statistics plus an adaptive, bounded time series.
+  async findHourlySummary(
+    deviceId: string,
+    query: QueryTelemetryDto,
+    maxPoints: number,
+    timeZone: string,
+  ) {
+    await this.assertDeviceExists(deviceId);
+    const range = this.resolveRange(
+      query,
+      TELEMETRY_HOURLY_DEFAULT_RANGE_MS,
+      TELEMETRY_HOURLY_MAX_RANGE_MS,
+    );
+    const from = floorToHour(range.from),
+      to = range.to;
+    if (!Number.isInteger(maxPoints) || maxPoints < 1 || maxPoints > 100) {
+      throw new BadRequestException('maxPoints must be between 1 and 100');
+    }
+    const hours = Math.ceil((to.getTime() - from.getTime()) / 3_600_000);
+    const unit =
+      hours <= maxPoints
+        ? 'hour'
+        : Math.ceil(hours / 24) + 1 <= maxPoints
+          ? 'day'
+          : 'month';
+    const groupStats = {
+      sampleCount: { $sum: '$sampleCount' },
+      weightedTemp: {
+        $sum: { $multiply: [{ $ifNull: ['$avgTemp', 0] }, '$sampleCount'] },
+      },
+      minTemp: { $min: '$minTemp' },
+      maxTemp: { $max: '$maxTemp' },
+      outOfRangeCount: { $sum: '$outOfRangeCount' },
+      sensorErrorCount: { $sum: '$sensorErrorCount' },
+      doorOpenCount: { $sum: '$doorOpenCount' },
+      doorKnownBuckets: {
+        $sum: { $cond: [{ $isNumber: '$doorOpenCount' }, 1, 0] },
+      },
+      sourceBuckets: { $sum: 1 },
+    };
+    const stats = {
+      _id: 0,
+      sampleCount: 1,
+      minTemp: 1,
+      maxTemp: 1,
+      outOfRangeCount: 1,
+      sensorErrorCount: 1,
+      sourceBuckets: 1,
+      doorOpenCount: {
+        $cond: [{ $gt: ['$doorKnownBuckets', 0] }, '$doorOpenCount', null],
+      },
+      avgTemp: {
+        $cond: [
+          { $gt: ['$sampleCount', 0] },
+          { $divide: ['$weightedTemp', '$sampleCount'] },
+          null,
+        ],
+      },
+    };
+    // The summary facet covers every matching hour, before any series limit.
+    const [result] = await this.hourlyModel
+      .aggregate<{
+        summary: Record<string, unknown>[];
+        readings: Record<string, unknown>[];
+      }>([
+        { $match: { deviceId, hourBucket: { $gte: from, $lt: to } } },
+        {
+          $facet: {
+            summary: [
+              { $group: { _id: null, ...groupStats } },
+              { $project: stats },
+            ],
+            readings: [
+              {
+                $group: {
+                  _id: {
+                    $dateTrunc: {
+                      date: '$hourBucket',
+                      unit,
+                      timezone: timeZone,
+                    },
+                  },
+                  ...groupStats,
+                },
+              },
+              { $project: { ...stats, hourBucket: '$_id' } },
+              { $sort: { hourBucket: 1 } },
+              { $limit: maxPoints + 1 },
+            ],
+          },
+        },
+      ])
+      .exec();
+    const rows = result?.readings ?? [];
+    const hasMore = rows.length > maxPoints;
+    return {
+      from,
+      to,
+      bucketUnit: unit,
+      timeZone,
+      summary: result?.summary[0] ?? null,
+      readings: rows.slice(0, maxPoints),
+      ...(hasMore
+        ? {
+            note: 'Chuỗi thời gian chỉ có một phần điểm; summary vẫn tính trên toàn khoảng thời gian được truy vấn.',
+          }
+        : {}),
+    };
+  }
+
+  // Oldest-first and capped: page forward by moving from when more samples exist.
   async findRaw(deviceId: string, query: QueryRawTelemetryDto) {
     await this.assertDeviceExists(deviceId);
     const { from, to } = this.resolveRange(
@@ -484,10 +594,14 @@ export class TelemetryService {
       TELEMETRY_RAW_MAX_RANGE_MS,
     );
 
+    const requestedLimit = query.limit ?? TELEMETRY_RAW_DEFAULT_LIMIT;
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+      throw new BadRequestException('limit must be a positive integer');
+    }
     return this.rawModel
       .find({ deviceId, ts: { $gte: from, $lt: to } })
       .sort({ ts: 1 })
-      .limit(query.limit ?? TELEMETRY_RAW_DEFAULT_LIMIT)
+      .limit(Math.min(requestedLimit, TELEMETRY_RAW_MAX_LIMIT))
       .lean()
       .exec();
   }
@@ -514,6 +628,9 @@ export class TelemetryService {
       ? new Date(query.from)
       : new Date(to.getTime() - defaultRangeMs);
 
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) {
+      throw new BadRequestException('from and to must be valid dates');
+    }
     if (from >= to) {
       throw new BadRequestException('from must be before to');
     }

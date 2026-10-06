@@ -5,7 +5,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, LessThanOrEqual, Repository } from 'typeorm';
 import { AlertStatus } from '../../../libs/constants/alert.constant';
 import { BatchStatus } from '../../../libs/constants/batch.constant';
-import { CHATBOT_TIMEZONE } from '../../../libs/constants/chatbot.constant';
+import {
+  CHATBOT_TIMEZONE,
+  CHATBOT_TELEMETRY_RAW_DEFAULT_LIMIT,
+  CHATBOT_TELEMETRY_RAW_MAX_LIMIT,
+  CHATBOT_TELEMETRY_MAX_POINTS,
+} from '../../../libs/constants/chatbot.constant';
 import { DeviceStatus } from '../../../libs/constants/device.constant';
 import { UserRole } from '../../../libs/constants/user.constant';
 import type { QueryAlertDto } from '../../alerts/dto/query-alert.dto';
@@ -675,8 +680,8 @@ export class ChatbotToolExecutorService {
     const scope = await this.loadScope(caller);
     const deviceRef = this.optionalString(args, 'deviceId');
     const roomRef = this.optionalString(args, 'coldRoomId');
-
     let devices: Device[];
+    let moreDevices = false;
     if (deviceRef) {
       devices = [await this.resolveDevice(scope, deviceRef)];
     } else if (roomRef) {
@@ -684,33 +689,83 @@ export class ChatbotToolExecutorService {
       devices = await this.devicesRepo.find({
         where: { coldRoomId: room.id },
         order: { uniqueId: 'ASC' },
-        take: MAX_ROOM_TELEMETRY_DEVICES,
+        take: MAX_ROOM_TELEMETRY_DEVICES + 1,
       });
-      if (devices.length === 0) {
+      moreDevices = devices.length > MAX_ROOM_TELEMETRY_DEVICES;
+      devices = devices.slice(0, MAX_ROOM_TELEMETRY_DEVICES);
+      if (!devices.length)
         throw new ChatbotToolError(
-          `Phòng "${room.name}" chưa có thiết bị nào.`,
+          'Phòng "' + room.name + '" chưa có thiết bị nào.',
         );
-      }
     } else {
       throw new ChatbotToolError('Cần truyền coldRoomId hoặc deviceId.');
     }
-
     const range = {
       from: this.optionalString(args, 'from'),
       to: this.optionalString(args, 'to'),
     };
-    const limit = toInt(args.limit);
+    if (
+      args.limit !== undefined &&
+      (typeof args.limit !== 'number' ||
+        !Number.isInteger(args.limit) ||
+        args.limit < 1)
+    ) {
+      throw new ChatbotToolError('limit phải là số nguyên dương.');
+    }
+    const totalLimit =
+      kind === 'raw'
+        ? Math.min(
+            args.limit ?? CHATBOT_TELEMETRY_RAW_DEFAULT_LIMIT,
+            CHATBOT_TELEMETRY_RAW_MAX_LIMIT,
+          )
+        : CHATBOT_TELEMETRY_MAX_POINTS;
+    if (devices.length > totalLimit) {
+      moreDevices = true;
+      devices = devices.slice(0, totalLimit);
+    }
+    const perDeviceLimit = Math.floor(totalLimit / devices.length);
     const series = await Promise.all(
-      devices.map(async (device) => ({
-        device: device.uniqueId,
-        ...this.location(scope, device.coldRoomId),
-        readings: (kind === 'hourly'
-          ? await this.telemetryService.findHourly(device.id, range)
-          : await this.telemetryService.findRaw(device.id, { ...range, limit })
-        ).map(stripTelemetryKeys),
-      })),
+      devices.map(async (device) => {
+        const location = {
+          device: device.uniqueId,
+          ...this.location(scope, device.coldRoomId),
+        };
+        if (kind === 'hourly') {
+          const data = await this.telemetryService.findHourlySummary(
+            device.id,
+            range,
+            perDeviceLimit,
+            CHATBOT_TIMEZONE,
+          );
+          return { ...location, ...data };
+        }
+        // One extra row detects truncation without a full count query.
+        const rows = await this.telemetryService.findRaw(device.id, {
+          ...range,
+          limit: perDeviceLimit + 1,
+        });
+        const hasMore = rows.length > perDeviceLimit;
+        return {
+          ...location,
+          readings: rows.slice(0, perDeviceLimit).map(stripTelemetryKeys),
+          returned: Math.min(rows.length, perDeviceLimit),
+          hasMore,
+          ...(hasMore
+            ? {
+                note: 'Chỉ trả một phần mẫu, theo thứ tự cũ đến mới. Không dùng phần này để kết luận cho toàn khoảng thời gian; thu hẹp khoảng hoặc tra dữ liệu tổng hợp.',
+              }
+            : {}),
+        };
+      }),
     );
-    return series;
+    return {
+      devices: series,
+      ...(moreDevices
+        ? {
+            note: 'Chỉ tra cứu một phần thiết bị trong phòng do giới hạn dữ liệu. Hỏi theo từng mã thiết bị để xem phần còn lại.',
+          }
+        : {}),
+    };
   }
 
   private async getBatches(
