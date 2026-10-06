@@ -1,0 +1,148 @@
+{
+  "purpose": "Coursework demo: public temperature observations, shifted to recent timestamps",
+  "source_title": "Dataset of household cold-chain conditions in Bangkok",
+  "source_doi": "https://doi.org/10.57745/TMWYBQ",
+  "feature_schema": "temperature-history-v1",
+  "model_sha256": "75a5ad3b434f0fdfaa8425087fd2e5afe9a0ef52fdd670d470d119e47497bcdd",
+  "profiles": {
+    "chill-normal": {
+      "compartment": "T_MS",
+      "temp_min": 0,
+      "temp_max": 4,
+      "scenario": "normal",
+      "temperatures": [
+        1.9, 2.0, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.0, 2.0
+      ],
+      "sampling_minutes": 5,
+      "source_file": "108_2DT.txt",
+      "source_sha256": "5fad3e07ccbf3f9dff4a579c587dbcea0a6d83062f71b8f1a45ff44534f1a02c",
+      "source_elapsed_minutes": [
+        4285, 4290, 4295, 4300, 4305, 4310, 4315, 4320, 4325, 4330, 4335, 4340,
+        4345, 4350
+      ],
+      "predicted_temp_15m_at_export": 2.0
+    },
+    "chill-warning": {
+      "compartment": "T_MS",
+      "temp_min": 0,
+      "temp_max": 4,
+      "scenario": "warning",
+      "temperatures": [
+        6.9, 6.3, 5.1, 3.6, 2.4, 1.5, 2.7, 3.8, 4.5, 3.1, 1.9, 0.8, 1.4, 2.5
+      ],
+      "sampling_minutes": 5,
+      "source_file": "039_2DT.txt",
+      "source_sha256": "3138af620be84fb535087d4c3b7d956bcf5a8004e0c77439edf43014a1183514",
+      "source_elapsed_minutes": [
+        3675, 3680, 3685, 3690, 3695, 3700, 3705, 3710, 3715, 3720, 3725, 3730,
+        3735, 3740
+      ],
+      "predicted_temp_15m_at_export": 4.75
+    },
+    "cool-normal": {
+      "compartment": "T_MS",
+      "temp_min": 2,
+      "temp_max": 6,
+      "scenario": "normal",
+      "temperatures": [
+        4.1, 4.1, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0
+      ],
+      "sampling_minutes": 5,
+      "source_file": "010_2DT.txt",
+      "source_sha256": "762f2d6eb7cdee01d7c89b54d23046cdbed19319d13940d09ba0d1bec681c362",
+      "source_elapsed_minutes": [
+        3000, 3005, 3010, 3015, 3020, 3025, 3030, 3035, 3040, 3045, 3050, 3055,
+        3060, 3065
+      ],
+      "predicted_temp_15m_at_export": 4.0
+    },
+    "freezer-normal": {
+      "compartment": "T_FC",
+      "temp_min": -22,
+      "temp_max": -18,
+      "scenario": "normal",
+      "temperatures": [
+        -19.8, -19.8, -19.8, -19.8, -19.9, -19.9, -19.9, -19.9, -19.9, -19.9,
+        -19.9, -20.0, -19.9, -20.0
+      ],
+      "sampling_minutes": 5,
+      "source_file": "092_1D.txt",
+      "source_sha256": "04ced4db3bee4d9fbd303150a11384f148daf15625289fdc3936720ee60a4ef4",
+      "source_elapsed_minutes": [
+        525, 530, 535, 540, 545, 550, 555, 560, 565, 570, 575, 580, 585, 590
+      ],
+      "predicted_temp_15m_at_export": -20.0
+    },
+    "freezer-warning": {
+      "compartment": "T_FC",
+      "temp_min": -22,
+      "temp_max": -18,
+      "scenario": "warning",
+      "temperatures": [
+        -18.1, -18.5, -18.6, -18.2, -17.5, -16.6, -15.9, -15.9, -16.4, -17.0,
+        -17.6, -18.1, -18.6, -18.6
+      ],
+      "sampling_minutes": 5,
+      "source_file": "011_2DT.txt",
+      "source_sha256": "6b6054519f4c24ffe0a574be3bb02af94bf6038219cd1c2308640cf14facd8f3",
+      "source_elapsed_minutes": [
+        4065, 4070, 4075, 4080, 4085, 4090, 4095, 4100, 4105, 4110, 4115, 4120,
+        4125, 4130
+      ],
+      "predicted_temp_15m_at_export": -17.25
+    },
+    "freezer-warm-normal": {
+      "compartment": "T_FC",
+      "temp_min": -20,
+      "temp_max": -15,
+      "scenario": "normal",
+      "temperatures": [
+        -17.6, -17.6, -17.5, -17.5, -17.5, -17.5, -17.5, -17.5, -17.5, -17.5,
+        -17.5, -17.5, -17.5, -17.5
+      ],
+      "sampling_minutes": 5,
+      "source_file": "053_2DT.txt",
+      "source_sha256": "fbd864c3bd7760455c6e4db5f576d9671b0d6fdba6e27a80325b6666e516a12c",
+      "source_elapsed_minutes": [
+        6765, 6770, 6775, 6780, 6785, 6790, 6795, 6800, 6805, 6810, 6815, 6820,
+        6825, 6830
+      ],
+      "predicted_temp_15m_at_export": -17.5
+    },
+    "freezer-warm-warning": {
+      "compartment": "T_FC",
+      "temp_min": -20,
+      "temp_max": -15,
+      "scenario": "warning",
+      "temperatures": [
+        -14.3, -15.1, -15.7, -15.8, -15.3, -14.6, -13.8, -12.8, -12.7, -13.2,
+        -13.9, -14.7, -15.5, -15.7
+      ],
+      "sampling_minutes": 5,
+      "source_file": "058_2DT.txt",
+      "source_sha256": "6249da9e66c458ddefc6f5a364bf75bb73c8ec5275bb90a10e58fd9ddd632c6a",
+      "source_elapsed_minutes": [
+        705, 710, 715, 720, 725, 730, 735, 740, 745, 750, 755, 760, 765, 770
+      ],
+      "predicted_temp_15m_at_export": -14.25
+    },
+    "deep-freezer-normal": {
+      "compartment": "T_FC",
+      "temp_min": -28,
+      "temp_max": -22,
+      "scenario": "normal",
+      "temperatures": [
+        -24.8, -24.8, -24.9, -24.8, -24.9, -24.9, -24.9, -24.9, -24.9, -25.0,
+        -24.9, -25.0, -25.0, -25.0
+      ],
+      "sampling_minutes": 5,
+      "source_file": "001_1D.txt",
+      "source_sha256": "a029df108317b42a60d8049452c23e7996b5edc01eec6a6fb2bdcaa879eb7f32",
+      "source_elapsed_minutes": [
+        3395, 3400, 3405, 3410, 3415, 3420, 3425, 3430, 3435, 3440, 3445, 3450,
+        3455, 3460
+      ],
+      "predicted_temp_15m_at_export": -25.0
+    }
+  }
+}

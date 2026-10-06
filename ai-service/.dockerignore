@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv*/
+experiments/
+tests/
+temperature_model_hgb.pkl
+temperature_model_history.json
+requirements-dev.txt
+train_history_model.py
+README.md

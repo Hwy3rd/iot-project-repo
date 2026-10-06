@@ -1,0 +1,684 @@
+{
+  "created_at": "2026-10-04T03:37:06.205151+00:00",
+  "dataset": {
+    "path": "D:\\Study\\ky 1 nam 4\\IoT\\dataset_coldchain.csv",
+    "sha256": "7b984e02d4db50487ed8692524c34a95546fc9ee0732aa612c4d9d60fe402eed",
+    "rows": 179826,
+    "series_count": 123,
+    "series_rows": [
+      1462
+    ],
+    "temperature_range": [
+      -8.2,
+      19.6
+    ],
+    "target_range": [
+      -8.2,
+      19.6
+    ]
+  },
+  "reference_model": {
+    "path": "D:\\Study\\ky 1 nam 4\\IoT\\iot-project-repo\\ai-service\\temperature_model_hgb.pkl",
+    "sha256": "bfd061e775a0bd9fd88b32ddacb0da50025652bce5cc32b34ac5f9781b551872",
+    "saved_metrics": {
+      "mae": 0.4661631605611712,
+      "rmse": 0.6857856213631764,
+      "r2": 0.9554726482090663,
+      "threshold_accuracy": 0.9798420730690096
+    },
+    "recomputed_metrics": {
+      "mae": 0.4661631605611712,
+      "rmse": 0.6857856213631764,
+      "r2": 0.9554726482090663,
+      "threshold_accuracy": 0.9798420730690096,
+      "overheat_precision": 0.8180639585133967,
+      "overheat_recall": 0.8616294947655895,
+      "overheat_f1": 0.8392817557082687,
+      "confusion_matrix": {
+        "tn": 33348,
+        "fp": 421,
+        "fn": 304,
+        "tp": 1893
+      }
+    },
+    "parameters": {
+      "categorical_features": "from_dtype",
+      "early_stopping": "auto",
+      "interaction_cst": null,
+      "l2_regularization": 0.0,
+      "learning_rate": 0.1,
+      "loss": "squared_error",
+      "max_bins": 255,
+      "max_depth": 15,
+      "max_features": 1.0,
+      "max_iter": 100,
+      "max_leaf_nodes": 31,
+      "min_samples_leaf": 20,
+      "monotonic_cst": null,
+      "n_iter_no_change": 10,
+      "quantile": null,
+      "random_state": 42,
+      "scoring": "loss",
+      "tol": 1e-07,
+      "validation_fraction": 0.1,
+      "verbose": 0,
+      "warm_start": false
+    }
+  },
+  "environment": {
+    "python": "3.10.11",
+    "scikit_learn": "1.7.2",
+    "numpy": "1.26.4",
+    "pandas": "2.3.3",
+    "joblib": "1.6.0",
+    "threads": 4
+  },
+  "splits": [
+    {
+      "name": "original_80_20",
+      "description": "Original concatenated-row split for comparison with the deployed model's saved metrics; one series crosses the train/test boundary.",
+      "train_samples": 143860,
+      "test_samples": 35966,
+      "train_series_count": 99,
+      "test_series_count": 25,
+      "shared_series_count": 1,
+      "results": [
+        {
+          "name": "persistence",
+          "label": "Baseline: forecast equals current temperature",
+          "feature_names": [
+            "temperature"
+          ],
+          "training_seconds": 0.0,
+          "metrics": {
+            "mae": 0.46520880831896794,
+            "rmse": 0.6599304946727591,
+            "r2": 0.9587668503117664,
+            "threshold_accuracy": 0.9828727131179448,
+            "overheat_precision": 0.8607941579187586,
+            "overheat_recall": 0.8584433318161129,
+            "overheat_f1": 0.8596171376481313,
+            "confusion_matrix": {
+              "tn": 33464,
+              "fp": 305,
+              "fn": 311,
+              "tp": 1886
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 0.36720526630760025
+            },
+            "minus_2_to_2": {
+              "samples": 8740,
+              "mae": 0.5429977116704806
+            },
+            "2_to_8": {
+              "samples": 22889,
+              "mae": 0.46313513041198834
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.2833458646616541
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 2.983333333333333
+            }
+          }
+        },
+        {
+          "name": "stored_model_full_inputs",
+          "label": "Stored model with all measured dataset inputs",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "humidity",
+            "temp_delta",
+            "temp_moving_avg",
+            "ambient_temp"
+          ],
+          "training_seconds": 0.0,
+          "metrics": {
+            "mae": 0.4661631605611712,
+            "rmse": 0.6857856213631764,
+            "r2": 0.9554726482090663,
+            "threshold_accuracy": 0.9798420730690096,
+            "overheat_precision": 0.8180639585133967,
+            "overheat_recall": 0.8616294947655895,
+            "overheat_f1": 0.8392817557082687,
+            "confusion_matrix": {
+              "tn": 33348,
+              "fp": 421,
+              "fn": 304,
+              "tp": 1893
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.120054000736032
+            },
+            "minus_2_to_2": {
+              "samples": 8740,
+              "mae": 0.5243051354204611
+            },
+            "2_to_8": {
+              "samples": 22889,
+              "mae": 0.41632152679992096
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.29028239580882453
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.7754190272462973
+            }
+          }
+        },
+        {
+          "name": "stored_model_default_external_inputs",
+          "label": "Stored model with humidity=65, ambient_temp=30",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "humidity",
+            "temp_delta",
+            "temp_moving_avg",
+            "ambient_temp"
+          ],
+          "training_seconds": 0.0,
+          "metrics": {
+            "mae": 0.5041793181381419,
+            "rmse": 0.7281873909369858,
+            "r2": 0.9497962191004168,
+            "threshold_accuracy": 0.9805649780348107,
+            "overheat_precision": 0.8325932504440497,
+            "overheat_recall": 0.8534365043240782,
+            "overheat_f1": 0.8428860418071477,
+            "confusion_matrix": {
+              "tn": 33392,
+              "fp": 377,
+              "fn": 322,
+              "tp": 1875
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.1940826716867126
+            },
+            "minus_2_to_2": {
+              "samples": 8740,
+              "mae": 0.5630619665372012
+            },
+            "2_to_8": {
+              "samples": 22889,
+              "mae": 0.45540479406565476
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.2940512468277092
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.8171627170501055
+            }
+          }
+        },
+        {
+          "name": "full",
+          "label": "Full model: 6 features",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "humidity",
+            "temp_delta",
+            "temp_moving_avg",
+            "ambient_temp"
+          ],
+          "training_seconds": 0.5162292999993952,
+          "metrics": {
+            "mae": 0.4661631605611712,
+            "rmse": 0.6857856213631764,
+            "r2": 0.9554726482090663,
+            "threshold_accuracy": 0.9798420730690096,
+            "overheat_precision": 0.8180639585133967,
+            "overheat_recall": 0.8616294947655895,
+            "overheat_f1": 0.8392817557082687,
+            "confusion_matrix": {
+              "tn": 33348,
+              "fp": 421,
+              "fn": 304,
+              "tp": 1893
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.120054000736032
+            },
+            "minus_2_to_2": {
+              "samples": 8740,
+              "mae": 0.5243051354204611
+            },
+            "2_to_8": {
+              "samples": 22889,
+              "mae": 0.41632152679992096
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.29028239580882453
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.7754190272462973
+            }
+          },
+          "model_file": "original_80_20__full.pkl"
+        },
+        {
+          "name": "without_ambient_and_average",
+          "label": "Drop ambient_temp + temp_moving_avg",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "humidity",
+            "temp_delta"
+          ],
+          "training_seconds": 0.3964992000001075,
+          "metrics": {
+            "mae": 0.4876974088915951,
+            "rmse": 0.7206401171383465,
+            "r2": 0.9508314969093634,
+            "threshold_accuracy": 0.9832341656008452,
+            "overheat_precision": 0.8642595978062158,
+            "overheat_recall": 0.8607191624943105,
+            "overheat_f1": 0.8624857468643101,
+            "confusion_matrix": {
+              "tn": 33472,
+              "fp": 297,
+              "fn": 306,
+              "tp": 1891
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.1759815803141584
+            },
+            "minus_2_to_2": {
+              "samples": 8740,
+              "mae": 0.5722183904528136
+            },
+            "2_to_8": {
+              "samples": 22889,
+              "mae": 0.42835951891177493
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.2849806904563027
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.9168983245296873
+            }
+          },
+          "model_file": "original_80_20__without_ambient_and_average.pkl"
+        },
+        {
+          "name": "without_ambient_humidity_and_average",
+          "label": "Drop ambient_temp + humidity + temp_moving_avg",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "temp_delta"
+          ],
+          "training_seconds": 0.4325618000002578,
+          "metrics": {
+            "mae": 0.48875441272170284,
+            "rmse": 0.7213682531428549,
+            "r2": 0.9507320868337583,
+            "threshold_accuracy": 0.9832341656008452,
+            "overheat_precision": 0.86492673992674,
+            "overheat_recall": 0.8598088302230315,
+            "overheat_f1": 0.8623601917370464,
+            "confusion_matrix": {
+              "tn": 33474,
+              "fp": 295,
+              "fn": 308,
+              "tp": 1889
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.159680962736646
+            },
+            "minus_2_to_2": {
+              "samples": 8740,
+              "mae": 0.5549981774390105
+            },
+            "2_to_8": {
+              "samples": 22889,
+              "mae": 0.4375383176389385
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.2875655349819229
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.7152288182165176
+            }
+          },
+          "model_file": "original_80_20__without_ambient_humidity_and_average.pkl"
+        },
+        {
+          "name": "without_ambient_and_humidity",
+          "label": "Drop ambient_temp + humidity; keep history average",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "temp_delta",
+            "temp_moving_avg"
+          ],
+          "training_seconds": 0.5693928000000597,
+          "metrics": {
+            "mae": 0.45757886151726235,
+            "rmse": 0.6768137365345105,
+            "r2": 0.9566300975349699,
+            "threshold_accuracy": 0.9832341656008452,
+            "overheat_precision": 0.8626023657870792,
+            "overheat_recall": 0.8629949931725079,
+            "overheat_f1": 0.8627986348122867,
+            "confusion_matrix": {
+              "tn": 33467,
+              "fp": 302,
+              "fn": 301,
+              "tp": 1896
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.1277898818047578
+            },
+            "minus_2_to_2": {
+              "samples": 8740,
+              "mae": 0.4864865044716035
+            },
+            "2_to_8": {
+              "samples": 22889,
+              "mae": 0.416491595299661
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.29215353190529425
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.7746453450454298
+            }
+          },
+          "model_file": "original_80_20__without_ambient_and_humidity.pkl"
+        }
+      ]
+    },
+    {
+      "name": "held_out_refrigerators",
+      "description": "First 98 whole series for training; remaining 25 whole series for testing. No refrigerator series appears in both sets.",
+      "train_samples": 143276,
+      "test_samples": 36550,
+      "train_series_count": 98,
+      "test_series_count": 25,
+      "shared_series_count": 0,
+      "results": [
+        {
+          "name": "persistence",
+          "label": "Baseline: forecast equals current temperature",
+          "feature_names": [
+            "temperature"
+          ],
+          "training_seconds": 0.0,
+          "metrics": {
+            "mae": 0.4680109439124487,
+            "rmse": 0.6612954165174417,
+            "r2": 0.9579700349695075,
+            "threshold_accuracy": 0.9831463748290014,
+            "overheat_precision": 0.8607941579187586,
+            "overheat_recall": 0.8584433318161129,
+            "overheat_f1": 0.8596171376481313,
+            "confusion_matrix": {
+              "tn": 34048,
+              "fp": 305,
+              "fn": 311,
+              "tp": 1886
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 0.36720526630760025
+            },
+            "minus_2_to_2": {
+              "samples": 8763,
+              "mae": 0.5428506219331278
+            },
+            "2_to_8": {
+              "samples": 23450,
+              "mae": 0.4675309168443496
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.2833458646616541
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 2.983333333333333
+            }
+          }
+        },
+        {
+          "name": "full",
+          "label": "Full model: 6 features",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "humidity",
+            "temp_delta",
+            "temp_moving_avg",
+            "ambient_temp"
+          ],
+          "training_seconds": 0.6627532000002248,
+          "metrics": {
+            "mae": 0.4676678763415697,
+            "rmse": 0.6797497624315344,
+            "r2": 0.955591497104221,
+            "threshold_accuracy": 0.9793160054719562,
+            "overheat_precision": 0.8178209086898985,
+            "overheat_recall": 0.8438780154756486,
+            "overheat_f1": 0.8306451612903226,
+            "confusion_matrix": {
+              "tn": 33940,
+              "fp": 413,
+              "fn": 343,
+              "tp": 1854
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.0524898987714495
+            },
+            "minus_2_to_2": {
+              "samples": 8763,
+              "mae": 0.5276400091487735
+            },
+            "2_to_8": {
+              "samples": 23450,
+              "mae": 0.42303907165568955
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.29309330946092216
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.8244042957669715
+            }
+          },
+          "model_file": "held_out_refrigerators__full.pkl"
+        },
+        {
+          "name": "without_ambient_and_average",
+          "label": "Drop ambient_temp + temp_moving_avg",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "humidity",
+            "temp_delta"
+          ],
+          "training_seconds": 0.5422599000003174,
+          "metrics": {
+            "mae": 0.49199950715655016,
+            "rmse": 0.7166579790232338,
+            "r2": 0.9506380981075386,
+            "threshold_accuracy": 0.9835567715458277,
+            "overheat_precision": 0.8650503202195792,
+            "overheat_recall": 0.8607191624943105,
+            "overheat_f1": 0.862879306411134,
+            "confusion_matrix": {
+              "tn": 34058,
+              "fp": 295,
+              "fn": 306,
+              "tp": 1891
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.1375682582482716
+            },
+            "minus_2_to_2": {
+              "samples": 8763,
+              "mae": 0.5839890930225469
+            },
+            "2_to_8": {
+              "samples": 23450,
+              "mae": 0.4347794485418679
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.2846664040537427
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.903050298785078
+            }
+          },
+          "model_file": "held_out_refrigerators__without_ambient_and_average.pkl"
+        },
+        {
+          "name": "without_ambient_humidity_and_average",
+          "label": "Drop ambient_temp + humidity + temp_moving_avg",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "temp_delta"
+          ],
+          "training_seconds": 0.5327299999999013,
+          "metrics": {
+            "mae": 0.492725154671352,
+            "rmse": 0.724513119765101,
+            "r2": 0.9495500765046196,
+            "threshold_accuracy": 0.9836388508891929,
+            "overheat_precision": 0.8665749656121046,
+            "overheat_recall": 0.8602639963586709,
+            "overheat_f1": 0.8634079488350845,
+            "confusion_matrix": {
+              "tn": 34062,
+              "fp": 291,
+              "fn": 307,
+              "tp": 1890
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.1829379805301887
+            },
+            "minus_2_to_2": {
+              "samples": 8763,
+              "mae": 0.5582397554071079
+            },
+            "2_to_8": {
+              "samples": 23450,
+              "mae": 0.4421244624075728
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.28644850420758156
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.7980660816223484
+            }
+          },
+          "model_file": "held_out_refrigerators__without_ambient_humidity_and_average.pkl"
+        },
+        {
+          "name": "without_ambient_and_humidity",
+          "label": "Drop ambient_temp + humidity; keep history average",
+          "feature_names": [
+            "hour_of_day",
+            "temperature",
+            "temp_delta",
+            "temp_moving_avg"
+          ],
+          "training_seconds": 0.5704904000003808,
+          "metrics": {
+            "mae": 0.45935151481877357,
+            "rmse": 0.672994286979449,
+            "r2": 0.956469790376083,
+            "threshold_accuracy": 0.9800820793433652,
+            "overheat_precision": 0.8145610278372591,
+            "overheat_recall": 0.865725989986345,
+            "overheat_f1": 0.8393645189761695,
+            "confusion_matrix": {
+              "tn": 33920,
+              "fp": 433,
+              "fn": 295,
+              "tp": 1902
+            }
+          },
+          "temperature_band_mae": {
+            "below_minus_2": {
+              "samples": 1671,
+              "mae": 1.1048961864989182
+            },
+            "minus_2_to_2": {
+              "samples": 8763,
+              "mae": 0.4883910821955826
+            },
+            "2_to_8": {
+              "samples": 23450,
+              "mae": 0.4213486285842592
+            },
+            "8_to_17": {
+              "samples": 2660,
+              "mae": 0.2902763689632482
+            },
+            "17_and_above": {
+              "samples": 6,
+              "mae": 1.747467327245797
+            }
+          },
+          "model_file": "held_out_refrigerators__without_ambient_and_humidity.pkl"
+        }
+      ]
+    }
+  ]
+}

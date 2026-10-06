@@ -108,8 +108,8 @@ TelemetryService.ingest()  ── trả về ngay, không chờ AI ──▶ rea
         └─ nền (schedulePrediction), chỉ khi: mẫu hợp lệ, chưa vượt ngưỡng,
            phòng nằm trong vùng model hỗ trợ, thiết bị không có dự báo đang chạy
               │
-              ├─▶ trendFeatures(): ≤5 mẫu gần nhất của thiết bị trong 15 phút (telemetry_raw)
-              │      → temperature, temp_delta, temp_moving_avg   (<2 mẫu thì bỏ qua)
+              ├─▶ predictionHistory(): 61 phút, mẫu hợp lệ cùng thiết bị và phòng
+              │      → 13 mốc t−60, t−55, ..., t; thiếu/quá cũ thì bỏ qua
               ├─▶ AiPredictionService.predict()  ── HTTP POST ai-service:8000/internal/ai/predict
               ├─▶ saveLatest(): Redis hash ai:prediction:<coldRoomId>, field = deviceId, TTL 15 phút
               └─▶ will_exceed_threshold → AlertsService.raise(TEMPERATURE_PREDICTED)
@@ -122,11 +122,11 @@ Các quy tắc chính (code ở `TelemetryService` và `AiPredictionService`, h�
 
 - **Không chặn luồng chính.** Ingest không chờ AI, nên realtime push và heartbeat thiết bị không bị trễ. API biểu đồ chỉ đọc kết quả đã lưu trong Redis. AI chậm hay chết thì chỉ mất phần dự báo.
 - **Circuit breaker.** Lỗi 3 lần liên tiếp (timeout 1.5 giây, mã lỗi HTTP, mất kết nối) thì ngừng gọi AI 30 giây. Trạng thái này nằm trong bộ nhớ của tiến trình `app`.
-- **Mỗi thiết bị tối đa một dự báo đang chạy.** Mẫu đến trong lúc đó bị bỏ qua, mẫu sau sẽ dự báo lại.
+- **Mỗi thiết bị tối đa một dự báo đang chạy.** Mẫu đến trong lúc đó bị bỏ qua, mẫu sau sẽ dự báo lại. Mỗi thiết bị/phòng thử tối đa một lần/phút, tính theo timestamp telemetry.
 - **Không dự báo khi đã vượt ngưỡng thực tế.** Lúc đó `TEMPERATURE_OUT_OF_RANGE` đã mở, dự báo thêm chỉ làm thông báo trùng.
-- **Chỉ dự báo phòng có ngưỡng nằm trong 0–15 °C** (`AI_PREDICTION_SUPPORTED_MIN/MAX_TEMP`). Model hiện tại được train trên dữ liệu 2–8 °C và không ngoại suy được: dưới khoảng −4 °C nó luôn trả ≈ −4 °C. Không chặn thì mọi phòng đông lạnh sẽ bị báo quá nhiệt liên tục.
+- **Hỗ trợ phòng có ngưỡng trong −28 đến 19,6°C**, gồm phòng đông lạnh. Model Bangkok T_MS + T_FC cần đủ 13 mốc cách 5 phút, trải dài một giờ; mọi nhiệt độ lịch sử phải trong dải hỗ trợ. Không nội suy; mẫu tại mỗi mốc được phép cũ tối đa 60 giây. Backend lấy mẫu theo thời gian.
 - **Tự đóng có hysteresis**, giống `TEMPERATURE_OUT_OF_RANGE`: chỉ đóng khi nhiệt độ dự báo nằm trong `[temp_min + hysteresis, temp_max − hysteresis]`.
-- **Giờ trong ngày theo UTC+7** (`businessHour()`), không theo timezone của container.
+- **Đồng bộ đặc trưng:** backend gửi `temperature-history-v1` với lịch sử nhiệt độ có timestamp. FastAPI tính 22 đặc trưng bằng cùng hàm huấn luyện. Model dự đoán mức thay đổi sau 15 phút; FastAPI cộng nhiệt độ hiện tại vào kết quả. Không cần độ ẩm, nhiệt độ ngoài kho hay giờ trong ngày.
 - **Phòng nhiều thiết bị:** mỗi thiết bị có một field riêng trong hash. Biểu đồ hiện dự báo có rủi ro cao nhất trong số các dự báo còn mới, nên dự báo an toàn của thiết bị này không che cảnh báo của thiết bị khác. Alert thì vẫn tính theo từng thiết bị.
 
 `AI_SERVICE_URL` (mặc định `http://localhost:8000`) trỏ tới service này: compose đặt `http://ai-service:8000` cho container `app`, còn backend chạy trên host dùng giá trị trong `server/.env`.
@@ -178,5 +178,5 @@ Dockerfile multi-stage (`server/Dockerfile`):
 - **Lệnh tự động theo rule** — các rule hiện chỉ sinh alert. Chưa có rule nào tạo `Command` (`issuedBy = null`), dù luồng gửi lệnh đã sẵn sàng.
 - **Phát hiện thiết bị offline** — chưa có job đặt `offline` khi mất heartbeat và raise `OFFLINE`.
 - **Các loại alert chưa có nơi sinh** — `DOOR_OPEN_TOO_LONG`, `BATCH_EXPIRING_SOON`, `BATCH_TEMPERATURE_OUT_OF_RANGE`. `DEVICE_FAULT` mới chỉ sinh cho lỗi nguồn quạt (`fanPowerFault` từ thiết bị, `details.kind = "fan_power"`, xem `TelemetryService.evaluateFanPowerAlert`); lỗi cảm biến (`sensorFault`) chưa raise alert.
-- **Model dự báo chưa train trên dữ liệu của hệ thống** (mục 4b) — model được train trên dataset chuỗi lạnh 2–8 °C, nên phòng đông lạnh chưa có dự báo, và độ chính xác trên kho thật chưa được đo. Hướng làm: dựng dataset từ `telemetry_raw` (đủ feature và nhãn +15 phút, nên thêm `doorOpen`), nhưng raw chỉ giữ 30 ngày, nên cần export định kỳ để tích luỹ dữ liệu.
+- **Model được đánh giá trên dữ liệu tủ gia đình công khai**, chưa đo trên kho thật. Hỗ trợ cả hai kênh Bangkok; MAE validation chia theo tủ là 0,299°C (T_MS) / 0,921°C (T_FC). Model cuối học trên toàn bộ 123 tủ. Thí nghiệm, manifest nguồn và script replay nằm tại `ai-service/experiments/`; xem README AI để biết phạm vi đánh giá.
 - **Resolve thủ công** — chưa chặn resolve khi điều kiện lỗi còn (TODO ở `AlertsService.resolveManual`).

@@ -1,12 +1,14 @@
-export interface AiPredictRequestDto {
+export interface TemperatureHistoryReading {
+  ts: string;
   temperature: number;
+}
+
+export interface AiPredictRequestDto {
+  feature_schema: 'temperature-history-v1';
+  temperature: number;
+  temperature_history: TemperatureHistoryReading[];
   temp_min?: number;
   temp_max?: number;
-  humidity?: number;
-  ambient_temp?: number;
-  temp_delta?: number;
-  temp_moving_avg?: number;
-  hour_of_day?: number;
 }
 
 export interface AiPredictResponseDto {

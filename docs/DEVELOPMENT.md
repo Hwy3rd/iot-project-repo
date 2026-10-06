@@ -83,6 +83,27 @@ Hai lệnh seed chạy lại nhiều lần vẫn an toàn: chúng chỉ tạo d�
 
 Muốn làm lại dữ liệu mẫu từ đầu: `npm run seed:master -- --reset`. Lệnh này **xoá sạch** mọi bảng MySQL (trừ `migrations`) và các tài khoản demo `@coldchain.local`, giữ tài khoản tạo bởi `seed:admin` và gán họ vào mọi kho mẫu. Telemetry trong MongoDB không bị đụng tới. Dev và prod dùng chung database nên lệnh này xoá dữ liệu của cả hai.
 
+### Chạy backend bằng Docker để demo
+
+Sau khi đã chuẩn bị `server/.env`, có thể chạy container thay cho
+`npm run start:dev` và worker trên host:
+
+```powershell
+# Từ thư mục gốc repo:
+docker compose up -d --build app worker ai-service
+# API: http://localhost:8080
+```
+
+Compose đọc secret từ `server/.env` và dùng địa chỉ dịch vụ trong container
+cho các kết nối datastore. Không cần tạo `.env` ở root cho cách chạy local.
+Nếu cổng 8080 bị chiếm hoặc bị Windows chặn, đặt `$env:APP_PORT='18080'` trước
+lệnh Compose và tiếp tục dùng giá trị đó khi khởi động lại `app`.
+
+Trong terminal frontend, đặt `$env:VITE_DEV_API_TARGET='http://localhost:8080'`
+(hoặc `:18080` nếu đã đổi cổng) trước `npm run dev`. Các bước cài thư viện,
+migration và seed ở trên vẫn cần cho lần chuẩn bị đầu tiên. Demo AI không
+cần cảm biến hoặc chờ 60 phút: xem [AI_DEMO.md](AI_DEMO.md).
+
 ## 5. Worker (tuỳ chọn)
 
 Bỏ qua mục này nếu dùng `./run.sh dev` (worker đã chạy trong container).
@@ -151,6 +172,12 @@ python scripts/simulate_telemetry.py --device <uniqueId> --temperature 3.5 --doo
 
 `<uniqueId>` là mã thiết bị (cột `unique_id`), và thiết bị phải đang được gán vào một phòng lạnh. Thiết bị không tồn tại thì backend chỉ ghi log rồi bỏ qua.
 
+
+**Demo AI ngay, không cần thu thập 60 phút:** xem [AI_DEMO.md](AI_DEMO.md).
+Dùng `node scripts/demo_ai.js --device <uniqueId>` để nạp lịch sử mẫu Bangkok
+và gửi nhiệt độ qua MQTT; hoặc `--api-only --profile freezer-normal` để chỉ
+thử FastAPI. Bộ mẫu đã nằm trong repo.
+
 ## 9. Lỗi thường gặp
 
 | Triệu chứng                                    | Cách xử lý                                                                                               |
@@ -159,7 +186,7 @@ python scripts/simulate_telemetry.py --device <uniqueId> --temperature 3.5 --doo
 | Backend báo `Access denied` khi kết nối MySQL  | Có file `.env` ở root, hoặc volume được tạo với credential khác. Xem mục 3 và mục reset bên dưới         |
 | App báo `S3Error: Access Denied` khi khởi động | Volume MinIO sai owner, xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 7                                 |
 | ESP32 không kết nối được MQTT (WSL2)           | Chạy `scripts/setup-windows-lan.ps1`, xem [README.md](../README.md#kết-nối-thiết-bị-esp32-qua-wifi-wsl2) |
-| Biểu đồ phòng không có dự báo AI               | Lần lượt kiểm tra: `ai-service` có đang chạy và `curl localhost:8000/health` trả `HEALTHY` không; phòng có ngưỡng nằm trong 0–15 °C không (phòng đông lạnh chưa được hỗ trợ); thiết bị có ít nhất 2 mẫu trong 15 phút gần nhất không; nhiệt độ hiện tại có đang vượt ngưỡng không (khi đó không dự báo). Chi tiết xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b |
+| Biểu đồ phòng không có dự báo AI | Kiểm tra `/health` AI trả HEALTHY; ngưỡng phòng nằm trong −28..19,6°C; cùng thiết bị và phòng có đủ 13 mốc cách 5 phút trải dài 60 phút (mỗi mốc cũ tối đa 60 giây); nhiệt độ hiện tại chưa vượt ngưỡng. Thử dự báo tối đa một lần/phút. Build backend và AI cùng nhau khi đổi hợp đồng đầu vào. Xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b. |
 
 **Reset toàn bộ dữ liệu dev:**
 

@@ -12,13 +12,35 @@ services:
         docs: ./docs
     container_name: node_server
     ports:
-      - "8080:3000"
+      - "${APP_PORT:-8080}:3000"
     # Optional so datastore-only dev works without a root .env.
     env_file:
+      - path: ./server/.env
+        required: false
       - path: ./.env
         required: false
+    # Host-run dev secrets come from server/.env; all container connections
+    # use service names and the same credentials as the datastore blocks.
     environment:
       - NODE_ENV=production
+      - PORT=3000
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-iot_database}
+      - MONGO_URI=mongodb://${MONGO_ROOT_USERNAME:-root}:${MONGO_ROOT_PASSWORD:-password}@mongo:27017/iot?authSource=admin
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-password}
+      - MQTT_URL=mqtt://mosquitto:1883
+      - MQTT_USERNAME=${MQTT_USERNAME:-server}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-password}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_USE_SSL=false
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
       - AI_SERVICE_URL=http://ai-service:8000
     command: sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && node dist/main.js"
     healthcheck:
@@ -54,10 +76,33 @@ services:
     container_name: service_worker
     command: node dist/workers/main.js
     env_file:
+      - path: ./server/.env
+        required: false
       - path: ./.env
         required: false
+    # Host-run dev secrets come from server/.env; all container connections
+    # use service names and the same credentials as the datastore blocks.
     environment:
       - NODE_ENV=production
+      - PORT=3000
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-password}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-iot_database}
+      - MONGO_URI=mongodb://${MONGO_ROOT_USERNAME:-root}:${MONGO_ROOT_PASSWORD:-password}@mongo:27017/iot?authSource=admin
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-password}
+      - MQTT_URL=mqtt://mosquitto:1883
+      - MQTT_USERNAME=${MQTT_USERNAME:-server}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-password}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_USE_SSL=false
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - AI_SERVICE_URL=http://ai-service:8000
     depends_on:
       app:
         condition: service_healthy

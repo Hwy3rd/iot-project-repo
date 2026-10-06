@@ -115,6 +115,7 @@ describe('TelemetryService', () => {
 
     service = module.get(TelemetryService);
     rawModel = module.get(getModelToken(TelemetryRaw.name));
+    rawModel.find.mockReturnValue(createQueryChain());
     hourlyModel = module.get(getModelToken(TelemetryHourly.name));
     devicesRepository = module.get(getRepositoryToken(Device));
     alertsService = module.get(AlertsService);
@@ -494,8 +495,7 @@ describe('TelemetryService', () => {
   });
 
   describe('AI prediction wiring', () => {
-    // A chill room — inside the range the current model was trained on
-    // (see AI_PREDICTION_SUPPORTED_MIN_TEMP); activeDevice's frozen room isn't.
+    // The shared model now supports both chilled and frozen rooms.
     const chillDevice = {
       ...activeDevice,
       coldRoom: {
@@ -525,16 +525,23 @@ describe('TelemetryService', () => {
     const flush = () => new Promise((resolve) => setImmediate(resolve));
     let history: ReturnType<typeof createQueryChain>;
 
+    const historyRows = (asOf: Date, temperature = 3) =>
+      Array.from({ length: 13 }, (_, lag) => ({
+        ts: new Date(asOf.getTime() - lag * 5 * 60_000),
+        temperature:
+          temperature === 3
+            ? lag === 0
+              ? 3
+              : lag === 1
+                ? 2.5
+                : 2
+            : temperature,
+      }));
+
     beforeEach(() => {
       devicesRepository.findOne.mockResolvedValue(chillDevice);
       rawModel.create.mockResolvedValue({});
-      // Newest first, the just-stored sample included.
-      history = createQueryChain([
-        { temperature: 3 },
-        { temperature: 2.5 },
-        { temperature: 2 },
-        { temperature: 2 },
-      ]);
+      history = createQueryChain(historyRows(chillSample.ts));
       rawModel.find.mockReturnValue(history);
     });
 
@@ -550,35 +557,101 @@ describe('TelemetryService', () => {
       expect(aiPrediction.predict).toHaveBeenCalledTimes(1);
     });
 
-    it('sends trend features from the device history and the business-timezone hour', async () => {
+    it('sends 13 five-minute checkpoints for the same device and room', async () => {
       await service.ingest('d1', chillSample);
       await flush();
-
-      const [filter] = rawModel.find.mock.calls[0] as [Record<string, unknown>];
+      const [filter, projection] = rawModel.find.mock.calls[0];
       expect(filter).toEqual({
         deviceId: 'd1',
+        coldRoomId: 'c1',
         ts: {
-          $gt: new Date(chillSample.ts.getTime() - 15 * 60_000),
+          $gte: new Date(chillSample.ts.getTime() - 61 * 60_000),
           $lte: chillSample.ts,
         },
         sensorFault: false,
         temperature: { $ne: null },
       });
+      expect(projection).toEqual({ temperature: 1, ts: 1 });
       expect(history.sort).toHaveBeenCalledWith({ ts: -1 });
-      expect(history.limit).toHaveBeenCalledWith(5);
+      expect(history.limit).toHaveBeenCalledWith(5000);
       expect(aiPrediction.predict).toHaveBeenCalledWith({
+        feature_schema: 'temperature-history-v1',
         temperature: 3,
-        temp_delta: 0.5,
-        temp_moving_avg: 2.38,
+        temperature_history: historyRows(chillSample.ts)
+          .reverse()
+          .map((row) => ({
+            ts: row.ts.toISOString(),
+            temperature: row.temperature,
+          })),
         temp_min: 0,
         temp_max: 4,
-        // sample.ts is 10:00Z → 17:00 in UTC+7.
-        hour_of_day: 17,
       });
     });
 
-    it('makes no forecast for a room outside the range the model was trained on', async () => {
+    it('forecasts a frozen room with a full hour of valid history', async () => {
       devicesRepository.findOne.mockResolvedValue(activeDevice);
+      rawModel.find.mockReturnValue(
+        createQueryChain(historyRows(sample.ts, -18)),
+      );
+      await service.ingest('d1', sample);
+      await flush();
+      expect(aiPrediction.predict).toHaveBeenCalledWith(
+        expect.objectContaining({
+          temperature: -18,
+          temp_min: -20,
+          temp_max: -15,
+          temperature_history: expect.arrayContaining([
+            { ts: sample.ts.toISOString(), temperature: -18 },
+          ]),
+        }),
+      );
+    });
+
+    it('skips a history with a missing five-minute checkpoint', async () => {
+      rawModel.find.mockReturnValue(
+        createQueryChain(historyRows(chillSample.ts).filter((_, i) => i !== 6)),
+      );
+      await service.ingest('d1', chillSample);
+      await flush();
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
+    });
+
+    it('does not treat 13 five-second readings as an hour of history', async () => {
+      rawModel.find.mockReturnValue(
+        createQueryChain(
+          Array.from({ length: 13 }, (_, i) => ({
+            ts: new Date(chillSample.ts.getTime() - i * 5000),
+            temperature: 3,
+          })),
+        ),
+      );
+      await service.ingest('d1', chillSample);
+      await flush();
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
+    });
+
+    it('limits completed forecast attempts to once per minute', async () => {
+      await service.ingest('d1', chillSample);
+      await flush();
+      await service.ingest('d1', {
+        ...chillSample,
+        ts: new Date(chillSample.ts.getTime() + 5000),
+      });
+      await flush();
+      expect(rawModel.find).toHaveBeenCalledTimes(1);
+      expect(aiPrediction.predict).toHaveBeenCalledTimes(1);
+      const next = new Date(chillSample.ts.getTime() + 60_000);
+      rawModel.find.mockReturnValue(createQueryChain(historyRows(next)));
+      await service.ingest('d1', { ...chillSample, ts: next });
+      await flush();
+      expect(aiPrediction.predict).toHaveBeenCalledTimes(2);
+    });
+
+    it('makes no forecast for a room outside the range the model was trained on', async () => {
+      devicesRepository.findOne.mockResolvedValue({
+        ...activeDevice,
+        coldRoom: { ...activeDevice.coldRoom, tempMin: -40 },
+      });
 
       await service.ingest('d1', sample);
       await flush();
@@ -588,7 +661,9 @@ describe('TelemetryService', () => {
     });
 
     it('makes no forecast without enough recent readings to tell a trend', async () => {
-      rawModel.find.mockReturnValue(createQueryChain([{ temperature: 3 }]));
+      rawModel.find.mockReturnValue(
+        createQueryChain([{ ts: chillSample.ts, temperature: 3 }]),
+      );
 
       await service.ingest('d1', chillSample);
       await flush();
@@ -668,13 +743,18 @@ describe('TelemetryService', () => {
 
       await service.ingest('d1', chillSample);
       await flush();
-      await service.ingest('d1', { ...chillSample, ts: new Date() });
+      await service.ingest('d1', {
+        ...chillSample,
+        ts: new Date(chillSample.ts.getTime() + 120_000),
+      });
       await flush();
       expect(aiPrediction.predict).toHaveBeenCalledTimes(1);
 
       finish(null);
       await flush();
-      await service.ingest('d1', { ...chillSample, ts: new Date() });
+      const next = new Date(chillSample.ts.getTime() + 180_000);
+      rawModel.find.mockReturnValue(createQueryChain(historyRows(next)));
+      await service.ingest('d1', { ...chillSample, ts: next });
       await flush();
       expect(aiPrediction.predict).toHaveBeenCalledTimes(2);
     });
