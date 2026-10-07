@@ -21,7 +21,7 @@ export type ChannelType =
   | 'fan_motor'
   | 'indicator_light'
   | 'buzzer'
-export type CommandAction = 'on' | 'off'
+export type CommandAction = 'on' | 'off' | 'auto'
 export type CommandStatus = 'pending' | 'sent' | 'done' | 'failed' | 'expired' | 'superseded'
 export type AlertType =
   | 'temperature_out_of_range'
@@ -355,14 +355,34 @@ export interface TelemetryHourly {
 export interface TelemetryDeviceState {
   /** Relative humidity, %. */
   humidity?: number | null
-  /** Fan relay switched on. */
+  /** The fan actually runs: measured supply voltage (firmware v1.3+; relay state before). */
   fanOn?: boolean | null
   /** Supply voltage at the fan, V. */
   fanVoltage?: number | null
-  /** Fan is on but its supply dropped or spiked. */
+  /** Something is wrong with the fan supply (DeviceModeState.fanFault says what). */
   fanPowerFault?: boolean | null
   /** The device's local buzzer alarm is sounding. */
   alarmActive?: boolean | null
+}
+
+/**
+ * How the device runs its actuators and alarm (ESP32 firmware v1.3+); null
+ * or absent = not reported.
+ */
+/** Fan supply fault judged by the device from the measured voltage. */
+export type FanFault = 'no_power' | 'low_voltage' | 'high_voltage' | 'stuck_on'
+
+export interface DeviceModeState {
+  /** The device drives the fan relay on (fanOn = the fan actually has power). */
+  fanRelayOn?: boolean | null
+  /** Which supply fault; null = none. */
+  fanFault?: FanFault | null
+  /** Seconds left of a manual on/off command on the fan; 0 = automatic. */
+  fanManualSec?: number | null
+  /** Same, for the buzzer. */
+  buzzerManualSec?: number | null
+  /** The device alarms on the room's current thresholds (false = old or fallback ones). */
+  configSynced?: boolean | null
 }
 
 /** GET /devices/:id/telemetry/raw — one sample, kept only briefly. */
@@ -374,7 +394,8 @@ export type TelemetryRaw = {
   doorOpen: boolean
   sensorFault: boolean
   outOfRange: boolean
-} & TelemetryDeviceState
+} & TelemetryDeviceState &
+  DeviceModeState
 
 /** POST /devices/:id/claim-code — the code itself is only ever returned here. */
 export interface ClaimCode {
@@ -423,7 +444,8 @@ export interface ColdRoomStatus {
     sensorFault: boolean
     /** Judged against the room's thresholds when the sample arrived. */
     outOfRange: boolean
-  } & TelemetryDeviceState) | null
+  } & TelemetryDeviceState &
+    DeviceModeState) | null
   /** Installed devices, by status. */
   devices: { total: number } & Partial<Record<DeviceStatus, number>>
   /** Alerts still open or acknowledged. */

@@ -4,7 +4,7 @@ import { formatDateTime, formatHumidity, formatNumber, formatRelative, formatTem
 import { fieldPresence, missingFields, missingLabel } from '@/lib/channel-readings'
 import { TEMP_STATE, fanState, tempState, type TempState } from '@/lib/room-status'
 import { cn } from '@/lib/utils'
-import { DoorClosed, DoorOpen, Droplets, Fan, Siren, TriangleAlert } from 'lucide-react'
+import { BellRing, DoorClosed, DoorOpen, Droplets, Fan, Siren, TriangleAlert } from 'lucide-react'
 
 const ACCENT: Record<TempState, string> = {
   ok: 'border-l-success',
@@ -101,6 +101,12 @@ export function RoomTile({
               <span className={cn('inline-flex items-center gap-1', fan.fault && 'font-medium text-destructive')}>
                 <Fan className="size-4" aria-hidden="true" />
                 {fan.label}
+              </span>
+            )}
+            {fieldPresence(latest, 'alarmActive') === 'reported' && latest.alarmActive && (
+              <span className="inline-flex items-center gap-1 font-medium text-warning">
+                <BellRing className="size-4" aria-hidden="true" />
+                Còi đang kêu
               </span>
             )}
             {missingFields(latest).length > 0 && (

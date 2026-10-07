@@ -133,7 +133,7 @@ function roomIssues(
     })
   if (latest?.doorOpen) issues.push({ text: 'Cửa đang mở', severe: false })
   if (fieldPresence(latest, 'fanPowerFault') === 'reported' && latest?.fanPowerFault) {
-    issues.push({ text: 'Quạt đang bật nhưng mất nguồn', severe: true })
+    issues.push({ text: fanState(latest)?.label ?? 'Mất nguồn quạt', severe: true })
   }
   if (prediction?.willExceedThreshold) {
     issues.push({

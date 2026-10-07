@@ -29,12 +29,13 @@ import {
 import { DeviceControls } from '@/components/commands/DeviceControls'
 import { DEFAULT_CHANNEL_TYPES } from '@/lib/channel-readings'
 import { dayjs, formatDateTime, formatHumidity, formatRelative, formatTemp, formatVoltage } from '@/lib/format'
-import { STALE_AFTER_MS } from '@/lib/room-status'
+import { STALE_AFTER_MS, fanState } from '@/lib/room-status'
 import { mutationErrorText } from '@/lib/forms'
 import {
   CHANNEL_ROLE_LABEL,
   CHANNEL_TYPE_LABEL,
   DEVICE_STATUS_TRIGGER_LABEL,
+  FAN_FAULT_LABEL,
 } from '@/lib/labels'
 import { useColdRoomLookup, useUserLookup } from '@/lib/lookups'
 import { cn } from '@/lib/utils'
@@ -145,11 +146,16 @@ function channelReading(type: ChannelType, s: TelemetryRaw): ChannelReading {
     case 'current_sensor':
       if (s.fanVoltage == null) return NO_DATA
       return s.fanPowerFault
-        ? { text: `${formatVoltage(s.fanVoltage)} · mất nguồn`, tone: 'alert' }
+        ? {
+            text: `${formatVoltage(s.fanVoltage)} · ${((s.fanFault && FAN_FAULT_LABEL[s.fanFault]) || 'mất nguồn').toLowerCase()}`,
+            tone: 'alert',
+          }
         : { text: formatVoltage(s.fanVoltage), tone: 'ok' }
-    case 'fan_motor':
+    case 'fan_motor': {
       if (s.fanOn == null) return NO_DATA
-      return { text: s.fanOn ? 'Đang chạy' : 'Đang tắt', tone: 'ok' }
+      const fan = fanState(s)
+      return { text: fan?.label ?? (s.fanOn ? 'Quạt chạy' : 'Quạt tắt'), tone: fan?.fault ? 'alert' : 'ok' }
+    }
     case 'buzzer':
       if (s.alarmActive == null) return NO_DATA
       return s.alarmActive ? { text: 'Đang báo động', tone: 'alert' } : { text: 'Tắt', tone: 'ok' }
@@ -605,7 +611,7 @@ function TelemetryPanel({ device }: { device: Device }) {
                         {[
                           r.outOfRange && 'Vượt ngưỡng',
                           r.sensorFault && 'Lỗi cảm biến',
-                          r.fanPowerFault && 'Mất nguồn quạt',
+                          r.fanPowerFault && ((r.fanFault && FAN_FAULT_LABEL[r.fanFault]) || 'Mất nguồn quạt'),
                         ]
                           .filter(Boolean)
                           .join(', ') || '—'}

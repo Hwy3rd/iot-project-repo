@@ -57,6 +57,7 @@ describe('TelemetryService', () => {
       tempMin: -20,
       tempMax: -15,
       hysteresis: 1,
+      updatedAt: new Date('2026-10-07T08:00:00.000Z'),
     },
   };
   const sample = {
@@ -70,9 +71,14 @@ describe('TelemetryService', () => {
   const unreportedState = {
     humidity: null,
     fanOn: null,
+    fanRelayOn: null,
     fanVoltage: null,
     fanPowerFault: null,
+    fanFault: null,
     alarmActive: null,
+    fanManualSec: null,
+    buzzerManualSec: null,
+    configSynced: null,
   };
 
   beforeEach(async () => {
@@ -309,6 +315,8 @@ describe('TelemetryService', () => {
         fanVoltage: 11.82,
         fanPowerFault: false,
         alarmActive: false,
+        fanManualSec: 540,
+        buzzerManualSec: 0,
       };
 
       await service.ingest('d1', { ...sample, ...state });
@@ -323,6 +331,24 @@ describe('TelemetryService', () => {
       ];
       expect(event.latest).toMatchObject(state);
     });
+
+    it.each([
+      ['the room config it runs is current', '2026-10-07T08:00:00.000Z', true],
+      ['it runs an older room config', '2026-10-01T00:00:00.000Z', false],
+      ['it runs its built-in fallback thresholds', null, false],
+    ])(
+      'marks the device out of sync with its room when %s',
+      async (_case, configVersion, configSynced) => {
+        devicesRepository.findOne.mockResolvedValue(activeDevice);
+        rawModel.create.mockResolvedValue({});
+
+        await service.ingest('d1', { ...sample, configVersion });
+
+        expect(rawModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({ configSynced }),
+        );
+      },
+    );
 
     it('stores a non-finite humidity or fan voltage as not reported', async () => {
       devicesRepository.findOne.mockResolvedValue(activeDevice);
@@ -457,9 +483,43 @@ describe('TelemetryService', () => {
         coldRoomId: 'c1',
         deviceId: 'd1',
         type: AlertType.DEVICE_FAULT,
-        details: { kind: 'fan_power', fanVoltage: 0.3 },
+        details: { kind: 'fan_power', fanVoltage: 0.3, fault: null },
       });
       expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+    });
+
+    it('records which supply fault the device reports', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+
+      await service.ingest('d1', {
+        ...quietSample,
+        fanOn: true,
+        fanRelayOn: true,
+        fanVoltage: 1.5,
+        fanPowerFault: true,
+        fanFault: 'low_voltage',
+      });
+
+      expect(alertsService.raise).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: { kind: 'fan_power', fanVoltage: 1.5, fault: 'low_voltage' },
+        }),
+      );
+    });
+
+    it('auto-resolves on a healthy sample with the fan off, from firmware that checks it while off', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+
+      await service.ingest('d1', {
+        ...quietSample,
+        fanOn: false,
+        fanRelayOn: false,
+        fanVoltage: 0,
+        fanPowerFault: false,
+        fanFault: null,
+      });
+
+      expect(alertsService.resolveAuto).toHaveBeenCalled();
     });
 
     it('auto-resolves once the fan runs on a healthy supply', async () => {
@@ -482,7 +542,10 @@ describe('TelemetryService', () => {
     });
 
     it.each([
-      ['the fan is switched off', { fanOn: false, fanPowerFault: false }],
+      [
+        'the fan is switched off (older firmware: not checked while off)',
+        { fanOn: false, fanPowerFault: false },
+      ],
       ['the device does not report fan state', {}],
     ])('does neither when %s', async (_label, state) => {
       devicesRepository.findOne.mockResolvedValue(activeDevice);

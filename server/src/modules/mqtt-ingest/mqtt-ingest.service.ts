@@ -100,9 +100,14 @@ export class MqttIngestService implements OnModuleInit {
         sensorFault: message.sensorFault,
         humidity: message.humidity,
         fanOn: message.fanOn,
+        fanRelayOn: message.fanRelayOn,
         fanVoltage: message.fanVoltage,
         fanPowerFault: message.fanPowerFault,
+        fanFault: message.fanFault,
         alarmActive: message.alarmActive,
+        fanManualSec: message.fanManualSec,
+        buzzerManualSec: message.buzzerManualSec,
+        configVersion: message.configVersion,
       });
       await this.recordHeartbeat(device);
     } catch (error) {

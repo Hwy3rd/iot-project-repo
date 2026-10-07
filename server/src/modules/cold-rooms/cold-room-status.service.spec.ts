@@ -2,7 +2,8 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { In } from 'typeorm';
+import { In, Not } from 'typeorm';
+import { DeviceStatus } from '../../libs/constants/device.constant';
 import { UserRole } from '../../libs/constants/user.constant';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { Alert } from '../alerts/entities/alert.entity';
@@ -33,7 +34,10 @@ const rawQuery = (rows: unknown[]) => {
 describe('ColdRoomStatusService', () => {
   let service: ColdRoomStatusService;
   const coldRooms = { find: jest.fn(), findOne: jest.fn() };
-  const devices = { createQueryBuilder: jest.fn() };
+  const devices = {
+    createQueryBuilder: jest.fn(),
+    find: jest.fn().mockResolvedValue([{ id: 'd1' }]),
+  };
   const alerts = { createQueryBuilder: jest.fn() };
   const raw = { aggregate: jest.fn() };
   const channels = { find: jest.fn().mockResolvedValue([]) };
@@ -51,6 +55,7 @@ describe('ColdRoomStatusService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    devices.find.mockResolvedValue([{ id: 'd1', coldRoomId: 'r1' }]);
     const module = await Test.createTestingModule({
       providers: [
         ColdRoomStatusService,
@@ -124,9 +129,14 @@ describe('ColdRoomStatusService', () => {
           // Stored before the device state fields existed -> not reported.
           humidity: null,
           fanOn: null,
+          fanRelayOn: null,
           fanVoltage: null,
           fanPowerFault: null,
+          fanFault: null,
           alarmActive: null,
+          fanManualSec: null,
+          buzzerManualSec: null,
+          configSynced: null,
         },
         devices: { total: 3, active: 2, offline: 1 },
         activeAlerts: 0,
@@ -139,6 +149,49 @@ describe('ColdRoomStatusService', () => {
         activeAlerts: 3,
       },
     ]);
+  });
+
+  it('only takes readings from devices installed in the room now', async () => {
+    coldRooms.find.mockResolvedValue([
+      { id: 'r1', warehouseId: 'w1' },
+      { id: 'r2', warehouseId: 'w1' },
+    ]);
+    // d2 moved r1 -> r2: what it sent from r1 must not show up for r1.
+    devices.find.mockResolvedValue([{ id: 'd2', coldRoomId: 'r2' }]);
+    raw.aggregate.mockResolvedValue([]);
+    devices.createQueryBuilder.mockReturnValue(rawQuery([]));
+    alerts.createQueryBuilder.mockReturnValue(rawQuery([]));
+
+    await service.findStatuses({ coldRoomIds: ['r1', 'r2'] }, access(null));
+
+    expect(devices.find).toHaveBeenCalledWith({
+      where: {
+        coldRoomId: In(['r1', 'r2']),
+        status: Not(DeviceStatus.DECOMMISSIONED),
+      },
+      select: { id: true, coldRoomId: true },
+    });
+    const [pipeline] = raw.aggregate.mock.calls[0] as [
+      Record<string, Record<string, unknown>>[],
+    ];
+    expect(pipeline[0].$match).toEqual({
+      $or: [{ coldRoomId: 'r2', deviceId: 'd2' }],
+    });
+  });
+
+  it('has no latest reading when the room has no installed device', async () => {
+    coldRooms.find.mockResolvedValue([{ id: 'r1', warehouseId: 'w1' }]);
+    devices.find.mockResolvedValue([]);
+    devices.createQueryBuilder.mockReturnValue(rawQuery([]));
+    alerts.createQueryBuilder.mockReturnValue(rawQuery([]));
+
+    const [status] = await service.findStatuses(
+      { coldRoomIds: ['r1'] },
+      access(null),
+    );
+
+    expect(status.latest).toBeNull();
+    expect(raw.aggregate).not.toHaveBeenCalled();
   });
 
   it('keeps the query inside the caller warehouse scope', async () => {

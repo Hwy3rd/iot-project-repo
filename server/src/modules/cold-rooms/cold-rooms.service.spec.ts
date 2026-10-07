@@ -6,6 +6,7 @@ import {
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
+import { DeviceConfigService } from '../device-config/device-config.service';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { ColdRoomsService } from './cold-rooms.service';
 import { ColdRoom } from './entities/cold-room.entity';
@@ -26,8 +27,10 @@ describe('ColdRoomsService', () => {
   let service: ColdRoomsService;
   let coldRoomsRepository: MockRepository<ColdRoom>;
   let warehousesRepository: MockRepository<Warehouse>;
+  let deviceConfig: { publishForRoom: jest.Mock };
 
   beforeEach(async () => {
+    deviceConfig = { publishForRoom: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ColdRoomsService,
@@ -39,6 +42,7 @@ describe('ColdRoomsService', () => {
           provide: getRepositoryToken(Warehouse),
           useValue: createMockRepository<Warehouse>(),
         },
+        { provide: DeviceConfigService, useValue: deviceConfig },
       ],
     }).compile();
 
@@ -129,6 +133,20 @@ describe('ColdRoomsService', () => {
       await expect(service.update('c1', { tempMin: -10 })).rejects.toThrow(
         BadRequestException,
       );
+      expect(deviceConfig.publishForRoom).not.toHaveBeenCalled();
+    });
+
+    it("pushes the new thresholds to the room's devices", async () => {
+      const room = { id: 'c1', tempMin: 2, tempMax: 6 };
+      coldRoomsRepository.findOne!.mockResolvedValue(room);
+      coldRoomsRepository.save!.mockImplementation((v: ColdRoom) => v);
+
+      await service.update('c1', { tempMin: 28, tempMax: 30 });
+
+      expect(coldRoomsRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ tempMin: 28, tempMax: 30 }),
+      );
+      expect(deviceConfig.publishForRoom).toHaveBeenCalledWith('c1');
     });
   });
 
@@ -146,6 +164,8 @@ describe('ColdRoomsService', () => {
 
       await expect(service.remove('c1')).resolves.toBeUndefined();
       expect(coldRoomsRepository.softDelete).toHaveBeenCalledWith('c1');
+      // Its devices fall back to their built-in thresholds.
+      expect(deviceConfig.publishForRoom).toHaveBeenCalledWith('c1');
     });
   });
 });

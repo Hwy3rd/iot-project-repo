@@ -1,4 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import type { FanFault } from '../../../libs/constants/device.constant';
 import { HydratedDocument } from 'mongoose';
 import {
   TELEMETRY_RAW_COLLECTION,
@@ -38,8 +39,13 @@ export class TelemetryRaw {
   @Prop({ type: Number, default: null })
   humidity!: number | null;
 
+  // The fan is actually running (measured supply voltage, firmware v1.3+;
+  // the relay state before that).
   @Prop({ type: Boolean, default: null })
   fanOn!: boolean | null;
+
+  @Prop({ type: Boolean, default: null })
+  fanRelayOn!: boolean | null;
 
   @Prop({ type: Number, default: null })
   fanVoltage!: number | null;
@@ -47,8 +53,24 @@ export class TelemetryRaw {
   @Prop({ type: Boolean, default: null })
   fanPowerFault!: boolean | null;
 
+  // no_power | low_voltage | high_voltage | stuck_on (FAN_FAULTS)
+  @Prop({ type: String, default: null })
+  fanFault!: FanFault | null;
+
   @Prop({ type: Boolean, default: null })
   alarmActive!: boolean | null;
+
+  // Seconds left of a manual command overriding the fan / buzzer; 0 = auto.
+  @Prop({ type: Number, default: null })
+  fanManualSec!: number | null;
+
+  @Prop({ type: Number, default: null })
+  buzzerManualSec!: number | null;
+
+  // The device alarms on the room's thresholds as they were at ingest time
+  // (its reported config version matched the room's).
+  @Prop({ type: Boolean, default: null })
+  configSynced!: boolean | null;
 
   // Evaluated against the room's temp_min/temp_max at ingest time, because
   // those thresholds can change later.

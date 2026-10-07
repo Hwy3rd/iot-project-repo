@@ -30,11 +30,26 @@ export class TelemetryRawResponseDto {
   fanOn!: boolean | null;
 
   @Expose()
+  fanRelayOn!: boolean | null;
+
+  @Expose()
   fanVoltage!: number | null;
 
   @Expose()
   fanPowerFault!: boolean | null;
 
   @Expose()
+  fanFault!: string | null;
+
+  @Expose()
   alarmActive!: boolean | null;
+
+  @Expose()
+  fanManualSec!: number | null;
+
+  @Expose()
+  buzzerManualSec!: number | null;
+
+  @Expose()
+  configSynced!: boolean | null;
 }

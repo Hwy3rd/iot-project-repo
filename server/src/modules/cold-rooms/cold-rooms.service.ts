@@ -17,6 +17,7 @@ import { QueryColdRoomDto } from './dto/query-cold-room.dto';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, QueryFailedError, Repository } from 'typeorm';
+import { DeviceConfigService } from '../device-config/device-config.service';
 import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { CreateColdRoomDto } from './dto/create-cold-room.dto';
 import { UpdateColdRoomDto } from './dto/update-cold-room.dto';
@@ -30,6 +31,7 @@ export class ColdRoomsService {
     private readonly coldRoomsRepository: Repository<ColdRoom>,
     @InjectRepository(Warehouse)
     private readonly warehousesRepository: Repository<Warehouse>,
+    private readonly deviceConfig: DeviceConfigService,
   ) {}
 
   private assertValidRange(tempMin: number, tempMax: number) {
@@ -129,7 +131,10 @@ export class ColdRoomsService {
     );
 
     Object.assign(coldRoom, updateColdRoomDto);
-    return this.saveColdRoom(coldRoom);
+    const saved = await this.saveColdRoom(coldRoom);
+    // The room's devices alarm locally on these thresholds.
+    await this.deviceConfig.publishForRoom(id);
+    return saved;
   }
 
   async remove(id: string) {
@@ -137,6 +142,7 @@ export class ColdRoomsService {
     if (!result.affected) {
       throw new NotFoundException(`Cold room ${id} not found`);
     }
+    await this.deviceConfig.publishForRoom(id);
   }
 
   bulkRemove(ids: string[]): Promise<BulkDeleteResult> {

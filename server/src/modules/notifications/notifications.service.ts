@@ -36,6 +36,14 @@ const isMysqlDuplicateKeyError = (error: unknown): boolean =>
   error instanceof QueryFailedError &&
   (error as unknown as { code?: string }).code === 'ER_DUP_ENTRY';
 
+// What a fan supply fault (TelemetrySample.fanFault) means for staff.
+const FAN_FAULT_MESSAGES: Record<string, string> = {
+  no_power: 'Quạt mất nguồn',
+  low_voltage: 'Điện áp quạt thấp',
+  high_voltage: 'Điện áp quạt cao bất thường',
+  stuck_on: 'Quạt đã tắt nhưng vẫn có điện (relay có thể bị dính)',
+};
+
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -183,11 +191,14 @@ export class NotificationsService {
     const fault = alert.details as {
       kind?: string;
       fanVoltage?: number | null;
+      fault?: string | null;
     } | null;
     if (fault?.kind === 'fan_power') {
       const voltage =
         typeof fault.fanVoltage === 'number' ? ` (${fault.fanVoltage} V)` : '';
-      return { title, body: `Nguồn quạt bất thường${voltage}.` };
+      const what =
+        FAN_FAULT_MESSAGES[fault.fault ?? ''] ?? 'Nguồn quạt bất thường';
+      return { title, body: `${what}${voltage}.` };
     }
     if (alert.triggerValue == null) {
       return { title, body: 'Xem chi tiết trong ứng dụng.' };

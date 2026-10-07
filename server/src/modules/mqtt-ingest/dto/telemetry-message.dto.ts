@@ -1,10 +1,18 @@
 import { Type } from 'class-transformer';
 import {
+  FAN_FAULTS,
+  type FanFault,
+} from '../../../libs/constants/device.constant';
+import {
   IsBoolean,
   IsDate,
+  IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
+  IsString,
   Max,
+  MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -41,10 +49,16 @@ export class TelemetryMessageDto {
   @Max(100)
   humidity?: number | null;
 
-  // Whether the fan relay is switched on.
+  // Whether the fan is actually running: judged from the measured supply
+  // voltage since firmware v1.3 (before that: the relay state).
   @IsOptional()
   @IsBoolean()
   fanOn?: boolean | null;
+
+  // Whether the device drives the fan relay on (firmware v1.3+).
+  @IsOptional()
+  @IsBoolean()
+  fanRelayOn?: boolean | null;
 
   // Supply voltage measured at the fan (V).
   @IsOptional()
@@ -52,14 +66,38 @@ export class TelemetryMessageDto {
   @Min(0)
   fanVoltage?: number | null;
 
-  // The fan is switched on but its supply dropped or spiked.
+  // Something is wrong with the fan supply (see fanFault for what).
   @IsOptional()
   @IsBoolean()
   fanPowerFault?: boolean | null;
+
+  // Which supply fault (firmware v1.3+); null = none.
+  @IsOptional()
+  @IsIn([...FAN_FAULTS])
+  fanFault?: FanFault | null;
 
   // The device's local buzzer alarm is sounding (door open, over-temperature
   // or fan power fault, as judged on the device itself).
   @IsOptional()
   @IsBoolean()
   alarmActive?: boolean | null;
+
+  // Seconds left of a manual on/off command overriding the fan / buzzer's
+  // automatic logic; 0 = running automatically (firmware v1.3+).
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  fanManualSec?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  buzzerManualSec?: number | null;
+
+  // `version` of the room config the device alarms on (see
+  // DeviceConfigService); null = still on its built-in fallback thresholds.
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  configVersion?: string | null;
 }
