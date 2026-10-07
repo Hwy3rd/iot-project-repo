@@ -9,6 +9,7 @@ import type {
   ChannelType,
   CommandAction,
   CommandStatus,
+  FanFault,
   DeviceStatus,
   ProductUnit,
   UserRole,
@@ -77,6 +78,7 @@ export const WORK_SHIFT_STATUS_LABEL: Record<WorkShiftStatus, string> = {
 export const COMMAND_ACTION_LABEL: Record<CommandAction, string> = {
   on: 'Bật',
   off: 'Tắt',
+  auto: 'Tự động',
 }
 
 export const COMMAND_STATUS_LABEL: Record<CommandStatus, string> = {
@@ -124,4 +126,12 @@ export const AI_VIOLATION_LABEL: Record<AiViolationType, string> = {
   NONE: 'Trong ngưỡng',
   OVERHEAT: 'Nguy cơ quá nhiệt',
   FREEZING: 'Nguy cơ quá lạnh',
+}
+
+/** What a fan supply fault means, short enough for a status line. */
+export const FAN_FAULT_LABEL: Record<FanFault, string> = {
+  no_power: 'Quạt mất nguồn',
+  low_voltage: 'Điện áp quạt thấp',
+  high_voltage: 'Điện áp quạt cao bất thường',
+  stuck_on: 'Quạt đã tắt nhưng vẫn có điện',
 }

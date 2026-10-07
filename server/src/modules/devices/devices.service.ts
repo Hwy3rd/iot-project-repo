@@ -30,6 +30,7 @@ import {
   DeviceStatusChangeTrigger,
 } from '../../libs/constants/device.constant';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { DeviceConfigService } from '../device-config/device-config.service';
 import { addMissingDefaultChannels } from '../device-channels/default-channels';
 import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { ClaimDeviceDto } from './dto/claim-device.dto';
@@ -48,6 +49,7 @@ export class DevicesService {
     private readonly devicesRepository: Repository<Device>,
     @InjectRepository(ColdRoom)
     private readonly coldRoomsRepository: Repository<ColdRoom>,
+    private readonly deviceConfig: DeviceConfigService,
   ) {}
 
   // Saves a lifecycle step and, when it changed the status, the matching
@@ -210,9 +212,15 @@ export class DevicesService {
     // A claimed device starts with the board's channels declared, so the
     // UI knows which readings to expect and commands have a target without
     // anyone adding channels by hand (or picking the wrong ones).
-    return this.transition(device, DeviceStatus.PROVISIONED, actorId, (m) =>
-      addMissingDefaultChannels(m, device.id),
+    const claimed = await this.transition(
+      device,
+      DeviceStatus.PROVISIONED,
+      actorId,
+      (m) => addMissingDefaultChannels(m, device.id),
     );
+    // From now on it alarms on its room's thresholds.
+    await this.deviceConfig.publishForDevice(device.id);
+    return claimed;
   }
 
   async decommission(id: string, actorId: string | null = null) {
@@ -223,7 +231,9 @@ export class DevicesService {
     }
     device.status = DeviceStatus.DECOMMISSIONED;
     device.decommissionedAt = new Date();
-    return this.transition(device, oldStatus, actorId);
+    const saved = await this.transition(device, oldStatus, actorId);
+    await this.deviceConfig.publishForDevice(id);
+    return saved;
   }
 
   async remove(id: string) {
@@ -231,6 +241,7 @@ export class DevicesService {
     if (!result.affected) {
       throw new NotFoundException(`Device ${id} not found`);
     }
+    await this.deviceConfig.publishForDevice(id);
   }
 
   bulkRemove(ids: string[]): Promise<BulkDeleteResult> {

@@ -6,7 +6,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Model } from 'mongoose';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import type { WarehouseAccess } from '../../common/rbac/warehouse-access';
 import { AlertStatus } from '../../libs/constants/alert.constant';
 import { DeviceStatus } from '../../libs/constants/device.constant';
@@ -42,10 +42,20 @@ export interface ColdRoomLatestReading {
   outOfRange: boolean;
   /** Device state with the reading; null when the device doesn't report it. */
   humidity: number | null;
+  /** The fan is actually running (measured voltage on firmware v1.3+). */
   fanOn: boolean | null;
+  /** The device drives the fan relay on. */
+  fanRelayOn: boolean | null;
   fanVoltage: number | null;
   fanPowerFault: boolean | null;
+  /** Which supply fault: no_power | low_voltage | high_voltage | stuck_on. */
+  fanFault: string | null;
   alarmActive: boolean | null;
+  /** Seconds left of a manual command on the fan / buzzer; 0 = automatic. */
+  fanManualSec: number | null;
+  buzzerManualSec: number | null;
+  /** The device alarms on the room's current thresholds. */
+  configSynced: boolean | null;
 }
 
 // Window length and bucket size per range: ~60-100 points each.
@@ -226,11 +236,31 @@ export class ColdRoomStatusService {
 
   // $sort on the { coldRoomId, ts } index then $group/$first lets Mongo
   // jump to each room's newest sample instead of scanning its history.
+  // Only devices installed in the room now count: samples a device sent
+  // before it was moved elsewhere (or decommissioned) stay in the room's
+  // history but no longer describe the room.
   private async latestReadings(roomIds: string[]) {
+    const installed = await this.devicesRepository.find({
+      where: {
+        coldRoomId: In(roomIds),
+        status: Not(DeviceStatus.DECOMMISSIONED),
+      },
+      select: { id: true, coldRoomId: true },
+    });
+    if (installed.length === 0) return new Map<string, ColdRoomLatestReading>();
     const rows = await this.rawModel.aggregate<
       Omit<ColdRoomLatestReading, 'declaredChannels'> & { _id: string }
     >([
-      { $match: { coldRoomId: { $in: roomIds } } },
+      // Paired per room: a device installed in one of these rooms must not
+      // bring in what it sent from another one.
+      {
+        $match: {
+          $or: installed.map((d) => ({
+            coldRoomId: d.coldRoomId,
+            deviceId: d.id,
+          })),
+        },
+      },
       { $sort: { coldRoomId: 1, ts: -1 } },
       {
         $group: {
@@ -243,9 +273,14 @@ export class ColdRoomStatusService {
           outOfRange: { $first: '$outOfRange' },
           humidity: { $first: '$humidity' },
           fanOn: { $first: '$fanOn' },
+          fanRelayOn: { $first: '$fanRelayOn' },
           fanVoltage: { $first: '$fanVoltage' },
           fanPowerFault: { $first: '$fanPowerFault' },
+          fanFault: { $first: '$fanFault' },
           alarmActive: { $first: '$alarmActive' },
+          fanManualSec: { $first: '$fanManualSec' },
+          buzzerManualSec: { $first: '$buzzerManualSec' },
+          configSynced: { $first: '$configSynced' },
         },
       },
     ]);
@@ -261,9 +296,14 @@ export class ColdRoomStatusService {
           declaredChannels: declared.get(reading.deviceId) ?? [],
           humidity: reading.humidity ?? null,
           fanOn: reading.fanOn ?? null,
+          fanRelayOn: reading.fanRelayOn ?? null,
           fanVoltage: reading.fanVoltage ?? null,
           fanPowerFault: reading.fanPowerFault ?? null,
+          fanFault: reading.fanFault ?? null,
           alarmActive: reading.alarmActive ?? null,
+          fanManualSec: reading.fanManualSec ?? null,
+          buzzerManualSec: reading.buzzerManualSec ?? null,
+          configSynced: reading.configSynced ?? null,
         },
       ]),
     );

@@ -125,6 +125,9 @@ describe('MqttIngestService', () => {
       fanVoltage: 0,
       fanPowerFault: false,
       alarmActive: true,
+      fanManualSec: 600,
+      buzzerManualSec: 0,
+      configVersion: '2026-10-07T08:00:00.000Z',
     };
 
     await publish('devices/esp32-1/telemetry', {

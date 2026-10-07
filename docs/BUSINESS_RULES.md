@@ -80,4 +80,4 @@ Gửi lệnh mới cho một kênh trong lúc lệnh trước của kênh đó c
 
 ## Lệnh thủ công và chế độ tự động
 
-Thiết bị có chế độ tự động: quạt chạy khi cửa đóng và tắt khi cửa mở; còi kêu khi cửa mở, khi nhiệt độ tại chỗ quá cao, hoặc khi nguồn quạt bất thường. Lệnh thủ công **ghi đè chế độ tự động của kênh đó trong 10 phút**. Hết 10 phút, thiết bị tự quay lại chế độ tự động. Vì vậy nếu sự cố vẫn còn (ví dụ cửa vẫn mở) thì còi sẽ kêu lại.
+Thiết bị có chế độ tự động: quạt luôn chạy, cửa đóng hay mở không ảnh hưởng tới quạt; còi kêu khi cửa mở quá thời gian cho phép của phòng, khi nhiệt độ ra ngoài ngưỡng của phòng, hoặc khi nguồn quạt bất thường. Lệnh thủ công **ghi đè chế độ tự động của kênh đó trong 10 phút**. Hết 10 phút, thiết bị tự quay lại chế độ tự động. Vì vậy nếu sự cố vẫn còn (ví dụ cửa vẫn mở) thì còi sẽ kêu lại.

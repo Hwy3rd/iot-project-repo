@@ -5,7 +5,6 @@ import type {
   CommandAction,
   Device,
   DeviceChannel,
-  TelemetryDeviceState,
 } from '@/api/types'
 import { ApiError } from '@/api/client'
 import { useAuth } from '@/auth/auth-context'
@@ -16,10 +15,11 @@ import { mutationErrorText } from '@/lib/forms'
 import { CHANNEL_TYPE_LABEL, COMMAND_ACTION_LABEL, COMMAND_ERROR_LABEL } from '@/lib/labels'
 import { cn } from '@/lib/utils'
 import {
+  MANUAL_FIELD,
   OPEN,
+  actuatorOn,
   OPEN_REFRESH_MS,
   SETTLE_MS,
-  STATE_FIELD,
   useDeviceCommands,
   withCommandedState,
   type DeviceReading,
@@ -134,13 +134,21 @@ export function DeviceControls({
       {heading}
       {open && (
         <div id={contentId} className="flex flex-col gap-2">
+          {state?.configSynced === false && (
+            <p className="flex items-start gap-1.5 rounded-md border border-warning/40 px-3 py-2 text-sm text-warning">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              Thiết bị chưa nhận ngưỡng mới của phòng, còi tại chỗ đang báo theo ngưỡng cũ hoặc ngưỡng dự
+              phòng. Thiết bị sẽ tự cập nhật khi kết nối lại broker.
+            </p>
+          )}
           <ul className="divide-y rounded-lg border">
             {actuators.map((ch) => (
               <ControlRow key={ch.id} channel={ch} state={state} last={lastByChannel.get(ch.id)} />
             ))}
           </ul>
           <p className="text-xs text-muted-foreground">
-            Lệnh ghi đè chế độ tự động của kênh trong 10 phút, sau đó thiết bị tự quay lại tự động.
+            Bật/Tắt ghi đè chế độ tự động của kênh trong 10 phút, sau đó thiết bị tự quay lại tự động. Bấm Tự
+            động để trả lại ngay.
           </p>
         </div>
       )}
@@ -154,7 +162,7 @@ function ControlRow({
   last,
 }: {
   channel: DeviceChannel
-  state: TelemetryDeviceState | null
+  state: DeviceReading | null
   last: Command | undefined
 }) {
   const typeLabel = CHANNEL_TYPE_LABEL[channel.channelType]
@@ -181,10 +189,14 @@ function ControlRow({
   })
 
   const Icon = CHANNEL_ICON[channel.channelType] ?? Lightbulb
-  const field = STATE_FIELD[channel.channelType]
-  const value = field ? state?.[field] : undefined
-  const on = value == null ? null : value
+  const on = actuatorOn(channel.channelType, state)
   const labels = STATE_LABEL[channel.channelType]
+  const manualField = MANUAL_FIELD[channel.channelType]
+  // null = the device doesn't report its mode (older firmware).
+  const manualSec = manualField ? (state?.[manualField] ?? null) : null
+  const auto = manualSec == null ? null : manualSec === 0
+  const pressed = (action: CommandAction) =>
+    action === 'auto' ? auto : auto === true || on == null ? null : on === (action === 'on')
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
@@ -210,16 +222,21 @@ function ControlRow({
             </span>
           )}
         </p>
+        {auto != null && (
+          <p className="text-xs text-muted-foreground">
+            {auto ? 'Chế độ tự động' : `Thủ công, còn khoảng ${Math.max(1, Math.ceil(manualSec! / 60))} phút`}
+          </p>
+        )}
         <LastCommand command={last} />
       </div>
       <div className="flex gap-1.5" role="group" aria-label={`Điều khiển ${name}`}>
-        {(['on', 'off'] as const).map((action) => (
+        {(['on', 'off', 'auto'] as const).map((action) => (
           <Button
             key={action}
             type="button"
             size="sm"
-            variant={on != null && on === (action === 'on') ? 'secondary' : 'outline'}
-            aria-pressed={on == null ? undefined : on === (action === 'on')}
+            variant={pressed(action) ? 'secondary' : 'outline'}
+            aria-pressed={pressed(action) ?? undefined}
             disabled={send.isPending}
             onClick={() => send.mutate(action)}
             aria-label={`${COMMAND_ACTION_LABEL[action]} ${name}`}

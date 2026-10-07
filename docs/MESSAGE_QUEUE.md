@@ -177,7 +177,7 @@ Tất cả trường đều bắt buộc. Nếu cảm biến lỗi, `temperature
 
 - Toàn tiến trình `app` dùng chung **một** kết nối (`libs/mqtt/mqtt.module.ts`, token `MQTT_CLIENT`) cho cả nhận telemetry, nhận ack và publish lệnh. `worker` có kết nối riêng, chỉ để gửi lại lệnh (mục 3.4). Topic thiết bị được dựng bằng `libs/mqtt/device-topics.ts`.
 - `clientId` là `iot-app-<uuid ngẫu nhiên>` và `clean: true`, tức không giữ session qua các lần restart. **Message được publish trong lúc `app` đang offline sẽ không được giao lại.**
-- Client tự reconnect mỗi 5 giây, đăng nhập bằng `MQTT_USERNAME`/`MQTT_PASSWORD` (broker không cho anonymous). Theo ACL, tài khoản này đọc `devices/+/telemetry`, `devices/+/ack` và `$SYS/#`, ghi `devices/+/commands` (`mosquitto/entrypoint.sh`).
+- Client tự reconnect mỗi 5 giây, đăng nhập bằng `MQTT_USERNAME`/`MQTT_PASSWORD` (broker không cho anonymous). Theo ACL, tài khoản này đọc `devices/+/telemetry`, `devices/+/ack` và `$SYS/#`, ghi `devices/+/commands` và `devices/+/config` (ngưỡng phòng, retained) (`mosquitto/entrypoint.sh`).
 
 ### Xử lý message (`MqttIngestService`, chạy trong `app`)
 

@@ -19,7 +19,10 @@ import {
   AI_PREDICTION_SUPPORTED_MIN_TEMP,
 } from '../../libs/constants/ai-prediction.constant';
 import { AlertType } from '../../libs/constants/alert.constant';
-import { DeviceStatus } from '../../libs/constants/device.constant';
+import {
+  DeviceStatus,
+  type FanFault,
+} from '../../libs/constants/device.constant';
 import {
   TELEMETRY_HOURLY_DEFAULT_RANGE_MS,
   TELEMETRY_HOURLY_MAX_RANGE_MS,
@@ -30,6 +33,7 @@ import {
 import { AlertsService } from '../alerts/alerts.service';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { configVersion } from '../device-config/device-config.service';
 import { declaredChannelTypes } from '../device-channels/declared-channels';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Device } from '../devices/entities/device.entity';
@@ -56,9 +60,14 @@ export interface TelemetrySample {
   // Optional device state (see TelemetryMessageDto); omitted = not reported.
   humidity?: number | null;
   fanOn?: boolean | null;
+  fanRelayOn?: boolean | null;
   fanVoltage?: number | null;
   fanPowerFault?: boolean | null;
+  fanFault?: FanFault | null;
   alarmActive?: boolean | null;
+  fanManualSec?: number | null;
+  buzzerManualSec?: number | null;
+  configVersion?: string | null;
 }
 
 // Stored as-is, except that "not reported" is always null (never
@@ -69,10 +78,21 @@ const finiteOrNull = (value: number | null | undefined) =>
 const deviceState = (sample: TelemetrySample) => ({
   humidity: finiteOrNull(sample.humidity),
   fanOn: sample.fanOn ?? null,
+  fanRelayOn: sample.fanRelayOn ?? null,
   fanVoltage: finiteOrNull(sample.fanVoltage),
   fanPowerFault: sample.fanPowerFault ?? null,
+  fanFault: sample.fanFault ?? null,
   alarmActive: sample.alarmActive ?? null,
+  fanManualSec: finiteOrNull(sample.fanManualSec),
+  buzzerManualSec: finiteOrNull(sample.buzzerManualSec),
 });
+
+// Whether the device alarms on the room's current thresholds: null when it
+// doesn't report a config version (older firmware, simulators).
+const configSynced = (sample: TelemetrySample, room: ColdRoom) =>
+  sample.configVersion === undefined
+    ? null
+    : sample.configVersion === configVersion(room);
 
 const MONGO_DUPLICATE_KEY = 11000;
 
@@ -147,7 +167,10 @@ export class TelemetryService {
 
     const outOfRange =
       temperature !== null && (temperature < tempMin || temperature > tempMax);
-    const state = deviceState(sample);
+    const state = {
+      ...deviceState(sample),
+      configSynced: configSynced(sample, device.coldRoom),
+    };
 
     try {
       await this.rawModel.create({
@@ -210,21 +233,27 @@ export class TelemetryService {
   }
 
   // DEVICE_FAULT for the fan's power supply, as judged by the device itself
-  // (fanPowerFault: the fan is switched on but its supply dropped or spiked).
+  // from the measured voltage (fanPowerFault, with fanFault saying what:
+  // no power, low/high voltage, or still powered after being switched off).
   // Raised on a fault sample, refreshed with the latest voltage while it
-  // lasts, and only cleared by a sample that shows the fan running on a
-  // healthy supply — a fan switched off (door open) proves nothing either
-  // way, and a device that doesn't report fan state (null) is ignored, so
-  // neither closes an open alert. One DEVICE_FAULT per device (see
-  // buildActiveKey); `details.kind` says which part failed.
+  // lasts. Cleared by a healthy sample — from firmware that also checks the
+  // fan while it is off (it reports fanRelayOn), any healthy sample; from
+  // older firmware only one showing the fan running, since a fan switched off
+  // there proves nothing. A device that doesn't report fan state (null) is
+  // ignored. One DEVICE_FAULT per device (see buildActiveKey);
+  // `details.kind` says which part failed.
   private async evaluateFanPowerAlert(input: {
     deviceId: string;
     coldRoom: ColdRoom;
     fanOn: boolean | null;
+    fanRelayOn: boolean | null;
     fanVoltage: number | null;
     fanPowerFault: boolean | null;
+    fanFault: FanFault | null;
   }): Promise<void> {
-    const { deviceId, coldRoom, fanOn, fanVoltage, fanPowerFault } = input;
+    const { deviceId, coldRoom, fanOn, fanVoltage, fanPowerFault, fanFault } =
+      input;
+    const checksWhileOff = input.fanRelayOn !== null;
 
     if (fanPowerFault === true) {
       await this.alertsService.raise({
@@ -232,9 +261,9 @@ export class TelemetryService {
         deviceId,
         type: AlertType.DEVICE_FAULT,
         // Not triggerValue: every alert view formats that as a temperature.
-        details: { kind: 'fan_power', fanVoltage },
+        details: { kind: 'fan_power', fanVoltage, fault: fanFault },
       });
-    } else if (fanPowerFault === false && fanOn === true) {
+    } else if (fanPowerFault === false && (fanOn === true || checksWhileOff)) {
       await this.alertsService.resolveAuto({
         type: AlertType.DEVICE_FAULT,
         deviceId,

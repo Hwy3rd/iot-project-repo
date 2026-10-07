@@ -13,6 +13,7 @@ import {
 } from '../../libs/constants/device.constant';
 import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { DeviceConfigService } from '../device-config/device-config.service';
 import { DevicesService } from './devices.service';
 import {
   CHANNEL_TYPE_ROLE,
@@ -50,9 +51,11 @@ describe('DevicesService', () => {
   let devicesRepository: MockRepository<Device>;
   let coldRoomsRepository: MockRepository<ColdRoom>;
   let manager: ReturnType<typeof createMockManager>;
+  let deviceConfig: { publishForDevice: jest.Mock };
 
   beforeEach(async () => {
     manager = createMockManager();
+    deviceConfig = { publishForDevice: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DevicesService,
@@ -72,6 +75,7 @@ describe('DevicesService', () => {
           provide: getRepositoryToken(ColdRoom),
           useValue: createMockRepository<ColdRoom>(),
         },
+        { provide: DeviceConfigService, useValue: deviceConfig },
       ],
     }).compile();
 
@@ -256,6 +260,8 @@ describe('DevicesService', () => {
       expect(result.coldRoomId).toBe('cr1');
       expect(result.claimCodeHash).toBeNull();
       expect(result.claimedAt).not.toBeNull();
+      // It starts alarming on the room's thresholds.
+      expect(deviceConfig.publishForDevice).toHaveBeenCalledWith('d1');
     });
 
     it("declares the board's default channels in the same transaction", async () => {
@@ -311,6 +317,7 @@ describe('DevicesService', () => {
       );
       expect(result.status).toBe(DeviceStatus.DECOMMISSIONED);
       expect(result.decommissionedAt).not.toBeNull();
+      expect(deviceConfig.publishForDevice).toHaveBeenCalledWith('d1');
     });
   });
 
@@ -327,6 +334,7 @@ describe('DevicesService', () => {
       devicesRepository.softDelete!.mockResolvedValue({ affected: 1 });
 
       await expect(service.remove('d1')).resolves.toBeUndefined();
+      expect(deviceConfig.publishForDevice).toHaveBeenCalledWith('d1');
     });
   });
 

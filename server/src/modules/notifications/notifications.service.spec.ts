@@ -256,6 +256,40 @@ describe('NotificationsService', () => {
         }),
       );
     });
+
+    it.each([
+      ['no_power', 'Quạt mất nguồn (0 V).'],
+      ['low_voltage', 'Điện áp quạt thấp (0 V).'],
+      ['high_voltage', 'Điện áp quạt cao bất thường (0 V).'],
+      [
+        'stuck_on',
+        'Quạt đã tắt nhưng vẫn có điện (relay có thể bị dính) (0 V).',
+      ],
+    ])('says what the %s fan fault is', async (fault, body) => {
+      coldRoomsRepository.findOne!.mockResolvedValue({
+        id: 'c1',
+        warehouseId: 'w1',
+      });
+      warehouseStaffRepository.find!.mockResolvedValue([{ userId: 'u1' }]);
+      notificationsRepository.create!.mockImplementation(
+        (v: Partial<Notification>) => v,
+      );
+      notificationsRepository.save!.mockImplementation(
+        (v: Partial<Notification>[]) => v,
+      );
+
+      await service.notifyNewAlert({
+        id: 'al4',
+        coldRoomId: 'c1',
+        type: AlertType.DEVICE_FAULT,
+        triggerValue: null,
+        details: { kind: 'fan_power', fanVoltage: 0, fault },
+      } as unknown as Alert);
+
+      expect(notificationsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ body }),
+      );
+    });
   });
 
   describe('findAll', () => {

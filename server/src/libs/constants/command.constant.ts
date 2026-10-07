@@ -1,6 +1,9 @@
+// on/off override the channel's automatic logic on the device for a while
+// (firmware: MANUAL_OVERRIDE_MS); auto ends that override right away.
 export enum CommandAction {
   ON = 'on',
   OFF = 'off',
+  AUTO = 'auto',
 }
 
 // pending    — saved, not yet handed to the broker (broker down, or the

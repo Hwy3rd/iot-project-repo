@@ -10,6 +10,7 @@ import {
 } from '../../libs/constants/command.constant';
 import { deviceTopic } from '../../libs/mqtt/device-topics';
 import { MQTT_CLIENT } from '../../libs/mqtt/mqtt.constant';
+import { withTimeout } from '../../libs/mqtt/with-timeout';
 import { DeviceChannel } from '../device-channels/entities/device-channel.entity';
 import { Command } from './entities/command.entity';
 
@@ -101,15 +102,4 @@ export class CommandDispatcherService {
     );
     return true;
   }
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`no PUBACK within ${ms} ms`)),
-      ms,
-    );
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }

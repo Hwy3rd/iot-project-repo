@@ -26,9 +26,14 @@ export interface ColdRoomReadingEvent {
     outOfRange: boolean;
     humidity: number | null;
     fanOn: boolean | null;
+    fanRelayOn: boolean | null;
     fanVoltage: number | null;
     fanPowerFault: boolean | null;
+    fanFault: string | null;
     alarmActive: boolean | null;
+    fanManualSec: number | null;
+    buzzerManualSec: number | null;
+    configSynced: boolean | null;
     // Channel types the device declares — see ColdRoomLatestReading.
     declaredChannels: ChannelType[];
   };

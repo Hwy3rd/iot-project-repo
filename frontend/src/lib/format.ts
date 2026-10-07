@@ -17,8 +17,15 @@ export function formatDate(iso: string | null | undefined) {
   return iso ? dayjs(iso).format('DD/MM/YYYY') : '—'
 }
 
+// Device timestamps come from the board's own (NTP) clock, which may run a
+// little ahead of this one: a moment "in a few seconds" is really just now.
+const CLOCK_SKEW_MS = 60_000
+
 export function formatRelative(iso: string | null | undefined) {
-  return iso ? dayjs(iso).fromNow() : '—'
+  if (!iso) return '—'
+  const t = dayjs(iso)
+  const ahead = t.diff(dayjs())
+  return (ahead > 0 && ahead < CLOCK_SKEW_MS ? dayjs() : t).fromNow()
 }
 
 export function formatNumber(n: number | null | undefined) {

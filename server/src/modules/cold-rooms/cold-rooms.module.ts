@@ -12,6 +12,7 @@ import { ColdRoom } from './entities/cold-room.entity';
 import { ColdRoomsService } from './cold-rooms.service';
 import { ColdRoomsController } from './cold-rooms.controller';
 import { AiPredictionModule } from '../ai-prediction/ai-prediction.module';
+import { DeviceConfigModule } from '../device-config/device-config.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AiPredictionModule } from '../ai-prediction/ai-prediction.module';
     MongooseModule.forFeature(TELEMETRY_MODELS),
     BatchesModule,
     AiPredictionModule,
+    DeviceConfigModule,
   ],
   controllers: [ColdRoomsController],
   providers: [ColdRoomsService, ColdRoomStatusService],

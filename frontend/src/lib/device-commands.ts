@@ -1,5 +1,12 @@
 import { commandsApi, devicesApi } from '@/api/endpoints'
-import type { ChannelType, Command, Device, DeviceChannel, TelemetryDeviceState } from '@/api/types'
+import type {
+  ChannelType,
+  Command,
+  Device,
+  DeviceChannel,
+  DeviceModeState,
+  TelemetryDeviceState,
+} from '@/api/types'
 import { useQuery } from '@tanstack/react-query'
 
 /** Telemetry field that reports an actuator's real state; none for the light. */
@@ -7,6 +14,32 @@ export const STATE_FIELD: Partial<Record<ChannelType, 'fanOn' | 'alarmActive'>> 
   fan_motor: 'fanOn',
   buzzer: 'alarmActive',
 }
+
+/**
+ * Whether the actuator is switched on: for the fan the relay (fanRelayOn)
+ * rather than whether it already has power (fanOn), which lags behind while
+ * it spins up or down; older firmware only reports fanOn.
+ */
+export function actuatorOn(type: ChannelType, state: DeviceReading | null | undefined): boolean | null {
+  if (!state) return null
+  if (type === 'fan_motor' && state.fanRelayOn != null) return state.fanRelayOn
+  const field = STATE_FIELD[type]
+  return field ? (state[field] ?? null) : null
+}
+
+/** Telemetry field with the seconds left of a manual command (0 = automatic). */
+export const MANUAL_FIELD: Partial<Record<ChannelType, 'fanManualSec' | 'buzzerManualSec'>> = {
+  fan_motor: 'fanManualSec',
+  buzzer: 'buzzerManualSec',
+}
+
+/** How long an on/off command overrides the device's own logic (firmware MANUAL_OVERRIDE_MS). */
+export const MANUAL_OVERRIDE_SEC = 10 * 60
+
+// A reading's ts comes from the device clock, an ack's ackAt from the
+// server's; the two can be a couple of seconds apart. Within this margin a
+// reading isn't trusted to be newer than the ack (it may predate the command).
+const ACK_CLOCK_MARGIN_MS = 3_000
 
 export const OPEN: Command['status'][] = ['pending', 'sent']
 // Acks usually land within a second or two; poll fast only while one is due.
@@ -17,7 +50,7 @@ const RECENT_COMMANDS = 20
 export const SETTLE_MS = 15_000
 
 /** A device's live state plus when it was sampled (to compare with acks). */
-export type DeviceReading = TelemetryDeviceState & { ts?: string }
+export type DeviceReading = TelemetryDeviceState & DeviceModeState & { ts?: string }
 
 /**
  * A device's actuator channels and the newest command of each, polled fast
@@ -64,9 +97,19 @@ export function withCommandedState<T extends DeviceReading>(
   let out = reading
   for (const ch of actuators) {
     const field = STATE_FIELD[ch.channelType]
+    const manual = MANUAL_FIELD[ch.channelType]
     const last = lastByChannel.get(ch.id)
-    if (!field || last?.status !== 'done' || !last.ackAt || Date.parse(last.ackAt) <= readAt) continue
-    out = { ...out, [field]: last.action === 'on' }
+    if (!field || last?.status !== 'done' || !last.ackAt || Date.parse(last.ackAt) + ACK_CLOCK_MARGIN_MS <= readAt)
+      continue
+    // `auto` hands the actuator back to the device's logic: its state is
+    // unknown until the next sample, only the mode is.
+    if (last.action !== 'auto') {
+      // The fan's power (fanOn) follows only once it has spun up/down; what
+      // the ack proves is the relay.
+      const relay = ch.channelType === 'fan_motor' && out.fanRelayOn != null
+      out = { ...out, [relay ? 'fanRelayOn' : field]: last.action === 'on' }
+    }
+    if (manual) out = { ...out, [manual]: last.action === 'auto' ? 0 : MANUAL_OVERRIDE_SEC }
   }
   return out
 }
