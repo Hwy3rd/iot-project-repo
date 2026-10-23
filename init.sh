@@ -8,6 +8,7 @@
 #
 # Usage:
 #   ./init.sh
+#   MQTT_MODE=cloud ./init.sh   initialize with the external MQTT broker
 #
 set -euo pipefail
 
@@ -18,9 +19,7 @@ log()  { printf '\033[1;34m[init]\033[0m %s\n' "$1"; }
 ok()   { printf '\033[1;32m[ ok ]\033[0m %s\n' "$1"; }
 die()  { printf '\033[1;31m[fail]\033[0m %s\n' "$1" >&2; exit 1; }
 
-compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
-}
+source "$ROOT_DIR/scripts/compose-mqtt.sh"
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not installed."

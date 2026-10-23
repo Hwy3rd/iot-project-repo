@@ -7,6 +7,7 @@
 # is allowed to start.
 #
 # Usage:
+#   MQTT_MODE=cloud ./run.sh rebuild   use the external cloud MQTT broker
 #   ./run.sh start            resume all stopped containers
 #   ./run.sh dev              up everything except app + cloudflared; start
 #                             the backend on the host yourself
@@ -49,9 +50,11 @@ banner() {
   printf '\033[1;36m%s\033[0m\n\n' "══════════════════════════════════════════════════════"
 }
 
-compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
-}
+source "$ROOT_DIR/scripts/compose-mqtt.sh"
+if [[ "${MQTT_MODE:-local}" == cloud ]]; then
+  SERVICES=(app worker redis mysql mongo minio ai-service cloudflared)
+  DEV_SERVICES=(worker redis mysql mongo minio ai-service)
+fi
 
 usage() {
   sed -n '2,/^set -euo pipefail/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'

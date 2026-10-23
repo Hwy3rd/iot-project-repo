@@ -1,0 +1,24 @@
+# Layer on docker-compose.yml or docker-compose.production.yml.
+# Pass --env-file .env.cloud-mqtt AFTER the base environment file.
+# Requires Docker Compose >= 2.24.4.
+x-cloud-mqtt: &cloud-mqtt
+  environment:
+    MQTT_URL: ${MQTT_URL:?set MQTT_URL in .env.cloud-mqtt}
+    MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env.cloud-mqtt}
+    MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env.cloud-mqtt}
+    MQTT_CA_FILE: /app/certs/mqtt/emqxsl-ca.crt
+  volumes:
+    - ./certs/mqtt:/app/certs/mqtt:ro
+
+services:
+  app:
+    <<: *cloud-mqtt
+    depends_on:
+      mosquitto: !reset null
+
+  worker:
+    <<: *cloud-mqtt
+
+  # Excluded from cloud mode unless explicitly selected.
+  mosquitto:
+    profiles: [local-mqtt]

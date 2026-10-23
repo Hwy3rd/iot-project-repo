@@ -33,7 +33,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-password}
-      - MQTT_URL=mqtt://mosquitto:1883
+      - MQTT_URL=${MQTT_URL:-mqtt://mosquitto:1883}
       - MQTT_USERNAME=${MQTT_USERNAME:-server}
       - MQTT_PASSWORD=${MQTT_PASSWORD:-password}
       - MINIO_ENDPOINT=minio
@@ -94,7 +94,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-password}
-      - MQTT_URL=mqtt://mosquitto:1883
+      - MQTT_URL=${MQTT_URL:-mqtt://mosquitto:1883}
       - MQTT_USERNAME=${MQTT_USERNAME:-server}
       - MQTT_PASSWORD=${MQTT_PASSWORD:-password}
       - MINIO_ENDPOINT=minio
