@@ -8,6 +8,8 @@
 #
 # Usage:
 #   MQTT_MODE=cloud ./run.sh rebuild   use the external cloud MQTT broker
+#   MQTT_MODE=tunnel ./run.sh up mosquitto   apply private MQTT/WebSocket broker config
+#   ./run.sh up <svc...>      recreate named services from current env (no dependencies)
 #   ./run.sh start            resume all stopped containers
 #   ./run.sh dev              up everything except app + cloudflared; start
 #                             the backend on the host yourself
@@ -98,6 +100,16 @@ case "$cmd" in
     log "stopping containers (data/volumes untouched)"
     compose stop
     ok "stack is stopped"
+    ;;
+
+  up)
+    [[ $# -gt 0 ]] || die "up requires explicit service names"
+    for svc in "$@"; do
+      [[ " ${SERVICES[*]} " == *" $svc "* ]] || die "unknown service: $svc"
+    done
+    log "applying configuration to: $*"
+    compose up -d --no-deps --wait --wait-timeout "$REBUILD_WAIT_SECONDS" "$@"
+    ok "named services are running with current configuration"
     ;;
 
   restart)

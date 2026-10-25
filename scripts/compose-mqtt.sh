@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared by init.sh/run.sh. Cloud selection is explicit: MQTT_MODE=cloud.
+# Shared by init.sh/run.sh. Select local, cloud (EMQX), or tunnel (Mosquitto/WS).
 COMPOSE_ARGS=(--project-directory "$ROOT_DIR" -f "$COMPOSE_FILE")
 case "${MQTT_MODE:-local}" in
   local) ;;
@@ -16,8 +16,21 @@ case "${MQTT_MODE:-local}" in
       -f "$ROOT_DIR/docker-compose.cloud-mqtt.yml"
     )
     ;;
+  tunnel)
+    [[ -f "$ROOT_DIR/.env.tunnel-mqtt" ]] || {
+      printf '%s\n' 'Missing .env.tunnel-mqtt; copy .env.tunnel-mqtt.example first.' >&2
+      exit 1
+    }
+    COMPOSE_ARGS=(
+      --project-directory "$ROOT_DIR"
+      --env-file "$ROOT_DIR/.env"
+      --env-file "$ROOT_DIR/.env.tunnel-mqtt"
+      -f "$COMPOSE_FILE"
+      -f "$ROOT_DIR/docker-compose.tunnel-mqtt.yml"
+    )
+    ;;
   *)
-    printf '%s\n' 'MQTT_MODE must be local or cloud.' >&2
+    printf '%s\n' 'MQTT_MODE must be local, cloud or tunnel.' >&2
     exit 1
     ;;
 esac

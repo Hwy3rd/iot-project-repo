@@ -1,0 +1,47 @@
+# Use after docker-compose.yml OR docker-compose.production.yml, without the
+# EMQX overlay. Pass .env.tunnel-mqtt after the datastore/application .env.
+# Requires Docker Compose >= 2.24.4.
+x-tunnel-mqtt: &tunnel-mqtt
+  environment:
+    MQTT_URL: mqtt://mosquitto:1883
+    MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env.tunnel-mqtt}
+    MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env.tunnel-mqtt}
+    # A CA inherited from an EMQX env_file must not reach the TCP connection.
+    MQTT_CA_FILE: ""
+
+services:
+  app:
+    <<: *tunnel-mqtt
+
+  worker:
+    <<: *tunnel-mqtt
+
+  mosquitto:
+    entrypoint: ["/bin/sh", "/mosquitto-tunnel-entrypoint.sh"]
+    # Only cloudflared and the backend can reach these Docker-network ports.
+    # Neither the plaintext MQTT nor WebSocket listener is published on LAN.
+    ports: !reset []
+    expose: ["1883", "8083"]
+    environment:
+      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env.tunnel-mqtt}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env.tunnel-mqtt}
+      MQTT_DEVICE_USERNAME: ${MQTT_DEVICE_USERNAME:?set MQTT_DEVICE_USERNAME in .env.tunnel-mqtt}
+      MQTT_DEVICE_PASSWORD: ${MQTT_DEVICE_PASSWORD:?set MQTT_DEVICE_PASSWORD in .env.tunnel-mqtt}
+      MQTT_DEVICE_ID: ${MQTT_DEVICE_ID:?set MQTT_DEVICE_ID in .env.tunnel-mqtt}
+    volumes:
+      - ./mosquitto/mosquitto.websocket.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/tunnel-entrypoint.sh:/mosquitto-tunnel-entrypoint.sh:ro
+      - ./mosquitto/tunnel-auth:/mosquitto/tunnel-auth:ro
+
+  # Also supplies a connector for the dev Compose file. In the production
+  # model, the existing app/minio dependencies and hostname routes stay put.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    restart: unless-stopped
