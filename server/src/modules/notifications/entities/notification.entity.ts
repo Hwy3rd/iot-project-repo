@@ -28,7 +28,16 @@ import { User } from '../../users/entities/user.entity';
 // resolved, or, in principle, a cold room renamed later).
 @Entity('notifications')
 @Index(['userId', 'readAt'])
+@Index('UQ_notification_dedupe', ['dedupeKey'], { unique: true })
+@Index('IDX_notification_prepared', ['deliveryPreparedAt', 'createdAt'])
 export class Notification {
+  // Nullable for legacy duplicate rows, which migrations preserve for audit.
+  @Column({ type: 'varchar', length: 73, name: 'dedupe_key', nullable: true })
+  dedupeKey!: string | null;
+
+  @Column({ type: 'datetime', name: 'delivery_prepared_at', nullable: true })
+  deliveryPreparedAt!: Date | null;
+
   @PrimaryColumn({ type: 'varchar', length: 36 })
   id!: string;
 

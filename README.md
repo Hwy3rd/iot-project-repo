@@ -94,6 +94,8 @@ Khi đổi sang WiFi/hotspot mới, chạy lại để chuyển mạng đó sang
 
 ## Tài liệu
 
+- [docs/OFFLINE_RECOVERY.md](docs/OFFLINE_RECOVERY.md) — Gửi bù thông báo, MySQL outbox, ACK telemetry và bộ đệm offline ESP32.
+
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Chạy môi trường dev local cho người mới clone repo.
 - [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) — Hạ tầng production: container, cổng, Cloudflare Tunnel, volume, vận hành.
 - [docs/REQUIREMENT.md](docs/REQUIREMENT.md) — Bài toán, đối tượng sử dụng, yêu cầu chức năng/phi chức năng.

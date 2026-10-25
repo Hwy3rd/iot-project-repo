@@ -78,7 +78,7 @@ services:
     container_name: redis_db
     # REDISCLI_AUTH is what redis-cli reads, so the healthcheck and
     # `docker exec redis_db redis-cli ...` authenticate without -a.
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--appendonly", "yes", "--appendfsync", "everysec"]
     environment:
       REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
     ports:

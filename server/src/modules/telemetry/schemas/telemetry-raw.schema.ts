@@ -10,6 +10,12 @@ import {
 // pointing at MySQL rows — there is no referential integrity across stores.
 @Schema({ collection: TELEMETRY_RAW_COLLECTION, versionKey: false })
 export class TelemetryRaw {
+  @Prop({ type: Boolean, default: false })
+  replayed!: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  effectsApplied!: boolean;
+
   @Prop({ type: String, required: true })
   deviceId!: string;
 

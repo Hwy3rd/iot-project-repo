@@ -16,6 +16,7 @@ export interface WebPushSubscriptionInfo {
 const SEND_OPTIONS: webpush.RequestOptions = {
   TTL: 6 * 60 * 60,
   urgency: 'high',
+  timeout: 10_000,
 };
 
 @Injectable()
@@ -27,6 +28,7 @@ export class WebPushService {
   send(
     subscription: WebPushSubscriptionInfo,
     payload: string,
+    ttl?: number,
   ): Promise<unknown> {
     return this.client.sendNotification(
       {
@@ -34,7 +36,7 @@ export class WebPushService {
         keys: { p256dh: subscription.p256dhKey, auth: subscription.authKey },
       },
       payload,
-      SEND_OPTIONS,
+      ttl === undefined ? SEND_OPTIONS : { ...SEND_OPTIONS, TTL: ttl },
     );
   }
 

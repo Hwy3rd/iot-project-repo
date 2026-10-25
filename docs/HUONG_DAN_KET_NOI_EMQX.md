@@ -1,5 +1,9 @@
 # Hướng dẫn kết nối ESP32 và backend qua EMQX Cloud
 
+> Bản firmware lưu offline cần ACL cho `devices/<DEVICE_ID>/telemetry-ack`
+> (board đọc, backend ghi). Session backend dùng ID ổn định, riêng theo deployment;
+> xem [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md) trước khi nâng cấp.
+
 > Phạm vi GitHub: backend, Docker, CA công khai và tài liệu được đưa lên nhánh.
 > Firmware TLS, mẫu cấu hình firmware cloud, header CA cho firmware và script sinh header
 > được giữ ở máy local theo yêu cầu. Các bước nạp ESP32 dưới đây tham chiếu bản local

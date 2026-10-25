@@ -52,6 +52,8 @@ import { TelemetryRaw } from './schemas/telemetry-raw.schema';
 import { floorToHour } from './telemetry.util';
 
 export interface TelemetrySample {
+  replayed?: boolean;
+  coldRoomId?: string;
   // Timestamp from the device message (see telemetry-raw.schema.ts).
   ts: Date;
   temperature: number | null;
@@ -142,6 +144,12 @@ export class TelemetryService {
     deviceId: string,
     sample: TelemetrySample,
   ): Promise<{ stored: boolean }> {
+    const age = Date.now() - sample.ts.getTime();
+    if (age < -60_000 || age > 30 * 24 * 60 * 60 * 1000) {
+      throw new BadRequestException(
+        'Telemetry timestamp outside retention window',
+      );
+    }
     const device = await this.devicesRepository.findOne({
       where: { id: deviceId },
       relations: { coldRoom: true },
@@ -154,6 +162,20 @@ export class TelemetryService {
         `Device ${deviceId} is not assigned to a cold room and cannot report telemetry`,
       );
     }
+    if (sample.coldRoomId && sample.coldRoomId !== device.coldRoom.id) {
+      throw new ConflictException(
+        'Buffered telemetry belongs to a previous room',
+      );
+    }
+    const newest = await this.rawModel
+      .findOne({ deviceId })
+      .sort({ ts: -1 })
+      .lean()
+      .exec();
+    const historical =
+      sample.replayed === true ||
+      age > 60_000 ||
+      (!!newest && newest.ts > sample.ts);
 
     // A reading that is missing or not a finite number is treated as a sensor
     // error instead of being rejected, so one bad sample never breaks the
@@ -172,6 +194,7 @@ export class TelemetryService {
       configSynced: configSynced(sample, device.coldRoom),
     };
 
+    let stored = true;
     try {
       await this.rawModel.create({
         deviceId: device.id,
@@ -181,15 +204,73 @@ export class TelemetryService {
         doorOpen: sample.doorOpen,
         sensorFault: !hasValidReading,
         outOfRange,
+        replayed: historical,
+        effectsApplied: false,
         ...state,
       });
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         // A redelivered sample carries no new information — the alert
         // evaluation below already ran for it the first time.
-        return { stored: false };
+        stored = false;
+        const previous = await this.rawModel
+          .findOne({ deviceId, ts: sample.ts })
+          .lean()
+          .exec();
+        // Older documents predate effectsApplied and were already processed.
+        if (previous?.effectsApplied !== false) return { stored: false };
+      } else {
+        throw error;
       }
-      throw error;
+    }
+
+    if (historical) {
+      if (outOfRange) {
+        await this.alertsService.recordHistorical(
+          {
+            coldRoomId: device.coldRoom.id,
+            deviceId: device.id,
+            type: AlertType.TEMPERATURE_OUT_OF_RANGE,
+            triggerValue: temperature,
+            threshold:
+              temperature !== null
+                ? temperature > tempMax
+                  ? tempMax
+                  : tempMin
+                : null,
+            details: {
+              replayed: true,
+              observedAt: sample.ts.toISOString(),
+              configVersion: sample.configVersion ?? null,
+            },
+          },
+          sample.ts,
+        );
+      }
+      if (sample.fanPowerFault === true) {
+        await this.alertsService.recordHistorical(
+          {
+            coldRoomId: device.coldRoom.id,
+            deviceId: device.id,
+            type: AlertType.DEVICE_FAULT,
+            details: {
+              replayed: true,
+              observedAt: sample.ts.toISOString(),
+              kind: 'fan_power',
+              fanVoltage: sample.fanVoltage ?? null,
+              fault: sample.fanFault ?? null,
+            },
+          },
+          sample.ts,
+        );
+      }
+      await this.rawModel
+        .updateOne(
+          { deviceId, ts: sample.ts },
+          { $set: { effectsApplied: true } },
+        )
+        .exec();
+      return { stored };
     }
 
     if (temperature !== null) {
@@ -229,7 +310,13 @@ export class TelemetryService {
         ...state,
       },
     });
-    return { stored: true };
+    await this.rawModel
+      .updateOne(
+        { deviceId, ts: sample.ts },
+        { $set: { effectsApplied: true } },
+      )
+      .exec();
+    return { stored };
   }
 
   // DEVICE_FAULT for the fan's power supply, as judged by the device itself
@@ -523,7 +610,11 @@ export class TelemetryService {
 
   async findLatest(deviceId: string) {
     await this.assertDeviceExists(deviceId);
-    return this.rawModel.findOne({ deviceId }).sort({ ts: -1 }).lean().exec();
+    return this.rawModel
+      .findOne({ deviceId, replayed: { $ne: true } })
+      .sort({ ts: -1 })
+      .lean()
+      .exec();
   }
 
   private async assertDeviceExists(deviceId: string) {

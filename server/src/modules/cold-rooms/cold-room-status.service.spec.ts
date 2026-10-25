@@ -175,6 +175,7 @@ describe('ColdRoomStatusService', () => {
       Record<string, Record<string, unknown>>[],
     ];
     expect(pipeline[0].$match).toEqual({
+      replayed: { $ne: true },
       $or: [{ coldRoomId: 'r2', deviceId: 'd2' }],
     });
   });

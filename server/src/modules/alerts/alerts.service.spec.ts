@@ -11,6 +11,7 @@ import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type MockRepository<T extends object> = Partial<
   Record<keyof Repository<T>, jest.Mock>
@@ -41,6 +42,10 @@ describe('AlertsService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        {
+          provide: NotificationsService,
+          useValue: { captureAlert: jest.fn() },
+        },
         AlertsService,
         {
           provide: getRepositoryToken(Alert),
@@ -65,6 +70,16 @@ describe('AlertsService', () => {
     service = module.get(AlertsService);
     realtime = module.get(RealtimeGateway);
     alertsRepository = module.get(getRepositoryToken(Alert));
+    Object.defineProperty(alertsRepository, 'manager', {
+      value: {
+        transaction: jest.fn(async (callback) =>
+          callback({
+            save: (_entity: unknown, value: unknown) =>
+              alertsRepository.save!(value),
+          }),
+        ),
+      },
+    });
     notificationsQueue = module.get(
       getQueueToken(QUEUE_NAMES.ALERT_NOTIFICATIONS),
     );
@@ -116,9 +131,16 @@ describe('AlertsService', () => {
         activeKey: 'temperature_out_of_range:d1',
       });
       // A genuinely new alert enqueues a notification job for it.
-      expect(notificationsQueue.add).toHaveBeenCalledWith('notify', {
-        alertId: 'a1',
-      });
+      expect(notificationsQueue.add).toHaveBeenCalledWith(
+        'notify',
+        {
+          alertId: 'a1',
+        },
+        expect.objectContaining({
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 5000 },
+        }),
+      );
     });
 
     it('does not fail raise() when enqueueing the notification job fails', async () => {

@@ -10,6 +10,7 @@ import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { Notification } from './entities/notification.entity';
 import { PushSubscription } from './entities/push-subscription.entity';
 import { NotificationsService } from './notifications.service';
+import { NotificationOutbox } from './entities/notification-outbox.entity';
 
 type MockRepository<T extends object> = Partial<
   Record<keyof Repository<T>, jest.Mock>
@@ -65,6 +66,11 @@ describe('NotificationsService', () => {
     service = module.get(NotificationsService);
     subscriptionsRepository = module.get(getRepositoryToken(PushSubscription));
     notificationsRepository = module.get(getRepositoryToken(Notification));
+    notificationsRepository.find!.mockImplementation(async () =>
+      notificationsRepository.create!.mock.results.map(
+        (result) => result.value,
+      ),
+    );
     coldRoomsRepository = module.get(getRepositoryToken(ColdRoom));
     warehouseStaffRepository = module.get(getRepositoryToken(WarehouseStaff));
   });
@@ -149,6 +155,39 @@ describe('NotificationsService', () => {
   });
 
   describe('notifyNewAlert', () => {
+    it('captures immutable recipients, content and occurrence time using the alert transaction manager', async () => {
+      const createdAt = new Date('2026-10-25T10:00:00Z');
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({ warehouseId: 'w1' }),
+        find: jest
+          .fn()
+          .mockResolvedValue([
+            { userId: 'u1' },
+            { userId: 'u1' },
+            { userId: 'u2' },
+          ]),
+        insert: jest.fn(),
+      };
+      await service.captureAlert(
+        manager as never,
+        {
+          id: 'a1',
+          coldRoomId: 'c1',
+          type: AlertType.OFFLINE,
+          createdAt,
+        } as Alert,
+      );
+      expect(manager.insert).toHaveBeenCalledWith(
+        NotificationOutbox,
+        expect.objectContaining({
+          id: 'a1',
+          recipients: ['u1', 'u2'],
+          createdAt,
+          processedAt: null,
+        }),
+      );
+      expect(notificationsRepository.save).not.toHaveBeenCalled();
+    });
     const alert = {
       id: 'al1',
       coldRoomId: 'c1',
@@ -198,6 +237,8 @@ describe('NotificationsService', () => {
       expect(notificationsRepository.create).toHaveBeenCalledWith({
         userId: 'u1',
         alertId: 'al1',
+        dedupeKey: 'al1:u1',
+        createdAt: undefined,
         title: 'Nhiệt độ vượt ngưỡng',
         body: 'Giá trị: -10 (cao hơn ngưỡng)',
         status: NotificationStatus.PENDING,

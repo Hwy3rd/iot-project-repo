@@ -40,6 +40,7 @@ topic read devices/+/telemetry
 topic read devices/+/ack
 topic write devices/+/commands
 topic write devices/+/config
+topic write devices/+/telemetry-ack
 topic read \$SYS/#
 
 user $MQTT_DEVICE_USERNAME
@@ -47,6 +48,7 @@ topic write devices/+/telemetry
 
 pattern read devices/%c/commands
 pattern read devices/%c/config
+pattern read devices/%c/telemetry-ack
 pattern write devices/%c/ack
 EOF
 

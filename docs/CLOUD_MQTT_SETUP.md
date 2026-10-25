@@ -1,5 +1,9 @@
 # Kết nối nhiều kho qua MQTT TLS
 
+> Khi dùng firmware có bộ đệm offline, cấp backend quyền publish
+> `devices/+/telemetry-ack` và board quyền subscribe ACK của chính nó.
+> Đặt `MQTT_CLIENT_ID` riêng cho mỗi deployment. Xem [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md).
+
 ## Phạm vi bản cập nhật trên GitHub
 
 Bản cập nhật này gồm backend, cấu hình Docker, CA công khai, script kiểm tra MQTT

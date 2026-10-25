@@ -40,7 +40,11 @@ export function applyReading(qc: QueryClient, event: ColdRoomReadingEvent) {
   qc.setQueryData<TelemetryRaw | null>(['devices', event.deviceId, 'telemetry', 'latest'], (old) =>
     old === undefined || (old && old.ts > reading.ts)
       ? old
-      : { ...reading, deviceId: event.deviceId, coldRoomId: event.coldRoomId },
+      : {
+          ...reading,
+          deviceId: event.deviceId,
+          coldRoomId: event.coldRoomId,
+        },
   )
 
   const listedOffline = qc
@@ -66,6 +70,11 @@ export function useLiveSync(enabled: boolean) {
     let notificationsTimer: ReturnType<typeof setTimeout> | undefined
 
     const onReading = (event: ColdRoomReadingEvent) => applyReading(qc, event)
+    const onReconnect = () => {
+      for (const queryKey of [STATUS_KEY, ['alerts'], ['notifications'], ['devices']]) {
+        void qc.invalidateQueries({ queryKey })
+      }
+    }
     const onAlertsChanged = () => {
       void qc.invalidateQueries({ queryKey: STATUS_KEY })
       void qc.invalidateQueries({ queryKey: ['alerts'] })
@@ -77,11 +86,14 @@ export function useLiveSync(enabled: boolean) {
     }
 
     s.on('coldroom:reading', onReading)
+    s.on('connect', onReconnect)
+    if (s.connected) onReconnect()
     s.on('alerts:changed', onAlertsChanged)
     const release = joinWarehouses(key.split(','))
     return () => {
       clearTimeout(notificationsTimer)
       s.off('coldroom:reading', onReading)
+      s.off('connect', onReconnect)
       s.off('alerts:changed', onAlertsChanged)
       release()
     }

@@ -22,7 +22,12 @@ describe('MqttIngestService', () => {
     save: jest.Mock;
     create: jest.Mock;
   };
-  let mqttClient: { on: jest.Mock; subscribeAsync: jest.Mock };
+  let mqttClient: {
+    on: jest.Mock;
+    subscribeAsync: jest.Mock;
+    publishAsync: jest.Mock;
+    connected: boolean;
+  };
 
   beforeEach(async () => {
     manager = {
@@ -35,6 +40,8 @@ describe('MqttIngestService', () => {
     devicesRepository = { findOne: jest.fn(), manager } as never;
     telemetryService = { ingest: jest.fn() };
     mqttClient = {
+      connected: true,
+      publishAsync: jest.fn().mockResolvedValue(undefined),
       on: jest.fn(),
       subscribeAsync: jest.fn().mockResolvedValue(undefined),
     };
@@ -51,6 +58,71 @@ describe('MqttIngestService', () => {
 
     service = module.get<MqttIngestService>(MqttIngestService);
     await service.onModuleInit();
+    jest
+      .spyOn(Date, 'now')
+      .mockReturnValue(new Date('2026-01-01T00:00:00Z').getTime());
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('acknowledges only after successful storage, and re-ACKs duplicates', async () => {
+    devicesRepository.findOne!.mockResolvedValue({
+      id: 'd1',
+      uniqueId: 'esp32-1',
+    });
+    telemetryService.ingest.mockResolvedValue({ stored: false });
+    await service.handleMessage(
+      'devices/esp32-1/telemetry',
+      Buffer.from(
+        JSON.stringify({
+          ts: '2026-01-01T00:00:00.000Z',
+          temperature: 4,
+          doorOpen: false,
+          sensorFault: false,
+        }),
+      ),
+    );
+    expect(mqttClient.publishAsync).toHaveBeenCalledWith(
+      'devices/esp32-1/telemetry-ack',
+      JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', status: 'stored' }),
+      { qos: 1 },
+    );
+    mqttClient.publishAsync.mockClear();
+    telemetryService.ingest.mockRejectedValue(new Error('MySQL down'));
+    await service.handleMessage(
+      'devices/esp32-1/telemetry',
+      Buffer.from(
+        JSON.stringify({
+          ts: '2026-01-01T00:00:00.000Z',
+          temperature: 4,
+          doorOpen: false,
+          sensorFault: false,
+        }),
+      ),
+    );
+    expect(mqttClient.publishAsync).not.toHaveBeenCalled();
+  });
+
+  it('stores replayed samples without refreshing heartbeat or closing OFFLINE alerts', async () => {
+    devicesRepository.findOne!.mockResolvedValue({
+      id: 'd1',
+      uniqueId: 'esp32-1',
+      status: 'offline',
+    });
+    await service.handleMessage(
+      'devices/esp32-1/telemetry',
+      Buffer.from(
+        JSON.stringify({
+          ts: '2026-01-01T00:00:00.000Z',
+          temperature: 4,
+          doorOpen: false,
+          sensorFault: false,
+          replayed: true,
+        }),
+      ),
+    );
+    expect(manager.update).not.toHaveBeenCalled();
+    expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+    expect(mqttClient.publishAsync).toHaveBeenCalled();
   });
 
   const publish = (topic: string, body: unknown) =>

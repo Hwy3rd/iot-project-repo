@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   FindOptionsWhere,
+  EntityManager,
   IsNull,
   QueryFailedError,
   Repository,
@@ -20,6 +21,7 @@ import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
 import { QueryNotificationDto } from './dto/query-notification.dto';
 import { Notification } from './entities/notification.entity';
 import { PushSubscription } from './entities/push-subscription.entity';
+import { NotificationOutbox } from './entities/notification-outbox.entity';
 
 const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   [AlertType.TEMPERATURE_OUT_OF_RANGE]: 'Nhiệt độ vượt ngưỡng',
@@ -46,6 +48,25 @@ const FAN_FAULT_MESSAGES: Record<string, string> = {
 
 @Injectable()
 export class NotificationsService {
+  async captureAlert(manager: EntityManager, alert: Alert): Promise<void> {
+    const room = await manager.findOne(ColdRoom, {
+      where: { id: alert.coldRoomId },
+    });
+    const assignments = room
+      ? await manager.find(WarehouseStaff, {
+          where: { warehouseId: room.warehouseId },
+        })
+      : [];
+    await manager.insert(NotificationOutbox, {
+      id: alert.id,
+      recipients: [
+        ...new Set(assignments.map((assignment) => assignment.userId)),
+      ],
+      ...this.composeMessage(alert),
+      createdAt: alert.createdAt,
+      processedAt: null,
+    });
+  }
   constructor(
     @InjectRepository(PushSubscription)
     private readonly subscriptionsRepository: Repository<PushSubscription>,
@@ -129,12 +150,22 @@ export class NotificationsService {
       this.notificationsRepository.create({
         userId: assignment.userId,
         alertId: alert.id,
+        dedupeKey: `${alert.id}:${assignment.userId}`,
+        createdAt: alert.createdAt,
         title,
         body,
         status: NotificationStatus.PENDING,
       }),
     );
-    return this.notificationsRepository.save(notifications);
+    // Legacy queue jobs also have to be safe to repeat.
+    for (const notification of notifications) {
+      try {
+        await this.notificationsRepository.save(notification);
+      } catch (error) {
+        if (!isMysqlDuplicateKeyError(error)) throw error;
+      }
+    }
+    return this.notificationsRepository.find({ where: { alertId: alert.id } });
   }
 
   async findAll(

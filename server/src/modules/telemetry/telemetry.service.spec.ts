@@ -31,10 +31,19 @@ const createQueryChain = (result: unknown[] = []) => {
 
 describe('TelemetryService', () => {
   let service: TelemetryService;
-  let rawModel: { create: jest.Mock; find: jest.Mock; findOne: jest.Mock };
+  let rawModel: {
+    create: jest.Mock;
+    find: jest.Mock;
+    findOne: jest.Mock;
+    updateOne: jest.Mock;
+  };
   let hourlyModel: { find: jest.Mock };
   let devicesRepository: { findOne: jest.Mock; existsBy: jest.Mock };
-  let alertsService: { raise: jest.Mock; resolveAuto: jest.Mock };
+  let alertsService: {
+    raise: jest.Mock;
+    resolveAuto: jest.Mock;
+    recordHistorical: jest.Mock;
+  };
   let realtime: { emitToWarehouse: jest.Mock };
   let aiPrediction: { predict: jest.Mock; saveLatest: jest.Mock };
   // The device declares the board's fan channel; nothing else.
@@ -87,7 +96,12 @@ describe('TelemetryService', () => {
         TelemetryService,
         {
           provide: getModelToken(TelemetryRaw.name),
-          useValue: { create: jest.fn(), find: jest.fn(), findOne: jest.fn() },
+          useValue: {
+            create: jest.fn(),
+            find: jest.fn(),
+            findOne: jest.fn(),
+            updateOne: jest.fn(),
+          },
         },
         {
           provide: getModelToken(TelemetryHourly.name),
@@ -103,7 +117,11 @@ describe('TelemetryService', () => {
         },
         {
           provide: AlertsService,
-          useValue: { raise: jest.fn(), resolveAuto: jest.fn() },
+          useValue: {
+            raise: jest.fn(),
+            resolveAuto: jest.fn(),
+            recordHistorical: jest.fn(),
+          },
         },
         {
           provide: RealtimeGateway,
@@ -122,14 +140,97 @@ describe('TelemetryService', () => {
     service = module.get(TelemetryService);
     rawModel = module.get(getModelToken(TelemetryRaw.name));
     rawModel.find.mockReturnValue(createQueryChain());
+    rawModel.findOne.mockReturnValue(createQueryChain(null as never));
+    rawModel.updateOne.mockReturnValue({
+      exec: jest.fn().mockResolvedValue({}),
+    });
+    jest.spyOn(Date, 'now').mockReturnValue(sample.ts.getTime());
     hourlyModel = module.get(getModelToken(TelemetryHourly.name));
     devicesRepository = module.get(getRepositoryToken(Device));
     alertsService = module.get(AlertsService);
     realtime = module.get(RealtimeGateway);
     aiPrediction = module.get(AiPredictionService);
   });
+  afterEach(() => jest.restoreAllMocks());
 
   describe('ingest', () => {
+    it('records both missed temperature and fan faults from the same sample', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      await service.ingest('d1', {
+        ...sample,
+        replayed: true,
+        temperature: -10,
+        fanPowerFault: true,
+        fanFault: 'no_power',
+      });
+      expect(alertsService.recordHistorical).toHaveBeenCalledTimes(2);
+    });
+    it('keeps a replayed violation in history without changing live alerts, AI or realtime', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      await service.ingest('d1', {
+        ...sample,
+        temperature: -10,
+        replayed: true,
+      });
+      expect(alertsService.recordHistorical).toHaveBeenCalledWith(
+        expect.objectContaining({
+          deviceId: 'd1',
+          type: AlertType.TEMPERATURE_OUT_OF_RANGE,
+        }),
+        sample.ts,
+      );
+      expect(alertsService.raise).not.toHaveBeenCalled();
+      expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+      expect(realtime.emitToWarehouse).not.toHaveBeenCalled();
+      expect(aiPrediction.predict).not.toHaveBeenCalled();
+    });
+
+    it('does not resolve a current alert from an older healthy reading', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      rawModel.findOne.mockReturnValue(
+        createQueryChain({
+          ts: new Date(sample.ts.getTime() + 10_000),
+        } as never),
+      );
+      await service.ingest('d1', sample);
+      expect(alertsService.resolveAuto).not.toHaveBeenCalled();
+      expect(realtime.emitToWarehouse).not.toHaveBeenCalled();
+    });
+
+    it('retries incident handling after Mongo saved a sample but MySQL failed', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      alertsService.raise.mockRejectedValueOnce(new Error('MySQL offline'));
+      const violation = { ...sample, temperature: -10 };
+      await expect(service.ingest('d1', violation)).rejects.toThrow(
+        'MySQL offline',
+      );
+      expect(rawModel.updateOne).not.toHaveBeenCalled();
+      rawModel.create.mockRejectedValueOnce(
+        Object.assign(new Error('duplicate'), { code: 11000 }),
+      );
+      rawModel.findOne
+        .mockReturnValueOnce(createQueryChain({ ts: sample.ts } as never))
+        .mockReturnValueOnce(
+          createQueryChain({ effectsApplied: false } as never),
+        );
+      await expect(service.ingest('d1', violation)).resolves.toEqual({
+        stored: false,
+      });
+      expect(alertsService.raise).toHaveBeenCalledTimes(2);
+      expect(rawModel.updateOne).toHaveBeenCalledWith(
+        { deviceId: 'd1', ts: sample.ts },
+        { $set: { effectsApplied: true } },
+      );
+    });
+
+    it('rejects a buffer belonging to a previous room before storing anything', async () => {
+      devicesRepository.findOne.mockResolvedValue(activeDevice);
+      await expect(
+        service.ingest('d1', { ...sample, coldRoomId: 'old-room' }),
+      ).rejects.toThrow('previous room');
+      expect(rawModel.create).not.toHaveBeenCalled();
+    });
+
     it('pushes the stored reading to the warehouse room, with the channels the device declares', async () => {
       devicesRepository.findOne.mockResolvedValue(activeDevice);
       rawModel.create.mockResolvedValue({});
@@ -224,6 +325,8 @@ describe('TelemetryService', () => {
         deviceId: 'd1',
         coldRoomId: 'c1',
         ts: sample.ts,
+        effectsApplied: false,
+        replayed: false,
         temperature: -18,
         doorOpen: false,
         sensorFault: false,
@@ -806,6 +909,9 @@ describe('TelemetryService', () => {
 
       await service.ingest('d1', chillSample);
       await flush();
+      jest
+        .spyOn(Date, 'now')
+        .mockReturnValue(chillSample.ts.getTime() + 120_000);
       await service.ingest('d1', {
         ...chillSample,
         ts: new Date(chillSample.ts.getTime() + 120_000),
@@ -816,6 +922,7 @@ describe('TelemetryService', () => {
       finish(null);
       await flush();
       const next = new Date(chillSample.ts.getTime() + 180_000);
+      jest.spyOn(Date, 'now').mockReturnValue(next.getTime());
       rawModel.find.mockReturnValue(createQueryChain(historyRows(next)));
       await service.ingest('d1', { ...chillSample, ts: next });
       await flush();
@@ -918,7 +1025,10 @@ describe('TelemetryService', () => {
       rawModel.findOne.mockReturnValue(query);
 
       await expect(service.findLatest('d1')).resolves.toBe(sample);
-      expect(rawModel.findOne).toHaveBeenCalledWith({ deviceId: 'd1' });
+      expect(rawModel.findOne).toHaveBeenCalledWith({
+        deviceId: 'd1',
+        replayed: { $ne: true },
+      });
       expect(query.sort).toHaveBeenCalledWith({ ts: -1 });
     });
 

@@ -15,8 +15,29 @@ describe('MQTT connection configuration', () => {
     const connection = createMqttConnection(config());
     expect(connection.url).toBe('mqtt://localhost:1883');
     expect(connection.options.ca).toBeUndefined();
-    expect(connection.options.clientId).toMatch(/^iot-app-/);
-    expect(connection.options.clean).toBe(true);
+    expect(connection.options.clientId).toBe('iot-backend-app');
+    expect(connection.options.clean).toBe(false);
+  });
+
+  it('uses a stable identity across restarts and a separate publisher identity', () => {
+    const previous = process.env.MQTT_CLIENT_ROLE;
+    try {
+      const app = createMqttConnection(
+        config({ MQTT_CLIENT_ID: 'warehouse-server' }),
+      );
+      expect(
+        createMqttConnection(config({ MQTT_CLIENT_ID: 'warehouse-server' }))
+          .options.clientId,
+      ).toBe(app.options.clientId);
+      process.env.MQTT_CLIENT_ROLE = 'worker';
+      expect(
+        createMqttConnection(config({ MQTT_CLIENT_ID: 'warehouse-server' }))
+          .options.clientId,
+      ).toBe('warehouse-server-worker');
+    } finally {
+      if (previous === undefined) delete process.env.MQTT_CLIENT_ROLE;
+      else process.env.MQTT_CLIENT_ROLE = previous;
+    }
   });
 
   it('verifies the broker certificate for cloud connections', () => {

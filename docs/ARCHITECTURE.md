@@ -1,5 +1,9 @@
 # Kiến trúc hệ thống
 
+> Cơ chế khôi phục mới: [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md).
+> Alert + outbox lưu cùng transaction; worker retry theo subscription từ MySQL;
+> MQTT session bền và ESP32 giữ telemetry tới khi backend ACK.
+
 > Tổng quan kiến trúc backend của hệ thống giám sát & quản lý kho lạnh — các tiến trình, luồng dữ liệu, và cách chúng khớp với `server/src/`. Không lặp lại chi tiết API/schema/RBAC đã có ở [API_DESIGN.md](API_DESIGN.md), [DATABASE_DESIGN.md](DATABASE_DESIGN.md), [RBAC.md](RBAC.md) — tài liệu này tập trung vào bức tranh tổng thể: các tiến trình chạy gì, dữ liệu đi qua đâu, và các phần đã/chưa hoàn thiện.
 
 ---

@@ -1,5 +1,9 @@
 # Message Queue & Messaging
 
+> Cập nhật: notification đã dùng MySQL outbox/delivery, MQTT dùng session bền.
+> Xem [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md) cho hành vi, ACK telemetry,
+> migration và ACL mới. Các hạn chế không retry/outbox và clean session ở dưới là của bản cũ.
+
 > Hệ thống có hai kênh truyền message bất đồng bộ: **BullMQ trên Redis** cho job nền giữa `app` và `worker`, và **MQTT (Mosquitto)** để nhận telemetry từ thiết bị và gửi lệnh điều khiển xuống thiết bị. Tài liệu này mô tả từng queue, job, lịch chạy, cách hệ thống xử lý lỗi, cách vận hành, và cách thêm queue mới. Chi tiết nghiệp vụ gửi thông báo xem [NOTIFICATION.md](NOTIFICATION.md), còn hạ tầng Redis/Mosquitto xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
 
 ---

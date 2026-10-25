@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  HttpException,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
@@ -10,6 +16,8 @@ import {
   DeviceStatusChangeTrigger,
 } from '../../libs/constants/device.constant';
 import { MQTT_CLIENT } from '../../libs/mqtt/mqtt.constant';
+import { deviceTopic } from '../../libs/mqtt/device-topics';
+import { withTimeout } from '../../libs/mqtt/with-timeout';
 import { AlertsService } from '../alerts/alerts.service';
 import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { Device } from '../devices/entities/device.entity';
@@ -28,6 +36,7 @@ import {
 @Injectable()
 export class MqttIngestService implements OnModuleInit {
   private readonly logger = new Logger(MqttIngestService.name);
+  private readonly processing = new Map<string, Promise<void>>();
 
   constructor(
     @Inject(MQTT_CLIENT) private readonly mqttClient: MqttClient,
@@ -43,12 +52,19 @@ export class MqttIngestService implements OnModuleInit {
     // never blocks the next, so the promise is deliberately not returned
     // from here (only awaited internally via handleMessage/.catch()).
     this.mqttClient.on('message', (topic, payload) => {
-      void this.handleMessage(topic, payload).catch((error: unknown) =>
-        this.logger.error(
-          `Unhandled error processing message on topic ${topic}`,
-          error instanceof Error ? error.stack : error,
-        ),
-      );
+      const next = (this.processing.get(topic) ?? Promise.resolve())
+        .then(() => this.handleMessage(topic, payload))
+        .catch((error: unknown) =>
+          this.logger.error(
+            `Unhandled error processing message on topic ${topic}`,
+            error instanceof Error ? error.stack : error,
+          ),
+        )
+        .finally(() => {
+          if (this.processing.get(topic) === next)
+            this.processing.delete(topic);
+        });
+      this.processing.set(topic, next);
     });
 
     await this.mqttClient.subscribeAsync(DEVICE_TELEMETRY_TOPIC_FILTER, {
@@ -94,6 +110,8 @@ export class MqttIngestService implements OnModuleInit {
 
     try {
       await this.telemetryService.ingest(device.id, {
+        replayed: message.replayed,
+        coldRoomId: message.coldRoomId,
         ts: message.ts,
         temperature: message.temperature,
         doorOpen: message.doorOpen,
@@ -109,8 +127,18 @@ export class MqttIngestService implements OnModuleInit {
         buzzerManualSec: message.buzzerManualSec,
         configVersion: message.configVersion,
       });
-      await this.recordHeartbeat(device);
+      if (!message.replayed && Date.now() - message.ts.getTime() <= 60_000)
+        await this.recordHeartbeat(device);
+      await this.acknowledge(uniqueId, message.ts, 'stored');
     } catch (error) {
+      // Permanent rejection must not wedge the board's finite disk queue.
+      // Transient DB/network errors receive no ACK and the board retries.
+      if (
+        error instanceof HttpException &&
+        [400, 404, 409].includes(error.getStatus())
+      ) {
+        await this.acknowledge(uniqueId, message.ts, 'discarded');
+      }
       // A device that isn't claimed into a room yet, or one that was just
       // decommissioned, is an expected condition here (unlike the HTTP
       // ingest path there's no caller to report the rejection back to) —
@@ -122,6 +150,22 @@ export class MqttIngestService implements OnModuleInit {
         }`,
       );
     }
+  }
+
+  private async acknowledge(
+    uniqueId: string,
+    ts: Date,
+    status: 'stored' | 'discarded',
+  ) {
+    if (!this.mqttClient.connected) return;
+    await withTimeout(
+      this.mqttClient.publishAsync(
+        deviceTopic(uniqueId, 'telemetry-ack'),
+        JSON.stringify({ ts: ts.toISOString(), status }),
+        { qos: 1 },
+      ),
+      3000,
+    );
   }
 
   // Any accepted message proves the device is alive. Refreshes

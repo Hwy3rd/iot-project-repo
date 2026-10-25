@@ -21,6 +21,15 @@ import {
 // — kept 1:1 with TelemetryService's `TelemetrySample` interface, since that's
 // what a validated instance of this DTO gets passed as.
 export class TelemetryMessageDto {
+  @IsOptional()
+  @IsBoolean()
+  replayed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(36)
+  coldRoomId?: string;
+
   @Type(() => Date)
   @IsDate()
   ts!: Date;

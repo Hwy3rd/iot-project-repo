@@ -33,7 +33,7 @@ describe('WebPushService', () => {
           keys: { p256dh: 'p', auth: 'a' },
         },
         '{"title":"x"}',
-        { TTL: 6 * 60 * 60, urgency: 'high' },
+        { TTL: 6 * 60 * 60, urgency: 'high', timeout: 10_000 },
       );
     });
   });

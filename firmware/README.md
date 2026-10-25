@@ -1,5 +1,19 @@
 # Firmware - ESP32 Giám Sát Kho Lạnh
 
+## Phục hồi sau mất mạng
+
+Firmware lưu tối đa 720 mẫu chưa được ACK trong LittleFS, khôi phục qua reset
+và gửi lại khi nối mạng. Mỗi mẫu chỉ được xoá sau ACK lưu thành công từ backend
+trên topic `devices/<DEVICE_ID>/telemetry-ack`. Cần deploy backend và ACL mới
+trước khi nạp firmware; PubSubClient vẫn publish QoS 0, ACK ứng dụng đảm bảo
+không bỏ mẫu chỉ vì broker đã nhận.
+
+Chọn partition có filesystem và chuẩn bị LittleFS lần đầu. Firmware không tự
+format; nếu mount lỗi thì Serial báo rõ không có bản sao bền vững. Queue đầy
+thì bỏ mẫu cũ nhất và ghi cảnh báo. Mẫu hiện tại gửi ngay, backlog gửi thêm mỗi
+250ms. Cần giờ NTP hợp lệ trước khi tạo mẫu. Xem hướng dẫn triển khai, giới hạn
+và kiểm thử tại [OFFLINE_RECOVERY.md](../docs/OFFLINE_RECOVERY.md).
+
 ## Mô tả
 Code nhúng cho vi điều khiển **ESP32** thực hiện giám sát kho lạnh theo thời gian thực. Thiết bị đọc dữ liệu từ các cảm biến, điều khiển quạt làm lạnh, kích hoạt còi cảnh báo, gửi dữ liệu telemetry lên server và nhận lệnh điều khiển từ server thông qua giao thức **MQTT**.
 

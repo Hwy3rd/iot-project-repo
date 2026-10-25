@@ -27,6 +27,7 @@
 #include <esp_system.h>
 #include <time.h>
 #include <sys/time.h>
+#include "offline_telemetry.h"
 
 // ======================== CAU HINH WIFI & MQTT ========================
 // WiFi, broker, tai khoan thiet bi, DEVICE_ID, NTP nam trong config.h
@@ -41,6 +42,7 @@
 // Client ID = DEVICE_ID (phai KHOP `unique_id` tren server); topic ghep tu ID
 #define MQTT_CLIENT_ID       DEVICE_ID
 #define MQTT_TOPIC_TELEMETRY "devices/" DEVICE_ID "/telemetry"
+#define MQTT_TOPIC_TELEMETRY_ACK "devices/" DEVICE_ID "/telemetry-ack"
 #define MQTT_TOPIC_COMMANDS  "devices/" DEVICE_ID "/commands"
 #define MQTT_TOPIC_ACK       "devices/" DEVICE_ID "/ack"
 #define MQTT_TOPIC_CONFIG    "devices/" DEVICE_ID "/config"
@@ -116,6 +118,7 @@ DHT dht(DHT_PIN, DHT_TYPE);
 WiFiClient   espClient;
 PubSubClient mqttClient(espClient);
 Preferences  prefs;
+OfflineTelemetryQueue telemetryQueue;
 
 // ======================== BIEN TRANG THAI ========================
 bool  dhtOK            = false;
@@ -125,6 +128,7 @@ unsigned long lastGoodTempAt = 0;
 unsigned long lastGoodHumAt  = 0;
 unsigned long lastReport      = 0;
 unsigned long lastMqttRetry   = 0;
+unsigned long lastWiFiRetry   = 0;
 unsigned long lastBuzzerToggle = 0;
 bool  buzzerState      = false;
 float fanNominalVoltage = -1.0;   // dien ap chuan, chot khi quat chay on dinh
@@ -158,6 +162,7 @@ struct RoomConfig {
   float hysteresis;
   unsigned long doorOpenMaxS;
   char  version[40];         // server dat; gui lai trong telemetry de doi chieu
+  char  coldRoomId[37];
 };
 RoomConfig roomConfig;
 
@@ -197,6 +202,7 @@ float readDCVoltage() {
 // ======================== WIFI ========================
 void connectWiFi() {
   Serial.printf("Dang ket noi WiFi: %s ", WIFI_SSID);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   unsigned long t = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
@@ -236,13 +242,21 @@ bool formatIsoTimestamp(char* buf, size_t len) {
 // ======================== MQTT ========================
 bool connectMQTT() {
   if (mqttClient.connected()) return true;
-  if (WiFi.status() != WL_CONNECTED) { connectWiFi(); return false; }
+  if (WiFi.status() != WL_CONNECTED) {
+    // Keep local sensing/alarms running during an outage; do not wait 15s.
+    if (millis() - lastWiFiRetry >= 5000) {
+      lastWiFiRetry = millis();
+      WiFi.reconnect();
+    }
+    return false;
+  }
 
   Serial.printf("Dang ket noi MQTT Broker %s:%d ...\n", MQTT_BROKER_HOST, MQTT_BROKER_PORT);
   // Broker bat buoc dang nhap (mosquitto.conf: allow_anonymous false).
   // Ma loi 5 = sai username/password.
   if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
     Serial.println("MQTT ket noi thanh cong!");
+    mqttClient.subscribe(MQTT_TOPIC_TELEMETRY_ACK, 1);
     // Clean session: subscription mat sau moi lan ket noi lai -> dang ky lai
     if (mqttClient.subscribe(MQTT_TOPIC_COMMANDS, 1))
       Serial.printf("Da subscribe %s\n", MQTT_TOPIC_COMMANDS);
@@ -290,11 +304,11 @@ void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFaul
     return;
   }
 
-  if (!mqttClient.connected() && !connectMQTT()) return;
-
-  StaticJsonDocument<640> doc;
+  StaticJsonDocument<896> doc;
 
   doc["ts"] = ts;
+  doc["replayed"] = false;
+  if (*roomConfig.coldRoomId) doc["coldRoomId"] = roomConfig.coldRoomId;
 
   if (sensorFault || isnan(temp))
     doc["temperature"] = nullptr;
@@ -324,10 +338,10 @@ void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFaul
   if (roomConfig.hasConfig) doc["configVersion"] = roomConfig.version;
   else                      doc["configVersion"] = nullptr;
 
-  char payload[640];
+  char payload[896];
   serializeJson(doc, payload);
-
-  if (mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload))
+  if (!telemetryQueue.append(ts, payload)) Serial.println("[OFFLINE] Sample has no durable copy");
+  if (mqttClient.connected() && mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload))
     Serial.printf("[MQTT TX] %s\n", payload);
   else
     Serial.println("[MQTT] GUI THAT BAI!");
@@ -450,6 +464,7 @@ void useDefaultConfig() {
   roomConfig.hysteresis   = DEFAULT_HYSTERESIS;
   roomConfig.doorOpenMaxS = DEFAULT_DOOR_OPEN_MAX_S;
   roomConfig.version[0]   = '\0';
+  roomConfig.coldRoomId[0] = '\0';
 }
 
 void printConfig() {
@@ -472,6 +487,7 @@ void loadConfig() {
     roomConfig.hysteresis   = prefs.getFloat("hyst", roomConfig.hysteresis);
     roomConfig.doorOpenMaxS = prefs.getULong("door", roomConfig.doorOpenMaxS);
     prefs.getString("ver", roomConfig.version, sizeof(roomConfig.version));
+    prefs.getString("room", roomConfig.coldRoomId, sizeof(roomConfig.coldRoomId));
   }
   prefs.end();
 }
@@ -485,6 +501,7 @@ void saveConfig() {
     prefs.putFloat("hyst", roomConfig.hysteresis);
     prefs.putULong("door", roomConfig.doorOpenMaxS);
     prefs.putString("ver", roomConfig.version);
+    prefs.putString("room", roomConfig.coldRoomId);
   } else {
     prefs.clear();
   }
@@ -501,12 +518,13 @@ void onConfigMessage(byte* payload, unsigned int length) {
     return;
   }
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   if (deserializeJson(doc, (const byte*)payload, length)) {
     Serial.println("[CAU HINH] Bo qua: JSON khong hop le");
     return;
   }
   const char* version = doc["version"] | "";
+  const char* roomId = doc["coldRoomId"] | "";
   float tmin = doc["tempMin"]    | NAN;
   float tmax = doc["tempMax"]    | NAN;
   float hyst = doc["hysteresis"] | NAN;
@@ -518,7 +536,7 @@ void onConfigMessage(byte* payload, unsigned int length) {
     return;
   }
   // Broker gui lai tin retained moi lan ket noi lai -> khong ghi NVS neu khong doi
-  if (roomConfig.hasConfig && strcmp(roomConfig.version, version) == 0) return;
+  if (roomConfig.hasConfig && strcmp(roomConfig.version, version) == 0 && strcmp(roomConfig.coldRoomId, roomId) == 0) return;
 
   roomConfig.hasConfig    = true;
   roomConfig.tempMin      = tmin;
@@ -526,12 +544,20 @@ void onConfigMessage(byte* payload, unsigned int length) {
   roomConfig.hysteresis   = hyst;
   roomConfig.doorOpenMaxS = (unsigned long)door;
   strlcpy(roomConfig.version, version, sizeof(roomConfig.version));
+  strlcpy(roomConfig.coldRoomId, roomId, sizeof(roomConfig.coldRoomId));
   saveConfig();
   tempAlarm = false;   // danh gia lai tu dau voi nguong moi
   printConfig();
 }
 
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
+  if (strcmp(topic, MQTT_TOPIC_TELEMETRY_ACK) == 0) {
+    StaticJsonDocument<192> doc;
+    if (!deserializeJson(doc, (const byte*)payload, length)) {
+      telemetryQueue.acknowledge(doc["ts"] | "", doc["status"] | "");
+    }
+    return;
+  }
   if (strcmp(topic, MQTT_TOPIC_CONFIG) == 0) {
     onConfigMessage(payload, length);
     return;
@@ -825,9 +851,11 @@ void setup() {
   setupTime();
   mqttClient.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
   mqttClient.setKeepAlive(30);
+  mqttClient.setSocketTimeout(1);
   // Mac dinh 256 byte (ca topic + header); telemetry ~340 byte vuot gioi han
-  mqttClient.setBufferSize(768);
+  mqttClient.setBufferSize(1152);
   mqttClient.setCallback(onMqttMessage);
+  telemetryQueue.begin();
   connectMQTT();
 
   Serial.printf("\nTopic MQTT : %s\n", MQTT_TOPIC_TELEMETRY);
@@ -846,6 +874,7 @@ void loop() {
     connectMQTT();
   }
   mqttClient.loop();
+  telemetryQueue.flushOne(mqttClient, MQTT_TOPIC_TELEMETRY);
 
   updateDoor();
 
