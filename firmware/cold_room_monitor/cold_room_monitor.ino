@@ -10,23 +10,32 @@
  *  GPIO 23 - Relay quat lam lanh
  *  GPIO 34 - Cam bien dien ap DC quat
  * ---------------------------------------------------------------
+ * Board: Arduino-ESP32 core 3.x (Tools > Board > Boards Manager > esp32)
  * Thu vien can cai trong Arduino IDE (Tools > Manage Libraries):
  *   - DHT sensor library    (by Adafruit)
  *   - Adafruit Unified Sensor
- *   - PubSubClient          (by Nick O'Leary)   <- MQTT
  *   - ArduinoJson           (by Benoit Blanchon)
+ * MQTT dung esp-mqtt co san trong core (mqtt://, mqtts://, ws://, wss://),
+ * khong can cai them thu vien.
  * ---------------------------------------------------------------
  */
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
 #include <Preferences.h>
 #include <esp_system.h>
+#include <esp_idf_version.h>
+#include <mqtt_client.h>
+#include <esp_crt_bundle.h>
+#include <freertos/queue.h>
 #include <time.h>
 #include <sys/time.h>
+
+#if ESP_IDF_VERSION_MAJOR < 5
+#error "Can Arduino-ESP32 core 3.x tro len (Tools > Board > Boards Manager > esp32)"
+#endif
 
 // ======================== CAU HINH WIFI & MQTT ========================
 // WiFi, broker, tai khoan thiet bi, DEVICE_ID, NTP nam trong config.h
@@ -36,6 +45,17 @@
 #include "config.h"
 #else
 #error "Thieu config.h: copy config.example.h thanh config.h (cung thu muc) roi sua gia tri"
+#endif
+
+// config.h cu chi co MQTT_BROKER_HOST/PORT (LAN) -> ghep thanh mqtt://host:port
+#ifndef MQTT_URI
+#if defined(MQTT_BROKER_HOST) && defined(MQTT_BROKER_PORT)
+#define MQTT_STR_(x) #x
+#define MQTT_STR(x)  MQTT_STR_(x)
+#define MQTT_URI "mqtt://" MQTT_BROKER_HOST ":" MQTT_STR(MQTT_BROKER_PORT)
+#else
+#error "config.h thieu MQTT_URI (xem config.example.h)"
+#endif
 #endif
 
 // Client ID = DEVICE_ID (phai KHOP `unique_id` tren server); topic ghep tu ID
@@ -111,11 +131,36 @@ const unsigned long MANUAL_OVERRIDE_MS = 10UL * 60UL * 1000UL;   // 10 phut
 // ack; MQTT QoS 1 cung co the giao 1 lenh 2 lan).
 #define RECENT_COMMANDS 8
 
+// Cloudflare cat WebSocket im lang ~100 s: keepalive phai ngan hon nhieu.
+#define MQTT_KEEPALIVE_S 30
+// Lenh/cau hinh tu server cho loop() xu ly (xem onMqttEvent). Tin lon hon
+// MQTT_MSG_MAX bi bo (lenh/cau hinh that chi ~200 byte).
+#define MQTT_RX_QUEUE_LEN 4
+#define MQTT_MSG_MAX      384
+
 // ======================== KHOI TAO DOI TUONG ========================
 DHT dht(DHT_PIN, DHT_TYPE);
-WiFiClient   espClient;
-PubSubClient mqttClient(espClient);
+esp_mqtt_client_handle_t mqttClient = nullptr;
 Preferences  prefs;
+
+enum MqttInboxTopic : uint8_t { INBOX_COMMANDS, INBOX_CONFIG };
+struct MqttInboxItem {
+  MqttInboxTopic topic;
+  uint16_t length;
+  byte payload[MQTT_MSG_MAX];
+};
+QueueHandle_t mqttInbox = nullptr;
+volatile bool mqttConnected = false;   // ghi tu task esp-mqtt, doc tu loop()
+
+// Chan doan duong truyen (in trong printStatus / checkMqttConfigReceived)
+volatile uint32_t mqttConnectCount = 0;      // so lan ket noi thanh cong
+volatile unsigned long mqttConnectedAt = 0;  // millis() luc ket noi gan nhat
+volatile uint32_t mqttAckedCount = 0;        // tin broker da xac nhan (PUBACK)
+uint32_t mqttSentCount = 0;                  // tin da dua vao hang gui
+uint32_t mqttConfigSession = 0;              // lan ket noi da nhan cau hinh phong
+uint32_t mqttHintSession = 0;                // lan ket noi da in canh bao
+// Sau chung nay ma chua nhan cau hinh retained -> nghi ACL chan (sai tai khoan/ID)
+const unsigned long MQTT_CONFIG_HINT_MS = 10000;
 
 // ======================== BIEN TRANG THAI ========================
 bool  dhtOK            = false;
@@ -124,7 +169,7 @@ float lastGoodHum      = NAN;
 unsigned long lastGoodTempAt = 0;
 unsigned long lastGoodHumAt  = 0;
 unsigned long lastReport      = 0;
-unsigned long lastMqttRetry   = 0;
+unsigned long lastWifiRetry   = 0;
 unsigned long lastBuzzerToggle = 0;
 bool  buzzerState      = false;
 float fanNominalVoltage = -1.0;   // dien ap chuan, chot khi quat chay on dinh
@@ -234,29 +279,140 @@ bool formatIsoTimestamp(char* buf, size_t len) {
 }
 
 // ======================== MQTT ========================
-bool connectMQTT() {
-  if (mqttClient.connected()) return true;
-  if (WiFi.status() != WL_CONNECTED) { connectWiFi(); return false; }
+// esp-mqtt chay tren task rieng: tu ket noi lai, giu keepalive. Handler nay
+// chay tren task do nen KHONG dung truc tiep bien trang thai cua loop() —
+// lenh/cau hinh duoc chep vao hang doi mqttInbox cho loop() xu ly.
+void onMqttEvent(void* arg, esp_event_base_t base, int32_t eventId, void* eventData) {
+  esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)eventData;
+  switch ((esp_mqtt_event_id_t)eventId) {
+    case MQTT_EVENT_BEFORE_CONNECT:
+      Serial.printf("[MQTT] Dang mo ket noi toi %s ...\n", MQTT_URI);
+      break;
 
-  Serial.printf("Dang ket noi MQTT Broker %s:%d ...\n", MQTT_BROKER_HOST, MQTT_BROKER_PORT);
-  // Broker bat buoc dang nhap (mosquitto.conf: allow_anonymous false).
-  // Ma loi 5 = sai username/password.
-  if (mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
-    Serial.println("MQTT ket noi thanh cong!");
-    // Clean session: subscription mat sau moi lan ket noi lai -> dang ky lai
-    if (mqttClient.subscribe(MQTT_TOPIC_COMMANDS, 1))
-      Serial.printf("Da subscribe %s\n", MQTT_TOPIC_COMMANDS);
-    else
-      Serial.println("[LOI] Subscribe topic lenh that bai!");
-    // Cau hinh la tin retained: broker gui lai ban moi nhat ngay khi subscribe
-    if (mqttClient.subscribe(MQTT_TOPIC_CONFIG, 1))
-      Serial.printf("Da subscribe %s\n", MQTT_TOPIC_CONFIG);
-    else
-      Serial.println("[LOI] Subscribe topic cau hinh that bai!");
-    return true;
+    case MQTT_EVENT_CONNECTED:
+      mqttConnectedAt = millis();
+      mqttConnectCount++;
+      mqttConnected = true;
+      // Toi day: DNS + TLS (Cloudflare) + WebSocket + dang nhap broker deu OK
+      Serial.printf("MQTT ket noi thanh cong! (lan %lu, broker chap nhan tai khoan %s)\n",
+        (unsigned long)mqttConnectCount, MQTT_USERNAME);
+      // Clean session: subscription mat sau moi lan ket noi lai -> dang ky lai.
+      // Cau hinh la tin retained: broker gui lai ban moi nhat ngay khi subscribe.
+      if (esp_mqtt_client_subscribe(mqttClient, MQTT_TOPIC_COMMANDS, 1) < 0)
+        Serial.println("[LOI] Subscribe topic lenh that bai!");
+      if (esp_mqtt_client_subscribe(mqttClient, MQTT_TOPIC_CONFIG, 1) < 0)
+        Serial.println("[LOI] Subscribe topic cau hinh that bai!");
+      break;
+
+    case MQTT_EVENT_DISCONNECTED:
+      if (mqttConnected)
+        Serial.printf("[MQTT] Mat ket noi broker sau %lus, dang thu lai...\n",
+          (millis() - mqttConnectedAt) / 1000UL);
+      mqttConnected = false;
+      break;
+
+    case MQTT_EVENT_PUBLISHED:
+      // Broker da nhan tin QoS 1 (qua Cloudflare). Luu y: MQTT 3.1.1 van xac
+      // nhan ca tin bi ACL chan, nen "OK" o day chua chac server da nhan duoc
+      // — xem canh bao cau hinh phong trong checkMqttConfigReceived().
+      mqttAckedCount++;
+      Serial.printf("[MQTT OK #%d] Broker da nhan\n", event->msg_id);
+      break;
+
+    case MQTT_EVENT_ERROR:
+      // Broker bat buoc dang nhap. Ma tu choi 5 = sai username/password; o
+      // che do tunnel cung la khi username khong duoc cap cho DEVICE_ID nay.
+      if (event->error_handle->error_type == MQTT_ERROR_TYPE_CONNECTION_REFUSED)
+        Serial.printf("[LOI] Broker tu choi ket noi, ma: %d\n",
+          (int)event->error_handle->connect_return_code);
+      else if (event->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT)
+        Serial.printf("[LOI] Khong toi duoc broker (tls: 0x%x, errno: %d)\n",
+          (unsigned)event->error_handle->esp_tls_last_esp_err,
+          event->error_handle->esp_transport_sock_errno);
+      break;
+
+    case MQTT_EVENT_DATA: {
+      MqttInboxItem item;
+      int topicLen = event->topic_len;
+      if (topicLen == (int)strlen(MQTT_TOPIC_COMMANDS) &&
+          strncmp(event->topic, MQTT_TOPIC_COMMANDS, topicLen) == 0)
+        item.topic = INBOX_COMMANDS;
+      else if (topicLen == (int)strlen(MQTT_TOPIC_CONFIG) &&
+               strncmp(event->topic, MQTT_TOPIC_CONFIG, topicLen) == 0)
+        item.topic = INBOX_CONFIG;
+      else
+        break;
+      // Tin bi chia manh (lon hon bo dem esp-mqtt) hoac qua MQTT_MSG_MAX -> bo
+      if (event->data_len != event->total_data_len || event->data_len > MQTT_MSG_MAX) {
+        Serial.printf("[MQTT] Bo qua tin qua lon (%d byte)\n", event->total_data_len);
+        break;
+      }
+      item.length = event->data_len;
+      memcpy(item.payload, event->data, event->data_len);
+      if (xQueueSend(mqttInbox, &item, 0) != pdTRUE)
+        Serial.println("[MQTT] Hang doi day, bo tin (server se gui lai lenh)");
+      break;
+    }
+
+    default:
+      break;
   }
-  Serial.printf("[LOI] MQTT that bai, ma: %d. Thu lai sau 5s...\n", mqttClient.state());
-  return false;
+}
+
+void setupMqtt() {
+  mqttInbox = xQueueCreate(MQTT_RX_QUEUE_LEN, sizeof(MqttInboxItem));
+
+  esp_mqtt_client_config_t cfg = {};
+  cfg.broker.address.uri = MQTT_URI;
+  // mqtts:// va wss:// kiem tra chung chi broker: mac dinh bang bo CA co san
+  // trong core (Cloudflare doi CA thuong xuyen, khong nen ghim 1 CA); dinh
+  // nghia MQTT_CA_CERT trong config.h de ghim CA rieng.
+#ifdef MQTT_CA_CERT
+  cfg.broker.verification.certificate = MQTT_CA_CERT;
+#else
+  cfg.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
+#endif
+  cfg.credentials.client_id = MQTT_CLIENT_ID;
+  cfg.credentials.username  = MQTT_USERNAME;
+  cfg.credentials.authentication.password = MQTT_PASSWORD;
+  cfg.session.keepalive = MQTT_KEEPALIVE_S;
+  cfg.network.reconnect_timeout_ms = 5000;
+
+  Serial.printf("MQTT URI    : %s\n", MQTT_URI);
+  Serial.printf("MQTT user   : %s\n", MQTT_USERNAME);
+  Serial.printf("DEVICE_ID   : %s (client ID + topic devices/%s/...)\n", DEVICE_ID, DEVICE_ID);
+  // Che do tunnel/cloud: moi board 1 tai khoan, chi duoc dung topic cua dung
+  // ID cua no. Sai lech thi van ket noi duoc nhung broker bo moi tin, im lang.
+  if (strcmp(MQTT_USERNAME, "device") != 0 && strcmp(MQTT_USERNAME, DEVICE_ID) != 0)
+    Serial.printf("[CANH BAO] DEVICE_ID (%s) khac MQTT_USERNAME (%s): o che do tunnel, "
+                  "broker se bo moi tin cua board nay!\n", DEVICE_ID, MQTT_USERNAME);
+
+  mqttClient = esp_mqtt_client_init(&cfg);
+  esp_mqtt_client_register_event(mqttClient, MQTT_EVENT_ANY, onMqttEvent, nullptr);
+  esp_mqtt_client_start(mqttClient);
+}
+
+// Khong cho gui xong: task esp-mqtt gui ngam, loop() khong bi chan khi mang
+// cham (coi/quat van chay dung nhip). Tra ve msg_id (> 0 voi QoS 1, dung de
+// doi chieu voi log "[MQTT OK #id]"), 0 voi QoS 0, -1 neu khong gui duoc.
+int mqttPublish(const char* topic, const char* payload, int qos) {
+  if (!mqttConnected) return -1;
+  int id = esp_mqtt_client_enqueue(mqttClient, topic, payload, 0, qos, 0, true);
+  if (id >= 0) mqttSentCount++;
+  return id;
+}
+
+// Broker gui ngay cau hinh phong (retained) khi board subscribe. Ket noi duoc
+// ma lau khong nhan duoc -> gan nhu chac chan ACL dang chan topic cua board.
+void checkMqttConfigReceived() {
+  uint32_t session = mqttConnectCount;
+  if (!mqttConnected || session == mqttConfigSession || session == mqttHintSession) return;
+  if (millis() - mqttConnectedAt < MQTT_CONFIG_HINT_MS) return;
+  mqttHintSession = session;
+  Serial.printf("[CANH BAO] Da ket noi %lus nhung chua nhan cau hinh phong tu server.\n"
+                "  -> Kiem tra DEVICE_ID (%s) trung tai khoan MQTT (%s) va thiet bi da duoc\n"
+                "     dang ky + gan phong tren web. Sai tai khoan: broker bo tin, server khong nhan.\n",
+    MQTT_CONFIG_HINT_MS / 1000UL, DEVICE_ID, MQTT_USERNAME);
 }
 
 /*
@@ -290,7 +446,10 @@ void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFaul
     return;
   }
 
-  if (!mqttClient.connected() && !connectMQTT()) return;
+  if (!mqttConnected) {   // esp-mqtt tu ket noi lai; mau nay bo qua
+    Serial.println("[MQTT] Chua ket noi broker, bo qua mau nay");
+    return;
+  }
 
   StaticJsonDocument<640> doc;
 
@@ -327,10 +486,13 @@ void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFaul
   char payload[640];
   serializeJson(doc, payload);
 
-  if (mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload))
-    Serial.printf("[MQTT TX] %s\n", payload);
+  // QoS 1: broker xac nhan tung tin (log "[MQTT OK #id]"); server chong trung
+  // theo (deviceId, ts) nen tin gui lai khong bi luu 2 lan.
+  int id = mqttPublish(MQTT_TOPIC_TELEMETRY, payload, 1);
+  if (id > 0)
+    Serial.printf("[MQTT TX #%d] %s\n", id, payload);
   else
-    Serial.println("[MQTT] GUI THAT BAI!");
+    Serial.println("[MQTT] GUI THAT BAI! (hang gui day hoac vua mat ket noi)");
 }
 
 // ======================== LENH DIEU KHIEN ========================
@@ -423,8 +585,9 @@ void publishAck(const char* id, const char* error) {
   if (error) doc["error"] = error;
   char payload[160];
   serializeJson(doc, payload);
-  if (mqttClient.publish(MQTT_TOPIC_ACK, payload))
-    Serial.printf("[MQTT ACK] %s\n", payload);
+  int msgId = mqttPublish(MQTT_TOPIC_ACK, payload, 1);
+  if (msgId > 0)
+    Serial.printf("[MQTT ACK #%d] %s\n", msgId, payload);
   else
     Serial.println("[MQTT] GUI ACK THAT BAI! (server se gui lai lenh)");
 }
@@ -531,12 +694,15 @@ void onConfigMessage(byte* payload, unsigned int length) {
   printConfig();
 }
 
-void onMqttMessage(char* topic, byte* payload, unsigned int length) {
-  if (strcmp(topic, MQTT_TOPIC_CONFIG) == 0) {
+void onMqttMessage(MqttInboxTopic topic, byte* payload, unsigned int length) {
+  if (topic == INBOX_CONFIG) {
+    // Nhan duoc tin tu server = chieu server -> board qua Cloudflare thong
+    if (mqttConfigSession != mqttConnectCount)
+      Serial.printf("[MQTT RX] Nhan cau hinh phong tu server (%u byte) -> 2 chieu thong\n", length);
+    mqttConfigSession = mqttConnectCount;
     onConfigMessage(payload, length);
     return;
   }
-  if (strcmp(topic, MQTT_TOPIC_COMMANDS) != 0) return;
 
   StaticJsonDocument<256> doc;
   if (deserializeJson(doc, (const byte*)payload, length)) {
@@ -548,23 +714,26 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     Serial.println("[LENH] Bo qua: thieu id");   // khong co id thi khong ack duoc
     return;
   }
-  // Chep id ra truoc khi publish: bo dem cua PubSubClient dung chung cho
-  // tin nhan den va di.
-  char cmdId[sizeof(RecentCommand::id)];
-  strlcpy(cmdId, id, sizeof(cmdId));
 
   // Lenh da chay roi (server gui lai vi chua nhan ack) -> chi ack lai
-  int seen = findRecentCommand(cmdId);
+  int seen = findRecentCommand(id);
   if (seen >= 0) {
-    publishAck(cmdId, recentCommands[seen].error);
+    publishAck(id, recentCommands[seen].error);
     return;
   }
 
   const char* channel = doc["channel"] | "";
   const char* action  = doc["action"]  | "";
   const char* error   = executeCommand(channel, action, doc["expiresAt"]);
-  rememberCommand(cmdId, error);
-  publishAck(cmdId, error);
+  rememberCommand(id, error);
+  publishAck(id, error);
+}
+
+// Xu ly lenh/cau hinh da nhan, tren loop() (cung luong voi logic quat/coi)
+void drainMqttInbox() {
+  MqttInboxItem item;
+  while (xQueueReceive(mqttInbox, &item, 0) == pdTRUE)
+    onMqttMessage(item.topic, item.payload, item.length);
 }
 
 // ======================== KIEM TRA KHOI DONG ========================
@@ -773,6 +942,11 @@ void printStatus(float t, float h, float dcVolt) {
     dcVolt, fanNominalVoltage > 0 ? fanNominalVoltage : 0.0f, voltSt);
   Serial.printf("Coi           : %s%s\n", alarmActive ? "DANG KEU" : "IM",
     buzzerOverride.active ? " [LENH]" : "");
+  // Gui > nhan lau dai = tin bi mat tren duong toi broker; con nhan du ma
+  // web khong co du lieu thi xem canh bao cau hinh phong (ACL).
+  Serial.printf("MQTT          : %s | WiFi %d dBm | da gui %lu, broker nhan %lu\n",
+    mqttConnected ? "DA KET NOI" : "MAT KET NOI", WiFi.RSSI(),
+    (unsigned long)mqttSentCount, (unsigned long)mqttAckedCount);
 }
 
 // Ly do lan khoi dong nay. BROWNOUT = nguon tut ap (thuong do quat/relay
@@ -798,7 +972,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial.println("\n============================================");
-  Serial.println("  ESP32 KHO LANH  -  MQTT Telemetry v1.3");
+  Serial.println("  ESP32 KHO LANH  -  MQTT Telemetry v1.4");
   Serial.println("============================================");
   Serial.printf("Ly do khoi dong: %s\n", resetReasonText());
   if (esp_reset_reason() == ESP_RST_BROWNOUT)
@@ -823,12 +997,7 @@ void setup() {
   Serial.println("\n[KET NOI MANG & MQTT]");
   connectWiFi();
   setupTime();
-  mqttClient.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
-  mqttClient.setKeepAlive(30);
-  // Mac dinh 256 byte (ca topic + header); telemetry ~340 byte vuot gioi han
-  mqttClient.setBufferSize(768);
-  mqttClient.setCallback(onMqttMessage);
-  connectMQTT();
+  setupMqtt();
 
   Serial.printf("\nTopic MQTT : %s\n", MQTT_TOPIC_TELEMETRY);
   Serial.printf("Topic lenh : %s\n", MQTT_TOPIC_COMMANDS);
@@ -840,12 +1009,13 @@ void setup() {
 }
 
 void loop() {
-  // Giu ket noi MQTT song; tu dong thu lai neu mat ket noi
-  if (!mqttClient.connected() && millis() - lastMqttRetry > 5000) {
-    lastMqttRetry = millis();
-    connectMQTT();
+  // esp-mqtt tu ket noi lai broker; chi can giu WiFi song
+  if (WiFi.status() != WL_CONNECTED && millis() - lastWifiRetry > 5000) {
+    lastWifiRetry = millis();
+    connectWiFi();
   }
-  mqttClient.loop();
+  drainMqttInbox();
+  checkMqttConfigReceived();
 
   updateDoor();
 

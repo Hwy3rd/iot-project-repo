@@ -1,11 +1,12 @@
 # Use after docker-compose.yml OR docker-compose.production.yml, without the
-# EMQX overlay. Pass .env.tunnel-mqtt after the datastore/application .env.
-# Requires Docker Compose >= 2.24.4.
+# EMQX overlay. Reads the root .env: the backend keeps the local broker's
+# MQTT_USERNAME/MQTT_PASSWORD, the primary device account comes from
+# MQTT_TUNNEL_DEVICE_*. Requires Docker Compose >= 2.24.4.
 x-tunnel-mqtt: &tunnel-mqtt
   environment:
     MQTT_URL: mqtt://mosquitto:1883
-    MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env.tunnel-mqtt}
-    MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env.tunnel-mqtt}
+    MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env}
+    MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env}
     # A CA inherited from an EMQX env_file must not reach the TCP connection.
     MQTT_CA_FILE: ""
 
@@ -23,11 +24,13 @@ services:
     ports: !reset []
     expose: ["1883", "8083"]
     environment:
-      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env.tunnel-mqtt}
-      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env.tunnel-mqtt}
-      MQTT_DEVICE_USERNAME: ${MQTT_DEVICE_USERNAME:?set MQTT_DEVICE_USERNAME in .env.tunnel-mqtt}
-      MQTT_DEVICE_PASSWORD: ${MQTT_DEVICE_PASSWORD:?set MQTT_DEVICE_PASSWORD in .env.tunnel-mqtt}
-      MQTT_DEVICE_ID: ${MQTT_DEVICE_ID:?set MQTT_DEVICE_ID in .env.tunnel-mqtt}
+      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env}
+      # Overrides the shared local-mode device account (mosquitto/
+      # tunnel-entrypoint.sh gives this one only its own device's topics).
+      MQTT_DEVICE_USERNAME: ${MQTT_TUNNEL_DEVICE_USERNAME:?set MQTT_TUNNEL_DEVICE_USERNAME in .env}
+      MQTT_DEVICE_PASSWORD: ${MQTT_TUNNEL_DEVICE_PASSWORD:?set MQTT_TUNNEL_DEVICE_PASSWORD in .env}
+      MQTT_DEVICE_ID: ${MQTT_TUNNEL_DEVICE_ID:?set MQTT_TUNNEL_DEVICE_ID in .env}
     volumes:
       - ./mosquitto/mosquitto.websocket.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/tunnel-entrypoint.sh:/mosquitto-tunnel-entrypoint.sh:ro

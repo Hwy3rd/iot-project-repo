@@ -22,35 +22,35 @@ Cloudflare cung cấp WSS cho thiết bị bên ngoài và chuyển tiếp qua T
 
 ## 1. Chuẩn bị cấu hình trên máy chủ
 
-Giữ nguyên `.env` gốc đang dùng cho MySQL, MongoDB, Redis, MinIO, JWT và Tunnel.
-Không thay các secret của hệ thống đang chạy bằng giá trị mẫu. Tạo file riêng:
-
-```powershell
-Copy-Item .env.tunnel-mqtt.example .env.tunnel-mqtt
-```
-
-Chỉ copy khi file đích chưa có. Điền các mật khẩu Mosquitto trong file mới:
+Mọi cấu hình MQTT nằm chung trong `.env` gốc (cùng file với MySQL, MongoDB, Redis,
+MinIO, JWT và Tunnel), không có file env riêng cho từng chế độ. Không thay các
+secret của hệ thống đang chạy bằng giá trị mẫu. Thêm vào `.env` tài khoản của node
+chính (xem mục MQTT trong `.env.example`):
 
 ```dotenv
-MQTT_USERNAME=iot-backend
-MQTT_PASSWORD=<mat_khau_backend_tren_Mosquitto>
-MQTT_DEVICE_USERNAME=esp32-cold-room-01
-MQTT_DEVICE_PASSWORD=<mat_khau_node_tren_Mosquitto>
-MQTT_DEVICE_ID=esp32-cold-room-01
+MQTT_TUNNEL_DEVICE_ID=esp32-coldroom-01
+MQTT_TUNNEL_DEVICE_USERNAME=esp32-coldroom-01
+MQTT_TUNNEL_DEVICE_PASSWORD=<mat_khau_node_tren_Mosquitto>
 ```
+
+`MQTT_TUNNEL_DEVICE_ID` phải trùng `unique_id` của thiết bị trên server và
+`DEVICE_ID` trong `config.h`. Backend dùng lại `MQTT_USERNAME`/`MQTT_PASSWORD` đã có
+trong `.env` (cùng tài khoản với chế độ local). Overlay tunnel thay tài khoản thiết
+bị dùng chung `MQTT_DEVICE_*` bằng tài khoản riêng này; quay lại chế độ local thì
+`MQTT_DEVICE_*` lại có hiệu lực, không cần sửa `.env`.
 
 Đây là tài khoản do Mosquitto tự tạo khi khởi động, không phải kiểm tra đăng nhập
 với EMQX. Username/device ID chỉ dùng chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.
 Mật khẩu phải được thay khỏi placeholder và không chứa xuống dòng. Với ký tự `$`
 trong file dotenv, dùng dấu nháy đơn theo quy tắc nội suy của Docker Compose.
 
-App/worker trong overlay luôn dùng MQTT nội bộ và `MQTT_CA_FILE` rỗng, ngay cả khi
-`env_file` của ứng dụng trước đó có CA cho EMQX. Không nạp đồng thời overlay cloud
-và overlay tunnel. `MQTT_PUBLIC_URL` chỉ ghi địa chỉ dự kiến, không tự tạo route/DNS.
+App/worker trong overlay luôn dùng MQTT nội bộ và `MQTT_CA_FILE` rỗng. Không nạp
+đồng thời overlay cloud và overlay tunnel. Thiết bị kết nối tới
+`wss://mqtt.<domain>/mqtt`; hostname này phải được tạo thủ công trên Tunnel (mục 3).
 
 ### Thêm nhiều node
 
-Node chính lấy từ `.env.tunnel-mqtt`. Có thể tạo thêm file riêng
+Node chính lấy từ `MQTT_TUNNEL_DEVICE_*` trong `.env`. Có thể tạo thêm file riêng
 `mosquitto/tunnel-auth/devices.txt` theo `devices.example`, mỗi dòng:
 
 ```text
@@ -75,8 +75,8 @@ Không chạy lại `init.sh` để đổi broker vì script đó có bước se
 Lấy mã của nhánh `feat/mqtt-cloudflare-tunnel` về repository trên máy chủ trước
 khi chạy các lệnh bên dưới. Việc checkout mã mới rồi chỉ `docker restart` container
 cũ không đổi file config/entrypoint đang mount: cần dùng `up` để tạo lại broker
-với overlay tunnel. `.env.tunnel-mqtt` chứa thông tin riêng của máy chủ và không
-được cung cấp sẵn qua Git.
+với overlay tunnel. Các biến `MQTT_TUNNEL_DEVICE_*` trong `.env` chứa thông tin
+riêng của máy chủ và không được cung cấp sẵn qua Git.
 
 Với môi trường dùng `docker-compose.production.yml`, trong Bash:
 
@@ -95,9 +95,9 @@ cần `up`/tạo lại container, không chỉ `restart`. Sau khi chỉnh riêng
 Lệnh tương đương cho dev stack, trong PowerShell, khi đã chuẩn bị `.env`:
 
 ```powershell
-docker compose --env-file .env --env-file .env.tunnel-mqtt -f docker-compose.yml -f docker-compose.tunnel-mqtt.yml up -d --no-deps mosquitto
-docker compose --env-file .env --env-file .env.tunnel-mqtt -f docker-compose.yml -f docker-compose.tunnel-mqtt.yml up -d --build --no-deps app worker
-docker compose --env-file .env --env-file .env.tunnel-mqtt -f docker-compose.yml -f docker-compose.tunnel-mqtt.yml up -d --no-deps cloudflared
+docker compose -f docker-compose.yml -f docker-compose.tunnel-mqtt.yml up -d --no-deps mosquitto
+docker compose -f docker-compose.yml -f docker-compose.tunnel-mqtt.yml up -d --build --no-deps app worker
+docker compose -f docker-compose.yml -f docker-compose.tunnel-mqtt.yml up -d --no-deps cloudflared
 ```
 
 Overlay cung cấp dịch vụ cloudflared cho dev stack và giữ các dependency app/MinIO
@@ -178,7 +178,8 @@ API biểu đồ, WebSocket website và config/ack về đúng node. Tiếp tụ
 ở hai phòng/kho để xác nhận phân loại và quyền truy cập độc lập.
 
 Chuyển broker không tự bổ sung hàng đợi gửi bù khi node mất Internet hoặc backend
-ngừng nhận. Giữ `.env.cloud-mqtt` để quay lại EMQX bằng chế độ `cloud` nếu cần.
+ngừng nhận. Giữ các biến `MQTT_CLOUD_*` trong `.env` để quay lại EMQX bằng chế độ
+`cloud` nếu cần.
 
 ## Tham khảo
 

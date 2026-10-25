@@ -15,13 +15,14 @@ Code nhúng cho vi điều khiển **ESP32** thực hiện giám sát kho lạnh
 
 ## Thư viện cần cài đặt
 
+Board: **Arduino-ESP32 core 3.x** (Tools > Board > Boards Manager > `esp32` by Espressif). Biên dịch bằng core 2.x sẽ báo lỗi ngay. MQTT dùng **esp-mqtt** có sẵn trong core (hỗ trợ `mqtt://`, `mqtts://`, `ws://`, `wss://`), không cần cài thư viện MQTT riêng.
+
 Mở Arduino IDE → **Tools > Manage Libraries**, tìm và cài các thư viện sau:
 
 | Thư viện | Tác giả | Chức năng |
 |----------|---------|-----------|
 | DHT sensor library | Adafruit | Đọc dữ liệu DHT11 |
 | Adafruit Unified Sensor | Adafruit | Phụ thuộc của DHT |
-| PubSubClient | Nick O'Leary | Giao thức MQTT |
 | ArduinoJson | Benoit Blanchon | Tạo JSON payload |
 
 ## Cấu hình trước khi nạp code
@@ -37,8 +38,9 @@ Nếu thiếu `config.h`, biên dịch sẽ báo lỗi kèm hướng dẫn.
 | Hằng số | Mô tả |
 |---------|-------|
 | `WIFI_SSID` / `WIFI_PASSWORD` | WiFi **2.4 GHz**, cần có Internet để đồng bộ giờ NTP |
-| `MQTT_BROKER_HOST` / `MQTT_BROKER_PORT` | IP LAN của máy chạy Docker (Windows: `ipconfig`) và cổng `1883` |
-| `MQTT_USERNAME` / `MQTT_PASSWORD` | Tài khoản **thiết bị** của broker: `MQTT_DEVICE_USERNAME` / `MQTT_DEVICE_PASSWORD` trong `.env` gốc của repo (không dùng tài khoản backend) |
+| `MQTT_URI` | Địa chỉ broker theo chế độ server (`MQTT_MODE`): `mqtt://<IP LAN>:1883` (local, cùng mạng LAN), `wss://mqtt.<domain>:443/mqtt` (tunnel, qua Cloudflare, WiFi nào cũng được), `mqtts://<emqx>:8883` (cloud). `config.h` cũ chỉ có `MQTT_BROKER_HOST`/`MQTT_BROKER_PORT` vẫn biên dịch được, firmware tự ghép thành `mqtt://host:port` |
+| `MQTT_USERNAME` / `MQTT_PASSWORD` | Tài khoản **thiết bị** của broker (không dùng tài khoản backend). Local: tài khoản dùng chung `MQTT_DEVICE_USERNAME` / `MQTT_DEVICE_PASSWORD` trong `.env` gốc. Tunnel: tài khoản riêng của board, `MQTT_TUNNEL_DEVICE_USERNAME` / `MQTT_TUNNEL_DEVICE_PASSWORD` (board thêm: `mosquitto/tunnel-auth/devices.txt`). Cloud: tài khoản riêng trên EMQX |
+| `MQTT_CA_CERT` | Tùy chọn. `mqtts://`/`wss://` mặc định kiểm tra chứng chỉ bằng bộ CA có sẵn trong core (Cloudflare đổi CA thường xuyên, không nên ghim). Chỉ định nghĩa khi cần ghim một CA riêng (chuỗi PEM) |
 | `DEVICE_ID` | ID duy nhất của ESP32, phải khớp `unique_id` trên server. Dùng làm MQTT client ID và các topic `devices/<DEVICE_ID>/...`. Broker chỉ cho thiết bị đọc lệnh, đọc ngưỡng phòng và gửi ack trên topic có đúng client ID của nó |
 | `NTP_SERVER_1` / `NTP_SERVER_2` | Máy chủ NTP (mặc định `pool.ntp.org`, `time.google.com`) |
 
@@ -48,14 +50,14 @@ Nếu thiếu `config.h`, biên dịch sẽ báo lỗi kèm hướng dẫn.
 
 | Thông số | Giá trị |
 |----------|---------|
-| Broker | Eclipse Mosquitto chạy trong Docker |
-| Host | IP máy tính chạy Docker (cùng mạng LAN) |
-| Port | `1883` |
+| Broker | Eclipse Mosquitto chạy trong Docker (hoặc EMQX Cloud ở chế độ cloud) |
+| Kết nối | `MQTT_URI`: TCP `1883` trong LAN, hoặc WebSocket qua TLS `443` tới Cloudflare Tunnel |
+| Keepalive | 30 giây (`MQTT_KEEPALIVE_S`); Cloudflare cắt WebSocket im lặng khoảng 100 giây. Mất kết nối thì esp-mqtt tự kết nối lại sau 5 giây |
 | Topic gửi dữ liệu | `devices/{unique_id}/telemetry` |
 | Topic nhận lệnh | `devices/{unique_id}/commands` (subscribe QoS 1, đăng ký lại sau mỗi lần kết nối lại) |
 | Topic gửi ack | `devices/{unique_id}/ack` |
 | Topic nhận ngưỡng phòng | `devices/{unique_id}/config` (retained, subscribe QoS 1; xem mục Ngưỡng cảnh báo của phòng) |
-| Xác thực | Bắt buộc username/password (`allow_anonymous false`) — dùng tài khoản thiết bị `MQTT_DEVICE_*`, **không** dùng tài khoản backend |
+| Xác thực | Bắt buộc username/password (`allow_anonymous false`) — dùng tài khoản thiết bị (xem `MQTT_USERNAME` ở trên), **không** dùng tài khoản backend |
 | Chu kỳ gửi | Mỗi 5 giây (`REPORT_INTERVAL_MS`), và gửi ngay khi cửa, quạt, còi hoặc lỗi nguồn quạt đổi trạng thái (cách nhau tối thiểu `EVENT_MIN_GAP_MS` = 300 ms) |
 
 ## Định dạng JSON payload
@@ -96,7 +98,7 @@ Mỗi 5 giây, và ngay khi cửa/quạt/còi đổi trạng thái, ESP32 gửi 
 | `buzzerManualSec` | integer | Như trên, cho còi |
 | `configVersion` | string hoặc `null` | `version` của ngưỡng phòng thiết bị đang dùng; `null` = đang dùng ngưỡng dự phòng. Server so với phòng hiện tại và lưu `configSynced` |
 
-Từ `humidity` trở xuống là tùy chọn với server (firmware v1.1+; `fanRelayOn`, `fanFault`, `fanManualSec`, `buzzerManualSec`, `configVersion` từ v1.3): thiết bị cũ hoặc simulator không gửi thì server lưu `null`. Payload khoảng 340 byte, nên firmware tăng bộ đệm PubSubClient lên 768 byte (`setBufferSize`).
+Từ `humidity` trở xuống là tùy chọn với server (firmware v1.1+; `fanRelayOn`, `fanFault`, `fanManualSec`, `buzzerManualSec`, `configVersion` từ v1.3): thiết bị cũ hoặc simulator không gửi thì server lưu `null`. Payload khoảng 340 byte, vừa bộ đệm mặc định 1024 byte của esp-mqtt.
 
 ## Lệnh điều khiển
 
@@ -155,7 +157,7 @@ Còi tại chỗ báo theo ngưỡng của phòng mà thiết bị được gắ
 ESP32 (publish)
     │
     ▼
-Mosquitto Broker  (Docker, port 1883)
+Mosquitto Broker  (Docker; 1883 trong LAN hoặc WSS qua Cloudflare Tunnel)
     │
     ▼
 NestJS Server  (subscribe topic: devices/+/telemetry)

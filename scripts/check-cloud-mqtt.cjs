@@ -19,17 +19,23 @@ const { MQTT_CLIENT } = require("../server/src/libs/mqtt/mqtt.constant");
 const {
   createMqttConnection,
 } = require("../server/src/libs/mqtt/mqtt-options");
-const values = dep("dotenv").parse(
-  fs.readFileSync(path.join(root, ".env.cloud-mqtt")),
-);
-if (values.MQTT_CA_FILE) {
-  values.MQTT_CA_FILE = path.resolve(root, "server", values.MQTT_CA_FILE);
-}
+// The root .env keeps the cloud settings under MQTT_CLOUD_*; map them onto
+// the names createMqttConnection() reads. Same CA the cloud overlay mounts.
+const env = dep("dotenv").parse(fs.readFileSync(path.join(root, ".env")));
+const values = {
+  MQTT_URL: env.MQTT_CLOUD_URL,
+  MQTT_USERNAME: env.MQTT_CLOUD_USERNAME,
+  MQTT_PASSWORD: env.MQTT_CLOUD_PASSWORD,
+  MQTT_DEVICE_USERNAME: env.MQTT_CLOUD_DEVICE_USERNAME,
+  MQTT_DEVICE_PASSWORD: env.MQTT_CLOUD_DEVICE_PASSWORD,
+  MQTT_DEVICE_ID: env.MQTT_CLOUD_DEVICE_ID,
+  MQTT_CA_FILE: path.join(root, "certs/mqtt/emqxsl-ca.crt"),
+};
 if (!values.MQTT_URL?.startsWith("mqtts://"))
-  throw new Error("Expected a mqtts cloud URL");
+  throw new Error("Expected a mqtts URL in MQTT_CLOUD_URL");
 const deviceId = values.MQTT_DEVICE_ID;
 if (!deviceId || !/^[A-Za-z0-9_.-]+$/.test(deviceId))
-  throw new Error("Invalid MQTT_DEVICE_ID");
+  throw new Error("Invalid MQTT_CLOUD_DEVICE_ID");
 for (const key of [
   "MQTT_USERNAME",
   "MQTT_PASSWORD",
@@ -37,7 +43,7 @@ for (const key of [
   "MQTT_DEVICE_PASSWORD",
 ]) {
   if (!values[key] || values[key].startsWith("<"))
-    throw new Error("Missing " + key);
+    throw new Error("Missing " + key.replace("MQTT_", "MQTT_CLOUD_"));
 }
 
 async function connected(client) {
