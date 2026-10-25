@@ -1,11 +1,12 @@
 # Layer on docker-compose.yml or docker-compose.production.yml.
-# Pass --env-file .env.cloud-mqtt AFTER the base environment file.
+# Reads MQTT_CLOUD_* from the root .env and hands them to app/worker as
+# MQTT_*, overriding the local-broker values the same .env holds.
 # Requires Docker Compose >= 2.24.4.
 x-cloud-mqtt: &cloud-mqtt
   environment:
-    MQTT_URL: ${MQTT_URL:?set MQTT_URL in .env.cloud-mqtt}
-    MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env.cloud-mqtt}
-    MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env.cloud-mqtt}
+    MQTT_URL: ${MQTT_CLOUD_URL:?set MQTT_CLOUD_URL in .env}
+    MQTT_USERNAME: ${MQTT_CLOUD_USERNAME:?set MQTT_CLOUD_USERNAME in .env}
+    MQTT_PASSWORD: ${MQTT_CLOUD_PASSWORD:?set MQTT_CLOUD_PASSWORD in .env}
     MQTT_CA_FILE: /app/certs/mqtt/emqxsl-ca.crt
   volumes:
     - ./certs/mqtt:/app/certs/mqtt:ro

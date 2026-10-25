@@ -162,23 +162,22 @@ Node ESP32 hiện tại dùng Wi-Fi **2,4 GHz**. SSID phân biệt chữ hoa/th�
 
 ## 6. Cấu hình backend dùng EMQX
 
-### 6.1. File cấu hình MQTT riêng
+### 6.1. Cấu hình MQTT trong `.env`
 
-Tạo hoặc cập nhật `.env.cloud-mqtt` ở thư mục gốc repository theo `.env.cloud-mqtt.example`:
+Cấu hình EMQX nằm chung trong `.env` ở thư mục gốc repository (xem mục MQTT của `.env.example`), với tiền tố `MQTT_CLOUD_` để không đè cấu hình broker local:
 
 ```dotenv
-MQTT_URL=mqtts://n0c006e0.ala.asia-southeast1.emqxsl.com:8883
-MQTT_USERNAME=iot-backend
-MQTT_PASSWORD=MAT_KHAU_MQTT_BACKEND
-MQTT_CA_FILE=../certs/mqtt/emqxsl-ca.crt
+MQTT_CLOUD_URL=mqtts://n0c006e0.ala.asia-southeast1.emqxsl.com:8883
+MQTT_CLOUD_USERNAME=iot-backend
+MQTT_CLOUD_PASSWORD=MAT_KHAU_MQTT_BACKEND
 
 # Các biến dưới dùng cho script kiểm thử tài khoản thiết bị.
-MQTT_DEVICE_USERNAME=esp32-cold-room-01
-MQTT_DEVICE_PASSWORD=MAT_KHAU_MQTT_THIET_BI
-MQTT_DEVICE_ID=esp32-cold-room-01
+MQTT_CLOUD_DEVICE_USERNAME=esp32-coldroom-01
+MQTT_CLOUD_DEVICE_PASSWORD=MAT_KHAU_MQTT_THIET_BI
+MQTT_CLOUD_DEVICE_ID=esp32-coldroom-01
 ```
 
-Đường dẫn CA trên dùng khi backend chạy từ thư mục `server/`. Trong Docker, overlay đổi thành `/app/certs/mqtt/emqxsl-ca.crt` và gắn chứng chỉ chỉ đọc vào container.
+Overlay cloud đưa các giá trị này vào app/worker dưới tên `MQTT_URL`/`MQTT_USERNAME`/`MQTT_PASSWORD`, và gắn CA `certs/mqtt/emqxsl-ca.crt` chỉ đọc vào container tại `/app/certs/mqtt/emqxsl-ca.crt`.
 
 ### 6.2. Áp dụng vào Docker
 
@@ -187,7 +186,7 @@ Sử dụng file Compose của môi trường đó cùng `docker-compose.cloud-m
 Với stack local đã có `.env` chứa đúng thông tin datastore/secrets và các dịch vụ phụ thuộc đang chạy, lệnh mẫu từ gốc repository là:
 
 ```powershell
-docker compose --env-file .env --env-file .env.cloud-mqtt -f docker-compose.yml -f docker-compose.cloud-mqtt.yml up -d --build --no-deps app worker
+docker compose -f docker-compose.yml -f docker-compose.cloud-mqtt.yml up -d --build --no-deps app worker
 ```
 
 Lệnh mẫu này yêu cầu `.env` đã được chuẩn bị theo cấu hình đang dùng. Giữ nguyên tài khoản MySQL, MongoDB, Redis, MinIO, các secret ứng dụng và cổng backend; không thay bằng giá trị mẫu khi chuyển broker.
@@ -209,10 +208,10 @@ Không chạy lại `init.sh` để chỉ chuyển broker vì script đó có b�
 
 ### 6.3. Backend chạy trực tiếp trên máy
 
-Nếu chọn chạy backend ngoài Docker, giữ cấu hình datastore/secrets trong `server/.env`, rồi chạy từ `server/`:
+Nếu chọn chạy backend ngoài Docker, giữ cấu hình datastore/secrets trong `server/.env` và đặt MQTT trong file đó trỏ tới EMQX (`MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD` của backend, `MQTT_CA_FILE=../certs/mqtt/emqxsl-ca.crt` — đường dẫn tương đối với `server/`), rồi chạy từ `server/`:
 
 ```powershell
-node --env-file=.env --env-file=../.env.cloud-mqtt node_modules/@nestjs/cli/bin/nest.js start --watch
+pnpm run start:dev
 ```
 
 Đây là phương án thay thế cho chạy app backend trong Docker. Đảm bảo frontend trỏ tới đúng backend đang sử dụng.
@@ -305,7 +304,7 @@ Kết nối cloud hiện tại không bổ sung cơ chế lưu đệm và gửi 
 Đường dẫn dưới đây tính từ thư mục `docs/` chứa bản hướng dẫn trên GitHub:
 
 - [Hướng dẫn trong repository](../docs/CLOUD_MQTT_SETUP.md)
-- [Mẫu cấu hình backend cloud](../.env.cloud-mqtt.example)
+- [Mẫu cấu hình (mục MQTT)](../.env.example)
 - [Docker Compose cloud overlay](../docker-compose.cloud-mqtt.yml)
 - Mẫu cấu hình ESP32 cloud: `firmware/cold_room_monitor/config.cloud.example.h` (chỉ giữ ở local).
 - [Script kiểm tra MQTT](../scripts/check-cloud-mqtt.cjs)
@@ -313,4 +312,4 @@ Kết nối cloud hiện tại không bổ sung cơ chế lưu đệm và gửi 
 - [EMQX: tạo tài khoản MQTT](https://docs.emqx.com/en/cloud/latest/deployments/default_auth.html)
 - [EMQX: phân quyền topic](https://docs.emqx.com/en/cloud/latest/deployments/default_authz.html)
 
-Mật khẩu thực tế được giữ trong `.env.cloud-mqtt` và `firmware/cold_room_monitor/config.h` ở máy triển khai. Hai file này được Git bỏ qua; không đưa mật khẩu vào tài liệu chia sẻ.
+Mật khẩu thực tế được giữ trong `.env` (các biến `MQTT_CLOUD_*`) và `firmware/cold_room_monitor/config.h` ở máy triển khai. Hai file này được Git bỏ qua; không đưa mật khẩu vào tài liệu chia sẻ.

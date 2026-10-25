@@ -21,20 +21,21 @@ Chuyển broker không cung cấp bộ đệm telemetry khi backend hoặc Inter
 - MQTT TLS: `8883`
 - CA công khai: `certs/mqtt/emqxsl-ca.crt` (DigiCert Global Root G2).
 - Backend: tài khoản `iot-backend`.
-- ESP32 thử nghiệm: tài khoản và ID tạm `esp32-cold-room-01`.
+- ESP32 thử nghiệm: tài khoản và ID `esp32-coldroom-01`.
 
-Mật khẩu nằm trong `.env.cloud-mqtt` và firmware `config.h`, đều được gitignore.
+Mật khẩu nằm trong `.env` gốc (các biến `MQTT_CLOUD_*`) và firmware `config.h`, đều được gitignore.
 
 ## Chạy backend trong Docker
 
-Cần Docker Compose >= 2.24.4. Tạo `.env` theo `.env.example` cho các dịch vụ
-database/Redis/MinIO và `.env.cloud-mqtt` theo `.env.cloud-mqtt.example` cho MQTT.
-Giữ credentials datastore hiện có khi cập nhật server đang chạy.
+Cần Docker Compose >= 2.24.4. Tạo `.env` theo `.env.example`; cấu hình EMQX nằm
+chung trong file đó ở các biến `MQTT_CLOUD_URL`, `MQTT_CLOUD_USERNAME`,
+`MQTT_CLOUD_PASSWORD` (overlay cloud đưa chúng vào app/worker thay cho `MQTT_*`
+của broker local). Giữ credentials datastore hiện có khi cập nhật server đang chạy.
 
 Dev stack:
 
 ```bash
-docker compose --env-file .env --env-file .env.cloud-mqtt -f docker-compose.yml -f docker-compose.cloud-mqtt.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.cloud-mqtt.yml up -d --build
 ```
 
 Với hệ thống đã khởi tạo bằng `init.sh`:
@@ -53,14 +54,16 @@ trước đó vẫn cần được xử lý riêng khi chuyển đổi toàn b�
 
 ## Backend chạy trực tiếp trên máy
 
-Điền datastore/secrets hiện có vào `server/.env`, rồi chạy từ `server/`:
+Điền datastore/secrets hiện có vào `server/.env`, và đặt MQTT trong file đó trỏ tới
+EMQX: `MQTT_URL` = giá trị `MQTT_CLOUD_URL`, `MQTT_USERNAME`/`MQTT_PASSWORD` =
+tài khoản backend EMQX, `MQTT_CA_FILE=../certs/mqtt/emqxsl-ca.crt`. Rồi chạy từ
+`server/`:
 
 ```bash
-node --env-file=.env --env-file=../.env.cloud-mqtt node_modules/@nestjs/cli/bin/nest.js start --watch
+pnpm run start:dev
 ```
 
-`MQTT_CA_FILE` của file cloud là `../certs/mqtt/emqxsl-ca.crt`, tương đối
-với thư mục `server/`. Trong Docker, overlay đổi sang
+`MQTT_CA_FILE` tương đối với thư mục `server/`. Trong Docker, overlay đổi sang
 `/app/certs/mqtt/emqxsl-ca.crt`. Backend kiểm tra CA và xác minh hostname,
 không có tùy chọn tắt xác minh TLS. Để dùng broker LAN, chạy stack cơ sở
 hoặc `MQTT_MODE=local ./run.sh ...` và cấu hình firmware LAN.
