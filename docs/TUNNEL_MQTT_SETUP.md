@@ -1,5 +1,10 @@
 # MQTT qua Mosquitto và Cloudflare Tunnel
 
+> Phục hồi offline: backend được publish `devices/+/telemetry-ack`; mỗi tài khoản
+> thiết bị chỉ đọc ACK của đúng device ID đã provision, không được giả ACK hay
+> đổi client ID để đọc ACK của thiết bị khác. Restart broker sau khi nâng cấp ACL.
+> Xem [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md) về migration và bộ đệm ESP32.
+
 Nhánh `feat/mqtt-cloudflare-tunnel` chuẩn bị backend/broker cho phương án tự chạy
 Mosquitto. EMQX vẫn dùng được qua `MQTT_MODE=cloud`; chọn một chế độ khi vận hành.
 Tài liệu này không tự tạo hostname, sửa Cloudflare hay nạp firmware.

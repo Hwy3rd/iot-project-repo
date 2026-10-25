@@ -37,6 +37,7 @@ topic read devices/+/telemetry
 topic read devices/+/ack
 topic write devices/+/commands
 topic write devices/+/config
+topic write devices/+/telemetry-ack
 topic read \$SYS/#
 EOF
 
@@ -61,6 +62,7 @@ topic write devices/$device_id/telemetry
 topic write devices/$device_id/ack
 topic read devices/$device_id/commands
 topic read devices/$device_id/config
+topic read devices/$device_id/telemetry-ack
 EOF
 }
 
