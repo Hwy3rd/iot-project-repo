@@ -3,6 +3,8 @@
 # Root env for docker compose (Cloudflare Tunnel token)
 .env
 .env.cloud-mqtt
+.env.tunnel-mqtt
+mosquitto/tunnel-auth/devices.txt
 __pycache__/
 *.pyc
 

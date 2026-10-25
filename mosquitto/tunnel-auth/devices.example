@@ -1,0 +1,5 @@
+# Optional extra devices. Copy to devices.txt in this directory (gitignored).
+# Format: deviceId|username|password. Use LF line endings and a separate
+# username and password for each physical node. Do not repeat the primary
+# MQTT_DEVICE_ID/MQTT_DEVICE_USERNAME from .env.tunnel-mqtt.
+esp32-cold-room-02|esp32-cold-room-02|<DEVICE_02_PASSWORD>

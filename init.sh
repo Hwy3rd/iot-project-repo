@@ -9,6 +9,7 @@
 # Usage:
 #   ./init.sh
 #   MQTT_MODE=cloud ./init.sh   initialize with the external MQTT broker
+#   MQTT_MODE=tunnel ./init.sh  initialize with private MQTT/WebSocket + Tunnel
 #
 set -euo pipefail
 
