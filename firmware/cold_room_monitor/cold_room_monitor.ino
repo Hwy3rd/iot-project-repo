@@ -880,7 +880,7 @@ void handleFanAndAlarmLogic(float temp, bool doorClosed, float dcVolt) {
     relayInit = true;
   }
   lastRelayCommand = fanOn;
-  digitalWrite(PIN_FAN_RELAY, fanOn ? HIGH : LOW);
+  digitalWrite(PIN_FAN_RELAY, fanOn ? LOW : HIGH); // Relay Active LOW
 
   evaluateFanPower(fanOn, dcVolt);
 
@@ -982,7 +982,7 @@ void setup() {
   analogSetAttenuation(ADC_11db);
 
   pinMode(LIMIT_SWITCH_PIN, SWITCH_ACTIVE_LOW ? INPUT_PULLUP : INPUT_PULLDOWN);
-  pinMode(PIN_FAN_RELAY, OUTPUT); digitalWrite(PIN_FAN_RELAY, LOW);
+  pinMode(PIN_FAN_RELAY, OUTPUT_OPEN_DRAIN); digitalWrite(PIN_FAN_RELAY, HIGH); // Active LOW: release=OFF, pull to GND=ON (matches original firmware)
   pinMode(PIN_BUZZER,    OUTPUT); digitalWrite(PIN_BUZZER,    LOW);
 
   Serial.println("\n[KIEM TRA PHAN CUNG]");
