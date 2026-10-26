@@ -1,6 +1,6 @@
 # Message Queue & Messaging
 
-> Hệ thống có hai kênh truyền message bất đồng bộ: **BullMQ trên Redis** cho job nền giữa `app` và `worker`, và **MQTT (Mosquitto)** để nhận telemetry từ thiết bị và gửi lệnh điều khiển xuống thiết bị. Tài liệu này mô tả từng queue, job, lịch chạy, cách hệ thống xử lý lỗi, cách vận hành, và cách thêm queue mới. Chi tiết nghiệp vụ gửi thông báo xem [NOTIFICATION.md](NOTIFICATION.md), còn hạ tầng Redis/Mosquitto xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
+> Hệ thống có hai kênh truyền message bất đồng bộ: **BullMQ trên Redis** cho job nền giữa `app` và `worker`, và **MQTT (Mosquitto, hoặc EMQX Cloud tuỳ `MQTT_MODE`)** để nhận telemetry từ thiết bị và gửi lệnh điều khiển xuống thiết bị. Tài liệu này mô tả từng queue, job, lịch chạy, cách hệ thống xử lý lỗi, cách vận hành, và cách thêm queue mới. Chi tiết nghiệp vụ gửi thông báo xem [NOTIFICATION.md](NOTIFICATION.md), còn hạ tầng Redis/Mosquitto xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
 
 ---
 
@@ -25,7 +25,7 @@ worker ──(gửi lại lệnh chưa có ack)──▶ mosquitto
 | Kênh       | Thư viện                                  | Chiều                    | Dùng cho                                                     |
 | ---------- | ----------------------------------------- | ------------------------ | ------------------------------------------------------------ |
 | BullMQ     | `bullmq` ^6 + `@nestjs/bullmq` ^12 | `app` → Redis → `worker` | Việc chậm hoặc có I/O mạng (Web Push), việc định kỳ (rollup, sweep) |
-| MQTT       | `mqtt` ^5, broker `eclipse-mosquitto:2`   | Thiết bị ⇄ `app`, `worker` → thiết bị | Nhận telemetry và ack từ ESP32; gửi lệnh điều khiển |
+| MQTT       | `mqtt` ^5, broker `eclipse-mosquitto:2` (hoặc EMQX Cloud ở `MQTT_MODE=cloud`) | Thiết bị ⇄ `app`, `worker` → thiết bị | Nhận telemetry và ack từ ESP32; gửi lệnh điều khiển |
 
 Hai kênh này độc lập với nhau. MQTT **không** đi qua BullMQ: `app` nhận message MQTT và xử lý ngay trong tiến trình. Chỉ khi quá trình xử lý đó sinh ra alert mới thì `app` mới đẩy một job vào BullMQ.
 
@@ -177,7 +177,8 @@ Tất cả trường đều bắt buộc. Nếu cảm biến lỗi, `temperature
 
 - Toàn tiến trình `app` dùng chung **một** kết nối (`libs/mqtt/mqtt.module.ts`, token `MQTT_CLIENT`) cho cả nhận telemetry, nhận ack và publish lệnh. `worker` có kết nối riêng, chỉ để gửi lại lệnh (mục 3.4). Topic thiết bị được dựng bằng `libs/mqtt/device-topics.ts`.
 - `clientId` là `iot-app-<uuid ngẫu nhiên>` và `clean: true`, tức không giữ session qua các lần restart. **Message được publish trong lúc `app` đang offline sẽ không được giao lại.**
-- Client tự reconnect mỗi 5 giây, đăng nhập bằng `MQTT_USERNAME`/`MQTT_PASSWORD` (broker không cho anonymous). Theo ACL, tài khoản này đọc `devices/+/telemetry`, `devices/+/ack` và `$SYS/#`, ghi `devices/+/commands` và `devices/+/config` (ngưỡng phòng, retained) (`mosquitto/entrypoint.sh`).
+- Client tự reconnect mỗi 5 giây, đăng nhập bằng `MQTT_USERNAME`/`MQTT_PASSWORD` (broker không cho anonymous). Theo ACL, tài khoản này đọc `devices/+/telemetry`, `devices/+/ack` và `$SYS/#`, ghi `devices/+/commands` và `devices/+/config` (ngưỡng phòng, retained) (`mosquitto/entrypoint.sh`; `mosquitto/tunnel-entrypoint.sh` ở `MQTT_MODE=tunnel`; dashboard EMQX ở `cloud`).
+- Địa chỉ và TLS lấy từ `MQTT_URL`/`MQTT_CA_FILE` (`libs/mqtt/mqtt-options.ts`). Sơ đồ ở mục 1 vẽ theo chế độ `local`; ở `tunnel` thiết bị đi qua WSS + Cloudflare Tunnel tới cùng Mosquitto, ở `cloud` cả backend lẫn thiết bị kết nối EMQX qua MQTTS. Topic, QoS và luồng xử lý không đổi (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 1).
 
 ### Xử lý message (`MqttIngestService`, chạy trong `app`)
 
@@ -210,7 +211,7 @@ Message lệnh có dạng `{ id, channel, label, action, expiresAt }`, trong đ�
 
 ### Chưa có
 
-- TLS cho broker; thiết bị vẫn dùng chung một tài khoản `MQTT_DEVICE_USERNAME` thay vì mỗi thiết bị một credential (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 10).
+- Ở `MQTT_MODE=local`: TLS cho broker; thiết bị vẫn dùng chung một tài khoản `MQTT_DEVICE_USERNAME` thay vì mỗi thiết bị một credential. Hai chế độ `tunnel`/`cloud` đã có cả hai (xem [SECURITY.md](SECURITY.md) mục 6).
 
 ---
 
@@ -255,6 +256,8 @@ q.add('rollup', { hour: '2026-09-24T08:00:00Z' }).then(j => { console.log('enque
 ```
 
 ### Theo dõi MQTT
+
+Áp dụng cho chế độ `local` và `tunnel` (broker là container `mosquitto_broker`). Ở `tunnel`, biến `MQTT_DEVICE_*` trong container là tài khoản của node chính, nên `<uniqueId>` ở các lệnh giả lập thiết bị phải là `MQTT_TUNNEL_DEVICE_ID`, và topic telemetry cũng chỉ ghi được cho đúng ID đó. Ở `cloud`, dùng WebSocket client trên dashboard EMQX hoặc `scripts/check-cloud-mqtt.cjs`.
 
 ```bash
 # Xem telemetry đang đến broker (tài khoản backend — chỉ nó được đọc)

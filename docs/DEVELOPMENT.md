@@ -52,6 +52,7 @@ Datastore ở production chỉ bind `127.0.0.1` nhưng dùng cùng cổng với 
 - Credential trong `server/.env` (MySQL, Mongo, MinIO) phải khớp `.env` ở root, không dùng giá trị mặc định của `server/.env.example`.
 - `worker` đã chạy trong container, **bỏ qua mục 5**. Container này chạy image đã build, không phải code đang sửa. Muốn nó nhận code mới thì `./run.sh rebuild worker`.
 - Backend thì vẫn tự chạy trên host như mục 4.
+- `run.sh` đọc `MQTT_MODE` trong `.env` root (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 1). Với backend chạy trên host, `MQTT_MODE=local` là đơn giản nhất. Ở `tunnel`, broker không publish `1883` ra host nên backend trên host không kết nối được. Ở `cloud`, không có `mosquitto`: đặt `MQTT_URL`/`MQTT_USERNAME`/`MQTT_PASSWORD`/`MQTT_CA_FILE` trong `server/.env` trỏ tới EMQX như [CLOUD_MQTT_SETUP.md](CLOUD_MQTT_SETUP.md) mục "Backend chạy trực tiếp trên máy".
 
 ## 4. Backend (NestJS)
 
@@ -138,7 +139,7 @@ Mở http://localhost:5173 và đăng nhập bằng `SEED_ADMIN_USERNAME` / `SEE
 | API + WebSocket       | http://localhost:3000                               |
 | MinIO console         | http://localhost:9001 (`minioadmin` / `minioadmin`, hoặc `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` trong `.env` root nếu dùng `./run.sh dev`) |
 | MySQL / Mongo / Redis | `3306` / `27017` / `6379`                           |
-| MQTT                  | `1883`                                              |
+| MQTT                  | `1883` (chỉ ở `MQTT_MODE=local`)                    |
 | AI service            | http://localhost:8000 (`/docs`, `/health`)          |
 
 ## 8. Công việc thường gặp
@@ -178,6 +179,15 @@ Dùng `node scripts/demo_ai.js --device <uniqueId>` để nạp lịch sử mẫ
 và gửi nhiệt độ qua MQTT; hoặc `--api-only --profile freezer-normal` để chỉ
 thử FastAPI. Bộ mẫu đã nằm trong repo.
 
+**Kiểm tra broker cloud/tunnel** (từ root repo, cần `server/node_modules` đã cài):
+
+```bash
+node scripts/check-cloud-mqtt.cjs   # EMQX: TLS + ACL bằng module MQTT thật của backend, đọc MQTT_CLOUD_* trong .env
+node scripts/test-tunnel-mqtt.cjs   # tunnel: dựng Mosquitto riêng để test, không đụng .env, Cloudflare hay dữ liệu thật
+```
+
+Chi tiết xem [CLOUD_MQTT_SETUP.md](CLOUD_MQTT_SETUP.md) và [TUNNEL_MQTT_SETUP.md](TUNNEL_MQTT_SETUP.md).
+
 ## 9. Lỗi thường gặp
 
 | Triệu chứng                                    | Cách xử lý                                                                                               |
@@ -185,7 +195,10 @@ thử FastAPI. Bộ mẫu đã nằm trong repo.
 | `docker compose up` báo cổng đã bị chiếm       | Trên máy đã có MySQL/Redis/Mongo chạy sẵn. Tắt dịch vụ đó hoặc đổi cổng trong `docker-compose.yml`       |
 | Backend báo `Access denied` khi kết nối MySQL  | Có file `.env` ở root, hoặc volume được tạo với credential khác. Xem mục 3 và mục reset bên dưới         |
 | App báo `S3Error: Access Denied` khi khởi động | Volume MinIO sai owner, xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 7                                 |
-| ESP32 không kết nối được MQTT (WSL2)           | Chạy `scripts/setup-windows-lan.ps1`, xem [README.md](../README.md#kết-nối-thiết-bị-esp32-qua-wifi-wsl2) |
+| ESP32 không kết nối được MQTT (WSL2, `local`)  | Chạy `scripts/setup-windows-lan.ps1`, xem [README.md](../README.md#kết-nối-thiết-bị-esp32-qua-wifi-wsl2) |
+| ESP32 không kết nối được qua `wss://` (`tunnel`) | Kiểm tra `cloudflared` đang chạy, route `mqtt.<domain>` → `http://mosquitto:8083`, `MQTT_URI` có `:443/mqtt`, username/`DEVICE_ID` khớp `MQTT_TUNNEL_DEVICE_*` hoặc `devices.txt`. Xem [TUNNEL_MQTT_SETUP.md](TUNNEL_MQTT_SETUP.md) |
+| Backend báo lỗi `MQTT_CA_FILE requires a TLS connection` | `MQTT_CA_FILE` chỉ đặt khi `MQTT_URL` là `mqtts://`/`wss://`; với broker local để trống |
+| Container báo `set MQTT_CLOUD_URL in .env` / `set MQTT_TUNNEL_DEVICE_ID in .env` | `MQTT_MODE` đang là `cloud`/`tunnel` nhưng `.env` thiếu nhóm biến tương ứng (xem `.env.example`) |
 | Biểu đồ phòng không có dự báo AI | Kiểm tra `/health` AI trả HEALTHY; ngưỡng phòng nằm trong −28..19,6°C; cùng thiết bị và phòng có đủ 13 mốc cách 5 phút trải dài 60 phút (mỗi mốc cũ tối đa 60 giây); nhiệt độ hiện tại chưa vượt ngưỡng. Thử dự báo tối đa một lần/phút. Build backend và AI cùng nhau khi đổi hợp đồng đầu vào. Xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b. |
 
 **Reset toàn bộ dữ liệu dev:**

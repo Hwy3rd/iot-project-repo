@@ -67,11 +67,11 @@ Chi tiết ký hiệu quyền theo từng endpoint (A/M/T/S, **P**, **C**, **TT*
 ## 4. Luồng telemetry → alert → notification
 
 ```
-ESP32 ──MQTT──▶ mosquitto ──▶ MqttIngestService ──▶ TelemetryService.ingest()
- (publish        (broker,       (subscribe             │
-  devices/        docker-       "devices/+/            ├─▶ lưu telemetry_raw (Mongo)
-  {uniqueId}/     compose       telemetry",             ├─▶ so ngưỡng temp_min/temp_max của cold room
-  telemetry)      service)      tra uniqueId            ├─▶ (nền, không chờ) dự báo AI — mục 4b
+ESP32 ──MQTT──▶   broker  ──▶ MqttIngestService ──▶ TelemetryService.ingest()
+ (publish        (Mosquitto     (subscribe             │
+  devices/        hoặc EMQX,    "devices/+/            ├─▶ lưu telemetry_raw (Mongo)
+  {uniqueId}/     theo          telemetry",             ├─▶ so ngưỡng temp_min/temp_max của cold room
+  telemetry)      MQTT_MODE)    tra uniqueId            ├─▶ (nền, không chờ) dự báo AI — mục 4b
                                 → device.id)            └─▶ nếu vượt ngưỡng: AlertsService.raise()
                                                                    │
                                                           ├─▶ ghi bản ghi Alert (MySQL)
@@ -83,9 +83,17 @@ ESP32 ──MQTT──▶ mosquitto ──▶ MqttIngestService ──▶ Teleme
                                                           └─▶ WebPushService — gửi Web Push tới từng PushSubscription (VAPID)
 ```
 
-`MqttIngestService` (`server/src/modules/mqtt-ingest/`) chạy trong tiến trình `app` (không phải `worker`) vì cần dùng thẳng `TelemetryModule`/`AlertsModule` đã wire sẵn ở đó. Kết nối MQTT dùng client `mqtt` toàn cục (`libs/mqtt/mqtt.module.ts`, `MQTT_URL`), subscribe filter `devices/+/telemetry` (QoS 1). Mỗi message được validate (`class-validator`) khớp đúng `TelemetrySample`, tra `Device` theo `unique_id` (không phải `id` nội bộ) — payload sai định dạng, thiết bị không tồn tại, hoặc bị `TelemetryService.ingest()` từ chối (chưa claim vào cold room, đã decommission...) chỉ log cảnh báo rồi bỏ qua, không làm rớt kết nối chung.
+`MqttIngestService` (`server/src/modules/mqtt-ingest/`) chạy trong tiến trình `app` (không phải `worker`) vì cần dùng thẳng `TelemetryModule`/`AlertsModule` đã wire sẵn ở đó. Kết nối MQTT dùng client `mqtt` toàn cục (`libs/mqtt/mqtt.module.ts`). Tham số kết nối dựng trong `libs/mqtt/mqtt-options.ts` từ `MQTT_URL` (`mqtt`/`mqtts`/`ws`/`wss`), `MQTT_USERNAME/PASSWORD` và `MQTT_CA_FILE` tuỳ chọn. Với `mqtts`/`wss` luôn bật `rejectUnauthorized`, không có tuỳ chọn tắt xác minh TLS; log chỉ in `protocol//host`, không in credential. Subscribe filter `devices/+/telemetry` (QoS 1). Mỗi message được validate (`class-validator`) khớp đúng `TelemetrySample`, tra `Device` theo `unique_id` (không phải `id` nội bộ) — payload sai định dạng, thiết bị không tồn tại, hoặc bị `TelemetryService.ingest()` từ chối (chưa claim vào cold room, đã decommission...) chỉ log cảnh báo rồi bỏ qua, không làm rớt kết nối chung.
 
-Broker là Eclipse Mosquitto (`mosquitto/mosquitto.conf`), thêm vào cả `docker-compose.yml` và `docker-compose.production.yml`. Broker không cho kết nối anonymous: `mosquitto/entrypoint.sh` sinh password file + ACL từ env mỗi lần container khởi động, gồm tài khoản backend (`MQTT_USERNAME`: đọc telemetry và ack, ghi lệnh) và một tài khoản dùng chung cho thiết bị (`MQTT_DEVICE_USERNAME`: publish `devices/+/telemetry`, đọc lệnh và gửi ack chỉ trên topic có client ID của chính nó). Chưa có TLS — đủ dùng trong LAN tin cậy, cần listener TLS 8883 trước khi mở broker ra mạng không tin cậy.
+Broker được chọn bằng `MQTT_MODE` (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 1). Topic và code backend như nhau ở mọi chế độ:
+
+| `MQTT_MODE` | Broker | ESP32 → broker | Backend → broker |
+| ----------- | ------ | -------------- | ---------------- |
+| `local`     | Mosquitto trong compose (`mosquitto/mosquitto.conf`) | MQTT TCP `1883` qua LAN, không TLS | `mqtt://mosquitto:1883` |
+| `tunnel`    | Mosquitto trong compose (`mosquitto/mosquitto.websocket.conf`) | MQTT qua WSS `443` → Cloudflare → `cloudflared` → WebSocket `8083` | `mqtt://mosquitto:1883` trong mạng Docker |
+| `cloud`     | EMQX Cloud | MQTTS `8883` | MQTTS `8883`, CA `certs/mqtt/emqxsl-ca.crt` |
+
+Broker không cho kết nối anonymous. Ở `local`, `mosquitto/entrypoint.sh` sinh password file + ACL từ env mỗi lần container khởi động, gồm tài khoản backend (`MQTT_USERNAME`: đọc telemetry và ack, ghi lệnh và config) và một tài khoản dùng chung cho thiết bị (`MQTT_DEVICE_USERNAME`: publish `devices/+/telemetry`, đọc lệnh/config và gửi ack chỉ trên topic có client ID của chính nó). Ở `tunnel`, `mosquitto/tunnel-entrypoint.sh` thay tài khoản dùng chung bằng tài khoản riêng cho từng thiết bị, bị giới hạn vào đúng 4 topic của `deviceId` đó. Ở `cloud`, tài khoản và quyền cấu hình trên dashboard EMQX. Chế độ `local` không có TLS nên chỉ dùng trong LAN tin cậy.
 
 **Gap đã biết, quan trọng khi phát triển tiếp:**
 
@@ -165,7 +173,9 @@ Dockerfile multi-stage (`server/Dockerfile`):
 2 file compose **độc lập** (mỗi file tự đầy đủ, chạy riêng bằng `-f`), cùng tập service và cùng build/healthcheck/`depends_on`/volume — phần chung này phải sửa **cả 2 file** khi thay đổi:
 
 - `docker-compose.yml` — dev: publish port datastore ra `localhost`, credential có giá trị mặc định (khớp `server/.env.example`), `.env` ở root là tuỳ chọn — dùng cho `docker compose up -d redis mysql mongo minio mosquitto` (thêm `ai-service` nếu cần dự báo) khi chạy backend trên host bằng `pnpm start:dev`.
-- `docker-compose.production.yml` — production, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh): `.env` và credential datastore bắt buộc, API/datastore chỉ publish trên `127.0.0.1` (cho client trên máy chủ), chỉ MQTT `1883` publish ra ngoài, có thêm `cloudflared`.
+- `docker-compose.production.yml` — production, dùng bởi [init.sh](../init.sh)/[run.sh](../run.sh): `.env` và credential datastore bắt buộc, API/datastore chỉ publish trên `127.0.0.1` (cho client trên máy chủ), chỉ MQTT `1883` publish ra ngoài (ở `MQTT_MODE=local`), có thêm `cloudflared`.
+
+Hai overlay MQTT chồng lên một trong hai file trên: `docker-compose.cloud-mqtt.yml` (EMQX: đổi `MQTT_*` của `app`/`worker` sang `MQTT_CLOUD_*`, mount CA, tắt `mosquitto`) và `docker-compose.tunnel-mqtt.yml` (Mosquitto WebSocket: gỡ cổng publish, thêm `cloudflared`). `init.sh`/`run.sh` tự thêm overlay theo `MQTT_MODE` (`scripts/compose-mqtt.sh`).
 
 `ai-service` build từ `ai-service/Dockerfile` (Python 3.10, chạy bằng user không phải root). Image có `HEALTHCHECK` gọi `/health`, trả 503 khi model không nạp được. `app` **không** `depends_on` nó, vì dự báo là tính năng phụ. Phiên bản thư viện trong `requirements.txt` được pin cứng, vì file model là pickle của scikit-learn 1.7.2.
 
@@ -175,7 +185,7 @@ Dockerfile multi-stage (`server/Dockerfile`):
 
 Để không lặp lại công sức tìm hiểu, các phần sau **có hạ tầng nhưng chưa hoàn thiện logic**, ghi nhận trực tiếp bằng comment trong code:
 
-- **MQTT chưa có TLS** — broker đã bắt đăng nhập và có ACL, nhưng chưa có listener TLS.
+- **MQTT ở chế độ `local` không có TLS và dùng chung tài khoản thiết bị** — TLS và credential riêng từng thiết bị chỉ có ở `MQTT_MODE=cloud` (EMQX) và `MQTT_MODE=tunnel` (WSS qua Cloudflare).
 - **Lệnh tự động theo rule** — các rule hiện chỉ sinh alert. Chưa có rule nào tạo `Command` (`issuedBy = null`), dù luồng gửi lệnh đã sẵn sàng.
 - **Phát hiện thiết bị offline** — chưa có job đặt `offline` khi mất heartbeat và raise `OFFLINE`.
 - **Các loại alert chưa có nơi sinh** — `DOOR_OPEN_TOO_LONG`, `BATCH_EXPIRING_SOON`, `BATCH_TEMPERATURE_OUT_OF_RANGE`. `DEVICE_FAULT` mới chỉ sinh cho lỗi nguồn quạt (`fanPowerFault` từ thiết bị, `details.kind = "fan_power"`, xem `TelemetryService.evaluateFanPowerAlert`); lỗi cảm biến (`sensorFault`) chưa raise alert.

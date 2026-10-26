@@ -1,8 +1,9 @@
 # MQTT qua Mosquitto và Cloudflare Tunnel
 
-Nhánh `feat/mqtt-cloudflare-tunnel` chuẩn bị backend/broker cho phương án tự chạy
-Mosquitto. EMQX vẫn dùng được qua `MQTT_MODE=cloud`; chọn một chế độ khi vận hành.
-Tài liệu này không tự tạo hostname, sửa Cloudflare hay nạp firmware.
+Chế độ `MQTT_MODE=tunnel`: tự chạy Mosquitto, thiết bị kết nối qua WSS và Cloudflare
+Tunnel. EMQX vẫn dùng được qua `MQTT_MODE=cloud`; chọn một chế độ khi vận hành (so sánh
+các chế độ ở [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 1). Hostname trên Cloudflare
+phải tạo thủ công (mục 3).
 
 ## Luồng kết nối
 
@@ -72,8 +73,7 @@ Cần Docker Compose >= 2.24.4. Các lệnh dưới đây thay cấu hình dịc
 thực hiện ở môi trường định chuyển sang Tunnel, sau khi kiểm tra `.env` hiện có.
 Không chạy lại `init.sh` để đổi broker vì script đó có bước seed.
 
-Lấy mã của nhánh `feat/mqtt-cloudflare-tunnel` về repository trên máy chủ trước
-khi chạy các lệnh bên dưới. Việc checkout mã mới rồi chỉ `docker restart` container
+Cập nhật mã mới nhất (`git pull`) trên máy chủ trước khi chạy các lệnh bên dưới. Việc checkout mã mới rồi chỉ `docker restart` container
 cũ không đổi file config/entrypoint đang mount: cần dùng `up` để tạo lại broker
 với overlay tunnel. Các biến `MQTT_TUNNEL_DEVICE_*` trong `.env` chứa thông tin
 riêng của máy chủ và không được cung cấp sẵn qua Git.
@@ -150,12 +150,22 @@ WebSocket; cần thử MQTT CONNECT bằng tài khoản để xác nhận đăng
 Nếu vẫn 502 và log cloudflared báo connection refused tới `mosquitto:8083`,
 kiểm tra listener và file cấu hình thực tế đang được mount vào broker.
 
-## 4. Firmware là bước riêng
+## 4. Firmware
 
-Nhánh backend này không thay firmware và không nạp node. Firmware hiện đã thử
-MQTT/TLS với EMQX cần bổ sung transport MQTT qua WSS, CA phù hợp với hostname mới,
-keepalive và kết nối lại. Chỉ thay host/cổng trong bản PubSubClient TCP hiện tại
-chưa đủ. Giữ DEVICE_ID khớp uniqueId và tài khoản Mosquitto đã provision.
+Firmware trong repo (esp-mqtt) đã hỗ trợ WSS, xem [firmware/README.md](../firmware/README.md).
+Trong `config.h`:
+
+```cpp
+#define MQTT_URI          "wss://mqtt.<domain>:443/mqtt"
+#define MQTT_USERNAME     "esp32-coldroom-01"   // MQTT_TUNNEL_DEVICE_USERNAME hoặc một dòng devices.txt
+#define MQTT_PASSWORD     "<mat_khau_node>"
+#define DEVICE_ID         "esp32-coldroom-01"   // = MQTT_TUNNEL_DEVICE_ID = unique_id trên server
+```
+
+Firmware xác minh chứng chỉ Cloudflare bằng bộ CA có sẵn trong core, giữ keepalive
+30 giây (Cloudflare cắt WebSocket im lặng khoảng 100 giây) và tự kết nối lại sau 5 giây.
+ESP32 kết nối được từ bất kỳ Wi-Fi 2.4 GHz nào có Internet; không cần chạy
+`setup-windows-lan.ps1`.
 
 ## 5. Kiểm thử trước và sau khi thêm Tunnel
 
