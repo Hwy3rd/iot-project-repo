@@ -13,6 +13,10 @@ Code nhúng cho vi điều khiển **ESP32** thực hiện giám sát kho lạnh
 | 23 | Relay | Điều khiển bật/tắt quạt làm lạnh |
 | 34 | Cảm biến điện áp DC | Giám sát nguồn điện cấp cho quạt |
 
+Relay trên GPIO23 dùng **Active LOW** và `OUTPUT_OPEN_DRAIN`: bật bằng kéo IN xuống GND (`LOW`), tắt bằng nhả chân (`HIGH`). Khi khởi động, firmware nhả chân trước khi chạy logic tự động; quạt tự động bật sau khoảng 3 giây. Chế độ này khôi phục cách điều khiển của firmware cũ, tránh giữ IN ở mức 3,3 V khi yêu cầu tắt.
+
+Với module relay nuôi bằng 5 V, cần xác nhận điện áp IN khi nhả vẫn phù hợp giới hạn GPIO của ESP32; nếu module kéo IN lên 5 V thì dùng mạch đệm phù hợp. Phép thử đóng/ngắt relay không thay thế phép đo điện áp này.
+
 ## Thư viện cần cài đặt
 
 Board: **Arduino-ESP32 core 3.x** (Tools > Board > Boards Manager > `esp32` by Espressif). Biên dịch bằng core 2.x sẽ báo lỗi ngay. MQTT dùng **esp-mqtt** có sẵn trong core (hỗ trợ `mqtt://`, `mqtts://`, `ws://`, `wss://`), không cần cài thư viện MQTT riêng.
