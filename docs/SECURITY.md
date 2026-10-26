@@ -74,6 +74,18 @@ Admin khoá tài khoản (`status = LOCKED`): đăng nhập trả 403, `refreshT
 
 ## 6. MQTT (thiết bị)
 
+Mức bảo mật MQTT phụ thuộc chế độ broker `MQTT_MODE` (xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 1):
+
+| `MQTT_MODE` | Mã hoá đường truyền | Tài khoản thiết bị | Broker lộ ra ngoài |
+| ----------- | ------------------- | ------------------ | ------------------ |
+| `local`     | Không (MQTT TCP 1883) | Một tài khoản dùng chung | Cổng `1883` trên mọi interface của host |
+| `tunnel`    | WSS tới Cloudflare, sau đó đi trong tunnel đã mã hoá | Riêng từng thiết bị | Không publish cổng nào; chỉ vào qua `cloudflared` |
+| `cloud`     | MQTTS 8883 tới EMQX, cả thiết bị lẫn backend | Riêng từng thiết bị (tạo trên EMQX) | Broker do EMQX quản lý |
+
+Backend luôn xác minh chứng chỉ broker khi dùng `mqtts`/`wss` (`rejectUnauthorized`, CA từ `MQTT_CA_FILE` được kiểm tra là chứng chỉ CA), và không có tuỳ chọn tắt xác minh. Firmware xác minh bằng bộ CA có sẵn của core ESP32, hoặc CA ghim qua `MQTT_CA_CERT`.
+
+### Chế độ `local`
+
 Broker bắt buộc đăng nhập (`allow_anonymous false`). Password file và ACL được **sinh lúc container khởi động** từ env bởi [mosquitto/entrypoint.sh](../mosquitto/entrypoint.sh): credential chỉ nằm trong `.env`, không nằm trong git hay trên đĩa host. Thiếu bất kỳ biến `MQTT_*` nào thì container không khởi động.
 
 | Tài khoản              | Dùng bởi            | Quyền                                                     |
@@ -82,6 +94,14 @@ Broker bắt buộc đăng nhập (`allow_anonymous false`). Password file và A
 | `MQTT_DEVICE_USERNAME` | Firmware ESP32 (dùng chung) | Ghi `devices/+/telemetry`; đọc `devices/<client id>/commands`, `devices/<client id>/config` và ghi `devices/<client id>/ack` (ACL `pattern` với `%c`) |
 
 Nhờ ACL, credential thiết bị bị lộ cũng không đọc được dữ liệu hay lệnh của thiết bị khác, và không giả danh server được. Firmware kết nối với client ID = `unique_id`, nên mỗi board chỉ nhận lệnh của chính nó. Server còn kiểm tra thêm: ack chỉ được chấp nhận khi lệnh thuộc đúng thiết bị có tên trong topic. Thư mục `/mosquitto/auth` được `chmod 700`, file `passwd`/`acl` được `chmod 600` và thuộc user `mosquitto`.
+
+### Chế độ `tunnel`
+
+[mosquitto/tunnel-entrypoint.sh](../mosquitto/tunnel-entrypoint.sh) sinh password file + ACL vào `/mosquitto/auth-tunnel` (cùng quyền `700`/`600`). Tài khoản backend giữ nguyên quyền như trên. Tài khoản thiết bị dùng chung được thay bằng **một tài khoản cho mỗi thiết bị**: node chính lấy từ `MQTT_TUNNEL_DEVICE_ID/USERNAME/PASSWORD`, các node khác từ `mosquitto/tunnel-auth/devices.txt` (gitignore, mỗi dòng `deviceId|username|password`). Mỗi tài khoản chỉ được ghi `devices/<deviceId>/telemetry` và `/ack`, đọc `/commands` và `/config` của đúng `deviceId` đó, nên lộ credential một board không giả được telemetry của board khác. Entrypoint từ chối khởi động khi username/ID chứa ký tự lạ, mật khẩu còn placeholder hoặc có xuống dòng, hay khi trùng username/ID. Hai listener `1883`/`8083` chỉ nằm trong mạng Docker.
+
+### Chế độ `cloud`
+
+Tài khoản và ACL được cấu hình trên dashboard EMQX (bảng quyền xem [CLOUD_MQTT_SETUP.md](CLOUD_MQTT_SETUP.md)): backend `iot-backend` có quyền như `MQTT_USERNAME`, mỗi ESP32 có tài khoản riêng chỉ dùng 4 topic của `DEVICE_ID`, rule `All Users` chặn `#`. [scripts/check-cloud-mqtt.cjs](../scripts/check-cloud-mqtt.cjs) kiểm tra TLS và ACL này.
 
 ## 7. Bí mật & cấu hình
 
@@ -100,8 +120,8 @@ Nhờ ACL, credential thiết bị bị lộ cũng không đọc được dữ l
 
 | Vấn đề                                              | Rủi ro                                                                                       | Hướng xử lý                                                                                     |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| MQTT không có TLS                                   | Credential đi dạng plain text; chỉ chấp nhận được trên LAN tin cậy                           | Thêm listener TLS 8883                                                                          |
-| Mọi thiết bị dùng chung một tài khoản MQTT          | Lộ credential của một thiết bị cho phép giả telemetry của mọi thiết bị                        | Credential riêng từng thiết bị (username = `unique_id`, ACL `pattern write devices/%u/telemetry`) |
+| `MQTT_MODE=local`: không TLS, dùng chung tài khoản thiết bị | Credential đi dạng plain text; lộ credential của một thiết bị cho phép giả telemetry của mọi thiết bị | Chỉ dùng trên LAN tin cậy; ngoài ra dùng `tunnel` hoặc `cloud`                                  |
+| `MQTT_MODE=tunnel`: TLS kết thúc ở Cloudflare        | Cloudflare đọc được nội dung MQTT                                                            | Chấp nhận được với telemetry nhiệt độ; cần end-to-end thì dùng `cloud`                          |
 | Mật khẩu tối thiểu chỉ 6 ký tự, không kiểm tra độ mạnh | Dễ đoán; rate limiter chỉ làm chậm chứ không ngăn được mật khẩu yếu                       | Nâng tối thiểu (OWASP khuyến nghị ≥ 8) và/hoặc chặn mật khẩu phổ biến                            |
 | Không có MFA                                        | Lộ mật khẩu là mất tài khoản                                                                 | Cân nhắc TOTP cho Admin                                                                         |
 | Không có rate limit chung cho các route khác        | Chỉ `POST /auth/login` và chatbot có giới hạn                                                | Thêm throttler toàn cục cho các route ghi/tốn tài nguyên                                        |
@@ -114,6 +134,8 @@ Nhờ ACL, credential thiết bị bị lộ cũng không đọc được dữ l
 - [ ] `NODE_ENV=production`, `TRUST_PROXY=1` (chỉ khi có proxy), `CORS_ORIGINS` đúng origin frontend.
 - [ ] `JWT_SECRET`, `JWT_REFRESH_SECRET`, `VAPID_*`, `MQTT_*`, mật khẩu datastore đều là giá trị riêng cho production.
 - [ ] Đã xoá/đổi `SEED_ADMIN_PASSWORD` sau khi seed.
-- [ ] Firmware ESP32 dùng `MQTT_DEVICE_USERNAME/PASSWORD`, không dùng tài khoản backend.
+- [ ] Firmware ESP32 dùng tài khoản thiết bị (`MQTT_DEVICE_*` ở `local`, tài khoản riêng của board ở `tunnel`/`cloud`), không dùng tài khoản backend.
+- [ ] `MQTT_MODE` đúng chế độ dự định; ngoài LAN tin cậy thì không dùng `local`.
+- [ ] Ở `tunnel`: mỗi board có username/mật khẩu riêng, `mosquitto/tunnel-auth/devices.txt` không bị commit.
 - [ ] Cổng datastore trong compose production vẫn có tiền tố `127.0.0.1:`.
 - [ ] `chmod 600 .env`.

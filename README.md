@@ -27,12 +27,19 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
 ├── ai-service/                   # FastAPI dự báo nhiệt độ 15 phút tới (model scikit-learn)
 ├── docs/                         # Tài liệu thiết kế & vận hành
 │   ├── DEVELOPMENT.md            # Chạy môi trường dev local
-│   ├── INFRASTRUCTURE.md         # Hạ tầng production, Cloudflare Tunnel
+│   ├── INFRASTRUCTURE.md         # Hạ tầng production, Cloudflare Tunnel, chế độ MQTT
+│   ├── CLOUD_MQTT_SETUP.md       # MQTT_MODE=cloud: EMQX Cloud qua TLS
+│   ├── TUNNEL_MQTT_SETUP.md      # MQTT_MODE=tunnel: Mosquitto qua WSS + Cloudflare Tunnel
 │   ├── API_DESIGN.md             # REST + WebSocket API reference
 │   ├── DATABASE_DESIGN.md        # Schema, quan hệ, entity
 │   └── RBAC.md                   # Vai trò, phạm vi, ma trận quyền
+├── firmware/                     # Firmware ESP32 (Arduino, esp-mqtt)
+├── mosquitto/                    # Cấu hình + entrypoint broker (local và tunnel)
+├── certs/mqtt/                   # CA công khai của EMQX Cloud
 ├── docker-compose.yml            # Dev: full stack, publish port ra localhost, credential mặc định
 ├── docker-compose.production.yml # Production (độc lập): bắt buộc credential, port chỉ bind 127.0.0.1, cloudflared
+├── docker-compose.cloud-mqtt.yml # Overlay MQTT_MODE=cloud: backend dùng EMQX, tắt mosquitto
+├── docker-compose.tunnel-mqtt.yml# Overlay MQTT_MODE=tunnel: mosquitto WebSocket sau cloudflared, không publish cổng
 ├── init.sh                       # Khởi tạo hệ thống lần đầu (build, migrate, seed admin)
 └── run.sh                        # Start/stop/restart hệ thống đã khởi tạo
 ```
@@ -46,11 +53,21 @@ Xem chi tiết kiến trúc & quy ước code trong [server/CLAUDE.md](server/CL
    ```bash
    ./init.sh
    ```
-   Production chỉ publish MQTT `1883` ra ngoài; API, MinIO và datastore chỉ bind `127.0.0.1` (dùng client ngay trên máy chủ). Từ bên ngoài, API và MinIO được truy cập qua hostname của Cloudflare Tunnel (xem [.env.example](.env.example)).
+   API, MinIO và datastore chỉ bind `127.0.0.1` (dùng client ngay trên máy chủ). Từ bên ngoài, API và MinIO được truy cập qua hostname của Cloudflare Tunnel (xem [.env.example](.env.example)).
+
+   Broker MQTT cho thiết bị chọn bằng `MQTT_MODE` trong `.env` (hoặc `MQTT_MODE=... ./init.sh`):
+
+   | `MQTT_MODE` | Thiết bị kết nối | Hướng dẫn |
+   | ----------- | ---------------- | --------- |
+   | `local` (mặc định) | Mosquitto `mqtt://<IP máy chủ>:1883`, cùng LAN, không TLS | [INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md#9-kết-nối-thiết-bị-iot-mqtt) |
+   | `tunnel` | Mosquitto `wss://mqtt.<domain>/mqtt` qua Cloudflare Tunnel, từ mạng bất kỳ | [TUNNEL_MQTT_SETUP.md](docs/TUNNEL_MQTT_SETUP.md) |
+   | `cloud` | EMQX Cloud `mqtts://…:8883` | [CLOUD_MQTT_SETUP.md](docs/CLOUD_MQTT_SETUP.md) |
+
+   Chỉ chế độ `local` publish cổng `1883` ra ngoài host.
 3. Các lần sau, không cần chạy lại `init.sh` — dùng `run.sh` để bật/tắt:
    ```bash
    ./run.sh stop      # tắt, giữ nguyên dữ liệu
-   ./run.sh start      # bật lại
+   ./run.sh start      # bật lại (tạo lại container nào có cấu hình đổi, ví dụ đổi MQTT_MODE)
    ./run.sh dev        # bật mọi thứ trừ app + cloudflared, để tự chạy backend trên host
    ./run.sh rebuild    # sau git pull: build lại app + worker (thêm `rebuild ai-service` nếu ai-service/ đổi)
    ./run.sh status      # xem trạng thái container
@@ -84,6 +101,8 @@ Hướng dẫn đầy đủ (cách tạo secret, seed dữ liệu mẫu, worker,
 
 ## Kết nối thiết bị ESP32 qua WiFi (WSL2)
 
+Chỉ cần cho `MQTT_MODE=local`; ở `tunnel`/`cloud` thiết bị kết nối qua Internet. Cách nạp firmware và cấu hình `MQTT_URI` xem [firmware/README.md](firmware/README.md).
+
 Server chạy trong Docker trên WSL2, mặc định nằm sau NAT riêng nên thiết bị cùng WiFi không kết nối được tới MQTT `1883`. Chạy **một lần** trên Windows, trong PowerShell mở bằng *Run as Administrator* (bật mirrored networking, chuyển mạng sang Private, mở firewall `1883`, in IP LAN để nạp vào ESP32, rồi `wsl --shutdown`):
 
 ```powershell
@@ -95,7 +114,11 @@ Khi đổi sang WiFi/hotspot mới, chạy lại để chuyển mạng đó sang
 ## Tài liệu
 
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Chạy môi trường dev local cho người mới clone repo.
-- [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) — Hạ tầng production: container, cổng, Cloudflare Tunnel, volume, vận hành.
+- [docs/INFRASTRUCTURE.md](docs/INFRASTRUCTURE.md) — Hạ tầng production: container, cổng, Cloudflare Tunnel, chế độ MQTT, volume, vận hành.
+- [docs/TUNNEL_MQTT_SETUP.md](docs/TUNNEL_MQTT_SETUP.md) — `MQTT_MODE=tunnel`: Mosquitto qua WSS và Cloudflare Tunnel, tài khoản riêng từng thiết bị.
+- [docs/CLOUD_MQTT_SETUP.md](docs/CLOUD_MQTT_SETUP.md) — `MQTT_MODE=cloud`: backend và ESP32 kết nối EMQX Cloud qua TLS; kết quả kiểm thử chi tiết ở [docs/HUONG_DAN_KET_NOI_EMQX.md](docs/HUONG_DAN_KET_NOI_EMQX.md).
+- [firmware/README.md](firmware/README.md) — Firmware ESP32: phần cứng, cấu hình `config.h`, topic MQTT.
+- [docs/SECURITY.md](docs/SECURITY.md) — Xác thực, rate limit, bảo mật MQTT theo từng chế độ, checklist triển khai.
 - [docs/REQUIREMENT.md](docs/REQUIREMENT.md) — Bài toán, đối tượng sử dụng, yêu cầu chức năng/phi chức năng.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Tổng quan kiến trúc backend: tiến trình, luồng dữ liệu, các phần đã/chưa hoàn thiện.
 - [docs/API_DESIGN.md](docs/API_DESIGN.md) — API REST + WebSocket, quy ước response/lỗi, mã hoá quyền theo endpoint.

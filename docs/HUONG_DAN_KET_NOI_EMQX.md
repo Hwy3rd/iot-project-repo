@@ -1,16 +1,13 @@
 # Hướng dẫn kết nối ESP32 và backend qua EMQX Cloud
 
-> Phạm vi GitHub: backend, Docker, CA công khai và tài liệu được đưa lên nhánh.
-> Firmware TLS, mẫu cấu hình firmware cloud, header CA cho firmware và script sinh header
-> được giữ ở máy local theo yêu cầu. Các bước nạp ESP32 dưới đây tham chiếu bản local
-> đã kiểm thử; mã firmware hiện theo dõi trong Git vẫn dùng LAN và cần phần hỗ trợ TLS
-> riêng để thực hiện các bước đó.
+> Firmware trong Git đã hỗ trợ TLS (esp-mqtt, `MQTT_URI=mqtts://...`) từ PR #44. Bản firmware
+> TLS riêng trước đó (`config.cloud.example.h`, `mqtt_ca.h`, `scripts/generate-mqtt-ca.cjs`,
+> `WiFiClientSecure`/PubSubClient) không còn dùng. Mục 4–5 đã được viết lại theo firmware hiện tại;
+> kết quả kiểm thử ở các mục sau được ghi lại từ bản cũ.
 
-Cập nhật: 23/10/2026. Áp dụng cho dự án `iot-project-repo`.
+Cập nhật: 26/10/2026. Áp dụng cho dự án `iot-project-repo`, chế độ `MQTT_MODE=cloud`.
 
-Tài liệu tổng hợp cấu hình đã kiểm thử trên bản local. ESP32 và backend cùng kết nối tới EMQX Cloud qua Internet, vì vậy có thể đặt ở các mạng Wi-Fi khác nhau.
-
-Mã nguồn đang làm việc ở nhánh `fix/cloud-mqtt-broker`. Các lệnh backend sử dụng những file cấu hình cloud trong nhánh; phần firmware ở mục 4–5 cần các file TLS được giữ local. Docker cần hỗ trợ Compose từ 2.24.4 trở lên để đọc overlay có `!reset`.
+ESP32 và backend cùng kết nối tới EMQX Cloud qua Internet, vì vậy có thể đặt ở các mạng Wi-Fi khác nhau. Docker cần hỗ trợ Compose từ 2.24.4 trở lên để đọc overlay có `!reset`.
 
 ## 1. Luồng hoạt động
 
@@ -95,48 +92,33 @@ Tải CA của broker từ trang thông tin deployment EMQX. Trong dự án hi�
 
 ```text
 iot-project-repo/
-├── certs/mqtt/emqxsl-ca.crt
-└── firmware/cold_room_monitor/mqtt_ca.h
+└── certs/mqtt/emqxsl-ca.crt
 ```
 
-- Backend đọc CA từ file `certs/mqtt/emqxsl-ca.crt`.
-- Firmware sử dụng CA được nhúng trong `mqtt_ca.h` qua `WiFiClientSecure`.
+- Backend đọc CA từ file `certs/mqtt/emqxsl-ca.crt` (`MQTT_CA_FILE`).
+- Firmware (esp-mqtt) xác minh chứng chỉ bằng bộ CA có sẵn trong Arduino-ESP32 core, không cần nhúng file CA. Chỉ khi muốn ghim một CA riêng mới bỏ comment `MQTT_CA_CERT` trong `config.h` và dán chuỗi PEM đầy đủ.
 - CA công khai có thể lưu cùng mã nguồn. Mật khẩu nằm trong các file cấu hình riêng được Git bỏ qua.
 
-Với bản firmware TLS local đã có `scripts/generate-mqtt-ca.cjs`, khi thay CA, tạo lại header từ thư mục gốc repository (script này chưa đưa lên GitHub):
-
-```powershell
-node scripts/generate-mqtt-ca.cjs
-```
-
-Sau đó biên dịch và nạp lại firmware. Kết nối TLS phải xác minh chứng chỉ và hostname của broker.
+Kết nối TLS phải xác minh chứng chỉ và hostname của broker.
 
 ## 5. Cấu hình và nạp ESP32
 
 ### 5.1. File cấu hình riêng
 
-Với thiết bị mới, sao chép `firmware/cold_room_monitor/config.cloud.example.h` thành `config.h` trong cùng thư mục. Với thiết bị đã cấu hình, cập nhật file hiện có và giữ các thông tin cần thiết.
-
-Ví dụ nội dung:
+Sao chép `firmware/cold_room_monitor/config.example.h` thành `config.h` trong cùng thư mục (file này được gitignore), rồi chọn dòng `MQTT_URI` của chế độ cloud. Các giá trị chính:
 
 ```cpp
-#pragma once
-
 #define WIFI_SSID         "TEN_WIFI_TAI_KHO"
 #define WIFI_PASSWORD     "MAT_KHAU_WIFI"
 
-#define MQTT_USE_TLS      1
-#define MQTT_BROKER_HOST  "n0c006e0.ala.asia-southeast1.emqxsl.com"
-#define MQTT_BROKER_PORT  8883
+#define MQTT_URI          "mqtts://n0c006e0.ala.asia-southeast1.emqxsl.com:8883"
 #define MQTT_USERNAME     "esp32-cold-room-01"
 #define MQTT_PASSWORD     "MAT_KHAU_MQTT_THIET_BI"
 
 #define DEVICE_ID         "esp32-cold-room-01"
-#define NTP_SERVER_1      "pool.ntp.org"
-#define NTP_SERVER_2      "time.google.com"
 ```
 
-Các giá trị `TEN_WIFI_TAI_KHO`, `MAT_KHAU_WIFI` và `MAT_KHAU_MQTT_THIET_BI` là chỗ điền cấu hình thực tế. Host trong firmware chỉ gồm tên miền, không thêm tiền tố `mqtts://`.
+Các giá trị `TEN_WIFI_TAI_KHO`, `MAT_KHAU_WIFI` và `MAT_KHAU_MQTT_THIET_BI` là chỗ điền cấu hình thực tế. Giữ nguyên các dòng còn lại của `config.example.h` (NTP, chân GPIO...). `config.h` cũ dùng `MQTT_BROKER_HOST`/`MQTT_BROKER_PORT` vẫn biên dịch được nhưng firmware ghép thành `mqtt://` (không TLS), nên với EMQX phải chuyển sang `MQTT_URI`.
 
 ### 5.2. Nạp bằng Arduino IDE
 
@@ -146,7 +128,7 @@ Các giá trị `TEN_WIFI_TAI_KHO`, `MAT_KHAU_WIFI` và `MAT_KHAU_MQTT_THIET_BI`
 4. Biên dịch và Upload.
 5. Mở Serial Monitor ở `115200 baud`.
 
-Thư viện đã dùng: DHT sensor library, Adafruit Unified Sensor, PubSubClient và ArduinoJson; cần cài ESP32 board core trong Arduino IDE.
+Cần Arduino-ESP32 core 3.x; MQTT dùng esp-mqtt có sẵn trong core, không cài PubSubClient. Danh sách thư viện còn lại xem [firmware/README.md](../firmware/README.md).
 
 ### 5.3. Dấu hiệu kết nối thành công
 
@@ -306,7 +288,7 @@ Kết nối cloud hiện tại không bổ sung cơ chế lưu đệm và gửi 
 - [Hướng dẫn trong repository](../docs/CLOUD_MQTT_SETUP.md)
 - [Mẫu cấu hình (mục MQTT)](../.env.example)
 - [Docker Compose cloud overlay](../docker-compose.cloud-mqtt.yml)
-- Mẫu cấu hình ESP32 cloud: `firmware/cold_room_monitor/config.cloud.example.h` (chỉ giữ ở local).
+- [Mẫu cấu hình ESP32](../firmware/cold_room_monitor/config.example.h) (chọn dòng `MQTT_URI` cloud)
 - [Script kiểm tra MQTT](../scripts/check-cloud-mqtt.cjs)
 - [EMQX: kết nối ESP32, TLS và chứng chỉ](https://docs.emqx.com/en/cloud/latest/connect_to_deployments/esp32.html)
 - [EMQX: tạo tài khoản MQTT](https://docs.emqx.com/en/cloud/latest/deployments/default_auth.html)

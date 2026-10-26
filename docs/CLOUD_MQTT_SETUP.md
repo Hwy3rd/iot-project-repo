@@ -1,14 +1,6 @@
 # Kết nối nhiều kho qua MQTT TLS
 
-## Phạm vi bản cập nhật trên GitHub
-
-Bản cập nhật này gồm backend, cấu hình Docker, CA công khai, script kiểm tra MQTT
-và tài liệu. Theo yêu cầu, mã firmware TLS, các mẫu cấu hình cloud của firmware
-và script sinh header CA được giữ ở máy local, chưa đưa lên GitHub.
-Bản firmware theo dõi trong Git vẫn dùng kết nối LAN; chỉ đổi host/cổng trong
-`config.h` của bản đó chưa đủ để kết nối TLS. Phần ESP32 bên dưới áp dụng cho
-bản firmware TLS local đã nạp và kiểm thử.
-
+Chế độ `MQTT_MODE=cloud`. Các chế độ khác xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 1.
 Xem [hướng dẫn chi tiết và kết quả kiểm thử](HUONG_DAN_KET_NOI_EMQX.md).
 
 ESP32 ở mỗi kho và backend cùng kết nối đến cloud broker qua Internet.
@@ -68,31 +60,22 @@ pnpm run start:dev
 không có tùy chọn tắt xác minh TLS. Để dùng broker LAN, chạy stack cơ sở
 hoặc `MQTT_MODE=local ./run.sh ...` và cấu hình firmware LAN.
 
-## ESP32 (bản firmware TLS giữ ở local)
+## ESP32
 
-Các file `config.cloud.example.h`, `mqtt_ca.h` và script
-`scripts/generate-mqtt-ca.cjs` trong phần này thuộc bản local, không có trong
-bản cập nhật GitHub. Cần có bản firmware TLS đó để thực hiện các bước sau.
+Firmware trong repo (esp-mqtt, Arduino-ESP32 core 3.x) kết nối TLS trực tiếp,
+xem [firmware/README.md](../firmware/README.md).
 
-1. Copy `firmware/cold_room_monitor/config.cloud.example.h` thành `config.h`.
-2. Điền Wi-Fi 2.4 GHz tại kho, username/password MQTT của thiết bị.
+1. Copy `firmware/cold_room_monitor/config.example.h` thành `config.h`.
+2. Điền Wi-Fi 2.4 GHz tại kho, đặt `MQTT_URI` dòng cloud
+   (`mqtts://n0c006e0.ala.asia-southeast1.emqxsl.com:8883`) và username/password
+   EMQX của thiết bị.
 3. Đặt `DEVICE_ID` bằng `unique_id` đã đăng ký và gán phòng trong website.
 4. Grant quyền MQTT theo ID đó (bảng dưới), compile và nạp firmware.
 5. Xem Serial Monitor: Wi-Fi có IP, NTP có giờ thực, MQTT kết nối thành công.
 
-`MQTT_USE_TLS=1` chọn `WiFiClientSecure` và CA trong `mqtt_ca.h`.
-Chờ NTP diễn ra không chặn vòng lặp cảm biến/điều khiển. Broker/cloud và
-tài khoản MQTT không tự tạo thiết bị hoặc gán phòng trong database.
-
-Khi thay CA, chạy từ thư mục gốc trước khi compile:
-
-```bash
-node scripts/generate-mqtt-ca.cjs
-```
-
-Header CA công khai được nhúng trong bản firmware TLS local để Arduino IDE build được.
-Firmware TLS local giữ khả năng dùng `WiFiClient` khi không bật `MQTT_USE_TLS`.
-Firmware trong Git được giữ nguyên theo yêu cầu.
+Với `mqtts://`, firmware xác minh chứng chỉ EMQX bằng bộ CA có sẵn trong core;
+chỉ cần `MQTT_CA_CERT` trong `config.h` khi muốn ghim một CA riêng.
+Broker/cloud và tài khoản MQTT không tự tạo thiết bị hoặc gán phòng trong database.
 
 ## Quyền EMQX
 

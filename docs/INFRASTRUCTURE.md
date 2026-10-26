@@ -15,6 +15,18 @@ Toàn bộ hệ thống chạy bằng **Docker Compose trên một máy chủ du
 
 Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng **không kế thừa nhau**. Khi sửa phần chung, phải sửa **cả hai file** bằng tay.
 
+### Chế độ broker MQTT (`MQTT_MODE`)
+
+Ngoài hai file chính còn hai **overlay** chồng lên một trong hai file trên để đổi broker MQTT. `init.sh`/`run.sh` chọn overlay theo `MQTT_MODE` (lấy từ shell, nếu không có thì từ dòng `MQTT_MODE=` trong `.env`, mặc định `local`), xem [scripts/compose-mqtt.sh](../scripts/compose-mqtt.sh). Mọi chế độ đọc chung một `.env` gốc nên đổi chế độ chỉ cần đổi `MQTT_MODE`. Overlay dùng `!reset`, cần Docker Compose ≥ 2.24.4.
+
+| `MQTT_MODE` | Overlay | Broker | Thiết bị kết nối | Backend kết nối | Hướng dẫn |
+| ----------- | ------- | ------ | ---------------- | --------------- | --------- |
+| `local` (mặc định) | — | `mosquitto` trong stack, publish `1883` ra host | `mqtt://<IP máy chủ>:1883` qua LAN, không TLS, tài khoản dùng chung `MQTT_DEVICE_*` | `mqtt://mosquitto:1883` | Mục 9 |
+| `cloud` | [docker-compose.cloud-mqtt.yml](../docker-compose.cloud-mqtt.yml) | EMQX Cloud bên ngoài; `mosquitto` không chạy | `mqtts://<host EMQX>:8883`, tài khoản EMQX riêng cho từng board | `MQTT_CLOUD_URL` (TLS, CA `certs/mqtt/emqxsl-ca.crt`) | [CLOUD_MQTT_SETUP.md](CLOUD_MQTT_SETUP.md) |
+| `tunnel` | [docker-compose.tunnel-mqtt.yml](../docker-compose.tunnel-mqtt.yml) | `mosquitto` trong stack, **không publish cổng nào**, thêm listener WebSocket `8083` | `wss://mqtt.<domain>/mqtt` qua Cloudflare Tunnel, tài khoản riêng cho từng board | `mqtt://mosquitto:1883` trong mạng Docker | [TUNNEL_MQTT_SETUP.md](TUNNEL_MQTT_SETUP.md) |
+
+Chỉ dùng một overlay mỗi lần, không nạp đồng thời `cloud` và `tunnel`. Sơ đồ dưới đây là chế độ `local`.
+
 ### Sơ đồ production
 
 ```
@@ -48,6 +60,8 @@ Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng *
                 ESP32 (MQTT qua LAN)
 ```
 
+Ở chế độ `tunnel`, `mosquitto` không còn mũi tên `host:1883`. Thay vào đó `cloudflared` có thêm route `mqtt.<domain>` → `http://mosquitto:8083`, và ESP32 đi vào từ Internet qua Cloudflare (WSS :443) giống API. Ở chế độ `cloud`, không có `mosquitto`: `app`/`worker` và ESP32 cùng kết nối ra EMQX Cloud.
+
 ---
 
 ## 2. Danh sách service
@@ -60,9 +74,9 @@ Hai file dùng chung phần build, healthcheck, `depends_on` và volume nhưng *
 | `mongo`       | `mongo:7`                        | `mongo_db`         | 27017               | `mongo_data`        | Telemetry (`telemetry_raw`, `telemetry_hourly`)                      |
 | `redis`       | `redis:7-alpine`                 | `redis_db`         | 6379                | `redisdata`         | Session refresh token + queue BullMQ                                 |
 | `minio`       | `cgr.dev/chainguard/minio:latest` | `minio_bucket`    | 9000 (S3), 9001 (console) | `minio_data`  | Ảnh upload; bucket được `app` tự tạo và mở quyền đọc public. Bản build MinIO miễn phí của Chainguard (xem mục 7) |
-| `mosquitto`   | `eclipse-mosquitto:2`            | `mosquitto_broker` | 1883                | `mosquitto_data` + mount `mosquitto/mosquitto.conf` (read-only) | Broker MQTT cho thiết bị |
+| `mosquitto`   | `eclipse-mosquitto:2`            | `mosquitto_broker` | 1883 (+ 8083 WS ở `tunnel`) | `mosquitto_data` + mount `mosquitto/mosquitto.conf` (read-only; `tunnel` mount `mosquitto.websocket.conf`) | Broker MQTT cho thiết bị. Không chạy ở `MQTT_MODE=cloud` |
 | `ai-service`  | build từ `ai-service/Dockerfile` | `ai_service`       | 8000 (HTTP)         | —                   | Dự báo nhiệt độ 15 phút (FastAPI + scikit-learn), chỉ `app` gọi. `mem_limit: 512m`. Xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b |
-| `cloudflared` | `cloudflare/cloudflared:latest`  | `cloudflared`      | —                   | —                   | **Chỉ có ở production**                                              |
+| `cloudflared` | `cloudflare/cloudflared:latest`  | `cloudflared`      | —                   | —                   | Có ở production; overlay `tunnel` thêm nó vào cả compose dev. Ở `tunnel` chờ `mosquitto` healthy |
 
 Mọi service đều đặt `restart: unless-stopped`: tự khởi động lại khi crash hoặc khi Docker daemon khởi động lại, trừ khi đã bị `stop` thủ công.
 
@@ -114,7 +128,7 @@ Tất cả service nằm trong network mặc định của compose project và g
 | 6379      | `redis`     | ✅  | `127.0.0.1`         | Client Redis trên máy chủ              |
 | 9000      | `minio`     | ✅  | `127.0.0.1`         | S3 API / tải ảnh                       |
 | 9001      | `minio`     | ✅  | `127.0.0.1`         | MinIO web console                      |
-| 1883      | `mosquitto` | ✅  | ✅ (mọi interface)  | Thiết bị ESP32 gửi telemetry           |
+| 1883      | `mosquitto` | ✅  | ✅ (mọi interface)  | Thiết bị ESP32 gửi telemetry. Chỉ ở `MQTT_MODE=local`: `tunnel` gỡ cổng này (`ports: !reset []`), `cloud` không chạy broker |
 | 8000      | `ai-service` | ✅ | `127.0.0.1`         | Backend chạy trên host gọi AI (`./run.sh dev`); `/docs` để thử API |
 
 Ở production, truy cập từ bên ngoài máy chủ: API và ảnh MinIO **chỉ** đi qua Cloudflare Tunnel, datastore thì không có đường nào. Các cổng `127.0.0.1` chỉ để dùng client (DBeaver, `redis-cli`, MinIO console...) ngay trên máy chủ, xem mục 8.
@@ -141,6 +155,7 @@ Tất cả service nằm trong network mặc định của compose project và g
    | ---------------- | --------------------- |
    | `api.<domain>`   | `http://app:3000`     |
    | `files.<domain>` | `http://minio:9000`   |
+   | `mqtt.<domain>`  | `http://mosquitto:8083` (chỉ khi `MQTT_MODE=tunnel`, xem [TUNNEL_MQTT_SETUP.md](TUNNEL_MQTT_SETUP.md)) |
 
    Tên subdomain chỉ là ví dụ, có thể đặt tuỳ ý miễn khớp với env ở bước 4.
 
@@ -179,7 +194,10 @@ Hệ quả của cách (2): ký tự `$` trong giá trị bị hiểu là tham c
 | MySQL               | `MYSQL_HOST/PORT/USER/PASSWORD/DATABASE`, `MYSQL_ROOT_PASSWORD`                    | Dùng chung cho app lẫn container mysql                                                    |
 | MongoDB             | `MONGO_ROOT_USERNAME/PASSWORD`, `MONGO_URI`                                        | Credential trong `MONGO_URI` phải khớp `MONGO_ROOT_*`                                     |
 | Redis               | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`                                       | `REDIS_PASSWORD` cũng là `requirepass` của container redis                                |
-| MQTT                | `MQTT_URL`, `MQTT_USERNAME/PASSWORD`, `MQTT_DEVICE_USERNAME/PASSWORD`              | Broker sinh password file + ACL từ 4 biến này (`mosquitto/entrypoint.sh`); `MQTT_DEVICE_*` nạp vào firmware thiết bị |
+| MQTT                | `MQTT_URL`, `MQTT_CA_FILE`, `MQTT_USERNAME/PASSWORD`, `MQTT_DEVICE_USERNAME/PASSWORD` | Chế độ `local`: broker sinh password file + ACL từ 4 biến tài khoản (`mosquitto/entrypoint.sh`); `MQTT_DEVICE_*` nạp vào firmware thiết bị. `MQTT_URL` nhận `mqtt`/`mqtts`/`ws`/`wss`; `MQTT_CA_FILE` chỉ dùng với `mqtts`/`wss` |
+| Chế độ MQTT         | `MQTT_MODE`                                                                        | `local` \| `cloud` \| `tunnel`, xem mục 1                                                 |
+| MQTT cloud (EMQX)   | `MQTT_CLOUD_URL/USERNAME/PASSWORD`, `MQTT_CLOUD_DEVICE_ID/USERNAME/PASSWORD`        | Overlay `cloud` đưa `MQTT_CLOUD_URL/USERNAME/PASSWORD` vào `app`/`worker` thay cho `MQTT_*`. Nhóm `DEVICE_*` chỉ dùng cho `scripts/check-cloud-mqtt.cjs` |
+| MQTT tunnel         | `MQTT_TUNNEL_DEVICE_ID/USERNAME/PASSWORD`                                           | Tài khoản của node chính, thay `MQTT_DEVICE_*` dùng chung. Node thêm khai báo trong `mosquitto/tunnel-auth/devices.txt` (gitignore) |
 | MinIO               | `MINIO_ENDPOINT/PORT/USE_SSL/ACCESS_KEY/SECRET_KEY/BUCKET`, `MINIO_PUBLIC_URL`     | `ACCESS_KEY/SECRET_KEY` cũng là root credential của container minio                       |
 | Auth                | `JWT_SECRET`, `JWT_REFRESH_SECRET`, `*_EXPIRES_IN`, `COOKIE_NAME`, `REFRESH_COOKIE_NAME` | Hai secret phải khác nhau và khác bộ secret dev                                     |
 | Web Push            | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`                           | Sinh cặp khoá riêng cho production: `npx web-push generate-vapid-keys`                    |
@@ -187,7 +205,7 @@ Hệ quả của cách (2): ký tự `$` trong giá trị bị hiểu là tham c
 | Chatbot (LLM)       | `GEMINI_API_KEY`, `LLM_*`, `CHATBOT_RATE_LIMIT_*`, `CHATBOT_DOCS_DIR`              | `CHATBOT_DOCS_DIR=/app/docs` khớp với đường dẫn copy docs trong Dockerfile                |
 | Dự báo AI           | `AI_SERVICE_URL`                                                                   | Không cần đặt trong `.env` root: compose đã đặt `http://ai-service:8000` cho `app`. Chỉ `server/.env` cần (`http://localhost:8000`) |
 | Seed                | `SEED_ADMIN_USERNAME`, `SEED_ADMIN_PASSWORD`, `SEED_MANAGER_USERNAME`, `SEED_TECHNICIAN_USERNAME`, `SEED_STAFF_USERNAME` | Chỉ dùng lúc `init.sh`; cả 4 tài khoản dùng chung `SEED_ADMIN_PASSWORD`; nên xoá/đổi khỏi `.env` sau lần đầu |
-| Tunnel              | `CLOUDFLARE_TUNNEL_TOKEN`                                                          | Chỉ `cloudflared` đọc                                                                     |
+| Tunnel              | `CLOUDFLARE_TUNNEL_TOKEN`                                                          | Chỉ `cloudflared` đọc. Bắt buộc với `MQTT_MODE=tunnel` vì thiết bị chỉ vào được qua tunnel |
 
 **Credential datastore chỉ có tác dụng ở lần khởi động đầu, khi volume còn rỗng.** Các biến `MYSQL_USER/PASSWORD/DATABASE`, `MONGO_ROOT_*` và `MINIO_ACCESS_KEY/SECRET_KEY` được container dùng để tạo user khi volume chưa có dữ liệu. Sửa chúng trong `.env` sau đó **không** đổi mật khẩu của DB đã có, mà chỉ làm `app` kết nối thất bại. Muốn đổi thì phải đổi trong DB trước (qua `docker exec`) rồi mới sửa `.env`.
 
@@ -252,21 +270,24 @@ Redis và Mosquitto chỉ chứa trạng thái tạm (session, queue, message ch
 Yêu cầu: Docker + Docker Compose v2. Máy chủ **không cần** cài Node/pnpm, vì mọi thứ chạy trong container.
 
 1. Kiểm tra `docker`, `docker compose` và file `.env`. Nếu thiếu `CLOUDFLARE_TUNNEL_TOKEN` thì chỉ cảnh báo, không dừng.
-2. `docker compose -f docker-compose.production.yml up -d --build`. Lệnh này chờ đến khi cả chuỗi `depends_on` ở mục 3 hoàn tất, bao gồm migration.
+2. `docker compose -f docker-compose.production.yml [-f <overlay MQTT>] up -d --build` (overlay theo `MQTT_MODE`, mục 1). Lệnh này chờ đến khi cả chuỗi `depends_on` ở mục 3 hoàn tất, bao gồm migration.
 3. Seed tài khoản: `compose run --rm app node dist/seeds/account.seed.js`. Tạo admin nếu chưa có admin nào, và mỗi tài khoản Manager/Technician/Staff nếu username chưa tồn tại — cả 4 dùng chung `SEED_ADMIN_PASSWORD`. Các tài khoản này chưa được phân công vào kho nào — Admin gán trong dialog chi tiết kho.
 
 ### Vận hành hằng ngày: `./run.sh`
 
 | Lệnh                         | Tác dụng                                                                        |
 | ---------------------------- | ------------------------------------------------------------------------------- |
-| `./run.sh start`             | Bật lại container. Nếu container đã bị `down` thì tạo lại từ volume sẵn có      |
-| `./run.sh dev`               | `up` mọi service trừ `app` và `cloudflared`. Backend thì tự chạy trên host (ví dụ `pnpm start:dev` trong `server/`). Datastore truy cập qua cổng `127.0.0.1` (mục 4) |
+| `./run.sh start`             | `up` lại container: tạo lại từ volume sẵn có nếu đã bị `down`, và tạo lại container nào có cấu hình đổi (ví dụ đổi `MQTT_MODE` hoặc `.env`) |
+| `./run.sh up <svc...>`       | Tạo lại đúng các service được nêu từ cấu hình hiện tại (`--no-deps`, chờ healthy). Ví dụ `MQTT_MODE=tunnel ./run.sh up mosquitto` để áp dụng cấu hình broker WebSocket |
+| `./run.sh dev`               | `up` mọi service trừ `app` và `cloudflared` (ở `MQTT_MODE=cloud` bỏ cả `mosquitto`). Ở `tunnel`, thiết bị chỉ kết nối được khi `cloudflared` chạy. Backend thì tự chạy trên host (ví dụ `pnpm start:dev` trong `server/`). Datastore truy cập qua cổng `127.0.0.1` (mục 4) |
 | `./run.sh stop`              | Dừng mọi container, giữ dữ liệu                                                 |
 | `./run.sh restart [svc]`     | Restart toàn bộ hoặc một service                                                |
 | `./run.sh status`            | `compose ps -a`                                                                 |
 | `./run.sh logs [svc]`        | Theo dõi log (200 dòng cuối)                                                     |
 | `./run.sh down`              | Xoá container, **giữ volume**                                                   |
 | `./run.sh rebuild [svc]`     | Build lại image backend từ `./server` rồi thay `app` + `worker`, hoặc chỉ một trong hai. `./run.sh rebuild ai-service` build lại `./ai-service`. Chờ container mới healthy (tối đa 300 giây) |
+
+Mọi lệnh đều đọc `MQTT_MODE` (mục 1). Đặt `MQTT_MODE=` trong `.env` để không phải gõ lại; giá trị trên dòng lệnh được ưu tiên hơn.
 
 Chỉ `rebuild` mới build lại image; các lệnh khác dùng image có sẵn. Mỗi lần `app` khởi động nó chạy `migration:run` (không có gì mới thì bỏ qua).
 
@@ -281,7 +302,7 @@ Lệnh này build lại image `app`/`worker` từ `./server` và chỉ thay hai 
 
 Nếu bản mới có sửa `ai-service/` (code, thư viện, hoặc file model), chạy thêm `./run.sh rebuild ai-service`. Trong lúc nó được thay, hệ thống vẫn chạy bình thường, chỉ thiếu dự báo.
 
-Nếu bản mới có sửa `mosquitto/entrypoint.sh` hoặc `mosquitto/mosquitto.conf` (ví dụ thêm quyền ACL cho topic mới), restart broker để áp dụng: `docker restart mosquitto_broker`. Thiết bị, `app` và `worker` tự kết nối lại sau khoảng 5 giây, có thể mất 1–2 mẫu telemetry trong lúc đó.
+Nếu bản mới có sửa `mosquitto/entrypoint.sh` hoặc `mosquitto/mosquitto.conf` (ví dụ thêm quyền ACL cho topic mới), restart broker để áp dụng: `docker restart mosquitto_broker`. Ở chế độ `tunnel`, các file tương ứng là `mosquitto/tunnel-entrypoint.sh`, `mosquitto/mosquitto.websocket.conf` và `mosquitto/tunnel-auth/devices.txt`; sửa overlay thì dùng `MQTT_MODE=tunnel ./run.sh up mosquitto`. Thiết bị, `app` và `worker` tự kết nối lại sau khoảng 5 giây, có thể mất 1–2 mẫu telemetry trong lúc đó.
 
 `rebuild` **không đụng** datastore hay `cloudflared`, kể cả khi định nghĩa của chúng trong compose đã đổi (ví dụ đổi image MinIO). Những thay đổi đó phải làm riêng và có chủ đích (`docker compose -f docker-compose.production.yml up -d <svc>`), sau khi đã làm các bước chuẩn bị cần thiết, như chown `minio_data` ở mục 7.
 
@@ -310,13 +331,23 @@ Hoặc chạy cả stack trong container bằng `docker compose up -d --build`, 
 
 ## 9. Kết nối thiết bị IoT (MQTT)
 
-ESP32 kết nối tới broker ở `<IP máy chủ>:1883` với client ID = `unique_id`, dùng 3 topic: publish `devices/{uniqueId}/telemetry`, subscribe `devices/{uniqueId}/commands` (lệnh điều khiển) và publish `devices/{uniqueId}/ack` (kết quả lệnh). Chi tiết luồng xem [MESSAGE_QUEUE.md](MESSAGE_QUEUE.md) mục 5. Cổng 1883 là cổng duy nhất publish ra host ở production, **không** đi qua Cloudflare Tunnel (tunnel chỉ proxy HTTP).
+ESP32 kết nối với client ID = `unique_id` (`DEVICE_ID` trong firmware), dùng 4 topic: publish `devices/{uniqueId}/telemetry`, subscribe `devices/{uniqueId}/commands` (lệnh điều khiển) và `devices/{uniqueId}/config` (ngưỡng phòng), publish `devices/{uniqueId}/ack` (kết quả lệnh). Chi tiết luồng xem [MESSAGE_QUEUE.md](MESSAGE_QUEUE.md) mục 5. Topic giống nhau ở cả 3 chế độ; chỉ địa chỉ broker và tài khoản thay đổi. Firmware chọn bằng `MQTT_URI` trong `config.h` (xem [firmware/README.md](../firmware/README.md)):
 
-Cấu hình broker ([mosquitto/mosquitto.conf](../mosquitto/mosquitto.conf)): một listener `1883`, bật persistence, log ra stdout, **bắt buộc đăng nhập**, chưa có TLS (xem mục 10). File mật khẩu và ACL do [mosquitto/entrypoint.sh](../mosquitto/entrypoint.sh) sinh lại từ `.env` mỗi lần container khởi động (quyền từng tài khoản xem [SECURITY.md](SECURITY.md)). Entrypoint xoá file mật khẩu cũ trước khi tạo mới, vì `mosquitto_passwd -c` (Mosquitto 2.1) từ chối ghi đè file đã có: thiếu bước này thì `docker restart` làm broker khởi động lại liên tục.
+| `MQTT_MODE` | `MQTT_URI` trong firmware | Tài khoản thiết bị |
+| ----------- | ------------------------- | ------------------ |
+| `local`     | `mqtt://<IP LAN máy chủ>:1883` | `MQTT_DEVICE_USERNAME/PASSWORD` dùng chung |
+| `tunnel`    | `wss://mqtt.<domain>:443/mqtt` | `MQTT_TUNNEL_DEVICE_*` hoặc một dòng trong `tunnel-auth/devices.txt` |
+| `cloud`     | `mqtts://<host EMQX>:8883`     | Tài khoản riêng tạo trên EMQX |
+
+Với `mqtts://` và `wss://`, firmware kiểm tra chứng chỉ broker bằng bộ CA có sẵn trong core ESP32 (có thể ghim CA riêng qua `MQTT_CA_CERT`).
+
+Ở chế độ `local`, cổng 1883 là cổng duy nhất publish ra host ở production và **không** đi qua Cloudflare Tunnel. Cấu hình broker ([mosquitto/mosquitto.conf](../mosquitto/mosquitto.conf)): một listener `1883`, bật persistence, log ra stdout, **bắt buộc đăng nhập**, không có TLS (xem mục 10). File mật khẩu và ACL do [mosquitto/entrypoint.sh](../mosquitto/entrypoint.sh) sinh lại từ `.env` mỗi lần container khởi động (quyền từng tài khoản xem [SECURITY.md](SECURITY.md)). Entrypoint xoá file mật khẩu cũ trước khi tạo mới, vì `mosquitto_passwd -c` (Mosquitto 2.1) từ chối ghi đè file đã có: thiếu bước này thì `docker restart` làm broker khởi động lại liên tục.
+
+Ở chế độ `tunnel`, broker dùng [mosquitto/mosquitto.websocket.conf](../mosquitto/mosquitto.websocket.conf) với hai listener chỉ nằm trong mạng Docker: `1883` (MQTT, cho `app`/`worker`) và `8083` (WebSocket, cho `cloudflared`). [mosquitto/tunnel-entrypoint.sh](../mosquitto/tunnel-entrypoint.sh) sinh password file + ACL cho tài khoản backend và **từng thiết bị** (node chính từ `MQTT_TUNNEL_DEVICE_*`, các node khác từ `mosquitto/tunnel-auth/devices.txt`), mỗi thiết bị chỉ được dùng 4 topic của chính `deviceId` đó. Thiết bị kết nối được từ bất kỳ mạng nào có Internet.
 
 ### Máy chủ là WSL2 trên Windows
 
-Mặc định WSL2 nằm sau NAT riêng, nên thiết bị cùng WiFi không kết nối được tới cổng 1883. Chạy [scripts/setup-windows-lan.ps1](../scripts/setup-windows-lan.ps1) **một lần** trong PowerShell *Run as Administrator* (cần Windows 11 22H2 trở lên):
+Chỉ cần cho chế độ `local`. Mặc định WSL2 nằm sau NAT riêng, nên thiết bị cùng WiFi không kết nối được tới cổng 1883. Chạy [scripts/setup-windows-lan.ps1](../scripts/setup-windows-lan.ps1) **một lần** trong PowerShell *Run as Administrator* (cần Windows 11 22H2 trở lên):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File \\wsl.localhost\Ubuntu\<đường dẫn repo>\scripts\setup-windows-lan.ps1
@@ -341,6 +372,7 @@ Script chạy lại an toàn. Khi chuyển sang WiFi hoặc hotspot mới thì c
 - Cổng datastore/API ở production chỉ bind `127.0.0.1`, không lộ ra mạng. Truy cập public đi qua Cloudflare (HTTPS, ẩn IP gốc).
 - Credential datastore là bắt buộc ở production, không có giá trị mặc định.
 - Redis bật `requirepass`; MQTT broker bắt buộc đăng nhập và có ACL tách quyền backend/thiết bị.
+- MQTT qua Internet có TLS: `MQTT_MODE=cloud` (MQTTS 8883 tới EMQX, backend xác minh CA + hostname) và `MQTT_MODE=tunnel` (WSS do Cloudflare terminate, broker không publish cổng nào). Cả hai chế độ đều dùng credential riêng cho từng thiết bị.
 - Container `app`/`worker` chạy bằng user `node` (không phải root), có `tini` làm PID 1 để forward signal và dọn zombie process. `ai-service` chạy bằng user `aiservice`, không bật CORS, và không trả chi tiết lỗi nội bộ cho client.
 - Image runner chỉ chứa `dist/` và production dependencies, không có source hay devDependencies.
 
@@ -348,7 +380,8 @@ Chưa có, cần làm trước khi mở rộng ra môi trường không tin cậ
 
 | Vấn đề                                   | Rủi ro                                                                                   | Hướng xử lý                                                                    |
 | ---------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| MQTT chưa có TLS, thiết bị dùng chung 1 tài khoản | Ai nghe lén được LAN sẽ thấy credential; lộ credential của một thiết bị là giả được telemetry của mọi thiết bị | Thêm listener TLS 8883; cấp credential riêng cho từng thiết bị (username = `unique_id`, ACL `pattern write devices/%u/telemetry`) |
+| Chế độ `local`: MQTT không TLS, thiết bị dùng chung 1 tài khoản | Ai nghe lén được LAN sẽ thấy credential; lộ credential của một thiết bị là giả được telemetry của mọi thiết bị | Chỉ dùng `local` trên LAN tin cậy; ngoài ra chuyển sang `MQTT_MODE=tunnel` hoặc `cloud` |
+| Chế độ `tunnel`: TLS kết thúc ở Cloudflare | Đoạn Cloudflare → `cloudflared` → broker đi trong tunnel đã mã hoá, nhưng Cloudflare thấy được nội dung MQTT | Chấp nhận được với telemetry nhiệt độ; nếu không thì dùng `cloud` |
 | Bucket MinIO cho đọc public              | Ai có URL đều xem được ảnh (tên object là thông tin duy nhất cần biết)                   | Chấp nhận được với ảnh không nhạy cảm; nếu cần riêng tư thì chuyển sang presigned URL |
 | Image dùng tag `latest` (`minio`, `cloudflared`) | Build/pull lại có thể kéo phiên bản mới ngoài ý muốn                             | Pin phiên bản cụ thể                                                           |
 | `ai-service` không xác thực request       | Ai tới được cổng 8000 đều gọi được API dự báo. Ở production chỉ bind `127.0.0.1` nên chỉ máy chủ gọi được; ở dev thì bind mọi interface | Thêm token dùng chung qua header nếu cần mở rộng ra ngoài máy chủ |
