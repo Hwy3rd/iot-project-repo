@@ -10,7 +10,11 @@
 #   MQTT_MODE=cloud ./run.sh rebuild   use the external cloud MQTT broker
 #   MQTT_MODE=tunnel ./run.sh up mosquitto   apply private MQTT/WebSocket broker config
 #   ./run.sh up <svc...>      recreate named services from current env (no dependencies)
-#   ./run.sh start            resume all stopped containers
+#   ./run.sh start            start all containers, recreating any whose
+#                             config changed (e.g. MQTT_MODE)
+#
+# MQTT_MODE defaults to the MQTT_MODE= line in .env (else local); a value
+# set on the command line wins.
 #   ./run.sh dev              up everything except app + cloudflared; start
 #                             the backend on the host yourself
 #   ./run.sh stop             stop all containers (keeps data/volumes)
@@ -79,8 +83,10 @@ case "$cmd" in
       log "no containers found (likely after 'docker compose down') — recreating from existing volumes"
       compose up -d "${SERVICES[@]}"
     else
-      log "starting containers: ${SERVICES[*]}"
-      compose start "${SERVICES[@]}"
+      # `up` (not `start`) so a changed MQTT_MODE/.env recreates the affected
+      # containers; unchanged ones are just started. No --build.
+      log "starting containers (MQTT_MODE=${MQTT_MODE:-local}): ${SERVICES[*]}"
+      compose up -d "${SERVICES[@]}"
     fi
     ok "stack is up"
     compose ps
