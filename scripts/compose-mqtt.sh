@@ -3,6 +3,10 @@
 # Every mode reads the single root .env: each overlay maps its own
 # MQTT_CLOUD_* / MQTT_TUNNEL_* variables onto what the containers expect, so
 # switching modes only changes MQTT_MODE, never the .env file.
+# MQTT_MODE comes from the shell, else from MQTT_MODE= in .env, else local.
+if [[ -z "${MQTT_MODE:-}" && -f "$ROOT_DIR/.env" ]]; then
+  MQTT_MODE="$(sed -n 's/^MQTT_MODE=//p' "$ROOT_DIR/.env" | tail -n 1 | tr -d "\r\"' ")"
+fi
 COMPOSE_ARGS=(--project-directory "$ROOT_DIR" -f "$COMPOSE_FILE")
 case "${MQTT_MODE:-local}" in
   local) ;;
