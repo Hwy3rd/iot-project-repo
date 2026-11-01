@@ -66,17 +66,16 @@ function selectProfile(device, scenario, profileName) {
   const margin = Number(device.hysteresis || 0);
   return candidates.find(([, p]) => {
     const current = p.temperatures.at(-1);
-    const predicted = p.predicted_temp_15m_at_export;
+    const predictions = Object.values(p.forecasts_at_export);
     return (
       p.scenario === scenario &&
       current >= device.tempMin &&
       current <= device.tempMax &&
       (scenario === "warning"
-        ? predicted > device.tempMax
+        ? predictions.some((value) => value > device.tempMax || value < device.tempMin)
         : current >= device.tempMin + margin &&
           current <= device.tempMax - margin &&
-          predicted >= device.tempMin + margin &&
-          predicted <= device.tempMax - margin)
+          predictions.every((value) => value >= device.tempMin + margin && value <= device.tempMax - margin))
     );
   });
 }
@@ -145,7 +144,7 @@ Configuration: server/.env, overridden by environment variables. Use a demo devi
           history_rows: 780,
           source: profile.source_file,
           request: predictionPayload(profile),
-          expected_forecast_at_export: profile.predicted_temp_15m_at_export,
+          expected_forecasts_at_export: profile.forecasts_at_export,
         },
         null,
         2,
@@ -262,7 +261,7 @@ Configuration: server/.env, overridden by environment variables. Use a demo devi
       `DEMO: installed ${outcome.upsertedCount} Bangkok history rows for ${device.uniqueId} / ${device.roomName}.`,
     );
     console.log(
-      `Profile ${selectedName}; current ${profile.temperatures.at(-1)} C; forecast ${preview.predicted_temp_15m} C (${preview.risk_level}).`,
+      `Profile ${selectedName}; current ${profile.temperatures.at(-1)} C; forecasts ${preview.forecasts.map((point) => `+${point.horizon_minutes}m=${point.predicted_temp.toFixed(2)} C`).join(', ')} (${preview.risk_level}).`,
     );
   } finally {
     await mongo.close();

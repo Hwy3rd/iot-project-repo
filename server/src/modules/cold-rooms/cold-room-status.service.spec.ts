@@ -282,7 +282,14 @@ describe('ColdRoomStatusService', () => {
       });
       raw.aggregate.mockResolvedValueOnce([]);
       const stored = {
-        predictedTemp15m: -15.8,
+        predictedAt: new Date('2026-11-01T10:00:00Z'),
+        forecasts: [5, 10].map((horizonMinutes) => ({
+          horizonMinutes,
+          predictedTemp: -15.8,
+          willExceedThreshold: true,
+          violationType: 'OVERHEAT',
+        })),
+        firstViolationMinutes: 5,
         willExceedThreshold: true,
         violationType: 'OVERHEAT',
         riskLevel: 'CRITICAL',

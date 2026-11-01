@@ -571,15 +571,37 @@ describe('TelemetryService', () => {
     };
     const chillSample = { ...sample, temperature: 3 };
     const breach = {
-      predicted_temp_15m: 4.6,
+      forecast_schema: 'temperature-warning-5-10-v1',
+      as_of: chillSample.ts.toISOString(),
+      forecasts: [
+        {
+          horizon_minutes: 5,
+          predicted_temp: 4.6,
+          will_exceed_threshold: true,
+          violation_type: 'OVERHEAT',
+        },
+        {
+          horizon_minutes: 10,
+          predicted_temp: 3,
+          will_exceed_threshold: false,
+          violation_type: 'NONE',
+        },
+      ],
+      first_violation_minutes: 5,
       will_exceed_threshold: true,
       violation_type: 'OVERHEAT',
-      risk_level: 'CRITICAL',
+      risk_level: 'WARNING',
       recommendation: 'Check the door',
     };
     const safe = (predicted: number) => ({
       ...breach,
-      predicted_temp_15m: predicted,
+      forecasts: [5, 10].map((horizon_minutes) => ({
+        horizon_minutes,
+        predicted_temp: predicted,
+        will_exceed_threshold: false,
+        violation_type: 'NONE',
+      })),
+      first_violation_minutes: null,
       will_exceed_threshold: false,
       violation_type: 'NONE',
       risk_level: 'NORMAL',
@@ -762,12 +784,60 @@ describe('TelemetryService', () => {
         triggerValue: 4.6,
         threshold: 4,
         details: {
-          predictedTemp15m: 4.6,
+          forecastSchema: breach.forecast_schema,
+          asOf: breach.as_of,
+          forecasts: breach.forecasts,
+          firstViolationMinutes: 5,
           violationType: 'OVERHEAT',
-          riskLevel: 'CRITICAL',
+          riskLevel: 'WARNING',
           recommendation: 'Check the door',
         },
       });
+    });
+
+    it('uses the +10m breach when +5m is safe', async () => {
+      const later = {
+        ...breach,
+        first_violation_minutes: 10,
+        forecasts: [
+          {
+            horizon_minutes: 5,
+            predicted_temp: 3,
+            will_exceed_threshold: false,
+            violation_type: 'NONE',
+          },
+          {
+            horizon_minutes: 10,
+            predicted_temp: 4.8,
+            will_exceed_threshold: true,
+            violation_type: 'OVERHEAT',
+          },
+        ],
+      };
+      aiPrediction.predict.mockResolvedValue(later);
+      await service.ingest('d1', chillSample);
+      await flush();
+      expect(alertsService.raise).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: AlertType.TEMPERATURE_PREDICTED,
+          triggerValue: 4.8,
+          details: expect.objectContaining({
+            firstViolationMinutes: 10,
+            forecasts: later.forecasts,
+          }),
+        }),
+      );
+    });
+
+    it('requires both safe forecasts to clear the hysteresis band', async () => {
+      const mixed = safe(3.5);
+      mixed.forecasts[0].predicted_temp = 3.8;
+      aiPrediction.predict.mockResolvedValue(mixed);
+      await service.ingest('d1', chillSample);
+      await flush();
+      expect(alertsService.resolveAuto).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: AlertType.TEMPERATURE_PREDICTED }),
+      );
     });
 
     it('keeps the forecast alert open while the forecast is safe but inside the hysteresis gap', async () => {

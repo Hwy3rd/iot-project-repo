@@ -64,9 +64,10 @@ test("demo API inputs use only current/past observations and match each exported
       payload.temperature >= profile.temp_min &&
         payload.temperature <= profile.temp_max,
     );
-    const breach =
-      profile.predicted_temp_15m_at_export > profile.temp_max ||
-      profile.predicted_temp_15m_at_export < profile.temp_min;
+    assert.deepEqual(Object.keys(profile.forecasts_at_export), ["5", "10"]);
+    const breach = Object.values(profile.forecasts_at_export).some(
+      (value) => value > profile.temp_max || value < profile.temp_min,
+    );
     assert.equal(breach, profile.scenario === "warning");
   }
 });

@@ -1,0 +1,11 @@
+{
+  "valid_run": "room-endpoint-forecast-2026-10-31-cpu",
+  "incomplete_runs": [
+    "room-endpoint-forecast-2026-10-31",
+    "room-endpoint-forecast-2026-10-31-run2",
+    "room-endpoint-forecast-2026-10-31-efficient"
+  ],
+  "incomplete_reason": "Windows commit limit was nearly exhausted; initial CUDA attempts stopped before holdout evaluation.",
+  "final_backend": "PyTorch 2.5.1+cpu in a separate environment on D:",
+  "data_objective_search_settings_unchanged": true
+}

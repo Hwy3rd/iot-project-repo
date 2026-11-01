@@ -1,0 +1,26 @@
+{
+  "runtime_and_prior_artifacts_unchanged": true,
+  "source_manifest_verified": true,
+  "source": {
+    "samples": 72700,
+    "hgb_replay_exact": true,
+    "gru_seeds_replayed": [
+      20261031,
+      20261101,
+      20261102
+    ],
+    "max_gru_replay_absolute_difference": 0.0,
+    "metrics_recomputed_exact": true
+  },
+  "temporal": {
+    "samples": 72324,
+    "hgb_replay_exact": true,
+    "gru_seeds_replayed": [
+      20261031,
+      20261101,
+      20261102
+    ],
+    "max_gru_replay_absolute_difference": 0.0,
+    "metrics_recomputed_exact": true
+  }
+}

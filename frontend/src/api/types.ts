@@ -22,7 +22,8 @@ export type ChannelType =
   | 'indicator_light'
   | 'buzzer'
 export type CommandAction = 'on' | 'off' | 'auto'
-export type CommandStatus = 'pending' | 'sent' | 'done' | 'failed' | 'expired' | 'superseded'
+export type CommandStatus =
+  'pending' | 'sent' | 'done' | 'failed' | 'expired' | 'superseded'
 export type AlertType =
   | 'temperature_out_of_range'
   | 'temperature_predicted'
@@ -429,23 +430,25 @@ export interface ColdRoomStatus {
   coldRoomId: string
   warehouseId: string
   /** Newest sample from any device in the room; null if none is kept. */
-  latest: ({
-    ts: string
-    /** The device that sent this sample. */
-    deviceId?: string
-    /**
-     * Channel types that device declares; decides which optional fields to
-     * show or flag as missing (lib/channel-readings.ts). Absent from older
-     * servers, [] when the device declares none.
-     */
-    declaredChannels?: ChannelType[]
-    temperature: number | null
-    doorOpen: boolean
-    sensorFault: boolean
-    /** Judged against the room's thresholds when the sample arrived. */
-    outOfRange: boolean
-  } & TelemetryDeviceState &
-    DeviceModeState) | null
+  latest:
+    | ({
+        ts: string
+        /** The device that sent this sample. */
+        deviceId?: string
+        /**
+         * Channel types that device declares; decides which optional fields to
+         * show or flag as missing (lib/channel-readings.ts). Absent from older
+         * servers, [] when the device declares none.
+         */
+        declaredChannels?: ChannelType[]
+        temperature: number | null
+        doorOpen: boolean
+        sensorFault: boolean
+        /** Judged against the room's thresholds when the sample arrived. */
+        outOfRange: boolean
+      } & TelemetryDeviceState &
+        DeviceModeState)
+    | null
   /** Installed devices, by status. */
   devices: { total: number } & Partial<Record<DeviceStatus, number>>
   /** Alerts still open or acknowledged. */
@@ -458,10 +461,18 @@ export type TelemetryRange = '1h' | '6h' | '24h'
 export type AiViolationType = 'NONE' | 'OVERHEAT' | 'FREEZING'
 export type AiRiskLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'
 
+export interface ColdRoomForecast {
+  horizonMinutes: 5 | 10
+  predictedTemp: number
+  willExceedThreshold: boolean
+  violationType: AiViolationType
+}
+
 export interface ColdRoomPrediction {
-  /** When the forecast was made; predictedTemp15m is for 15 minutes later. */
+  /** Latest input reading timestamp; both checkpoints are relative to it. */
   predictedAt: string
-  predictedTemp15m: number
+  forecasts: ColdRoomForecast[]
+  firstViolationMinutes: 5 | 10 | null
   willExceedThreshold: boolean
   violationType: AiViolationType
   riskLevel: AiRiskLevel

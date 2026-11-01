@@ -1,0 +1,40 @@
+{
+  "signature": {
+    "base_sha256": "19ec47f2923ab74bdedd9729e991a8229a3d1323e495ad35120a9465e0fdd6b7",
+    "loss": "huber",
+    "beta": 2.0,
+    "seed": 20261031,
+    "extra_epochs": 5,
+    "learning_rate": 0.0001,
+    "samples": 212544
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.13948209816632018,
+      "train_mae": 0.41205416002822043
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.1386301890464297,
+      "train_mae": 0.4133039971443947
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.13815160912316593,
+      "train_mae": 0.4132493473488464
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.13778363597640716,
+      "train_mae": 0.4133375936317645
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.13753555174406593,
+      "train_mae": 0.4135404758355015
+    }
+  ],
+  "seconds": 39.36970119999933,
+  "checkpoint_sha256": "167ddf7787c3d310c157d006769ac3ec5153f0660c98e3f8e25297d31c0f0a4e"
+}
