@@ -14,7 +14,7 @@ Bấm vào thẻ phòng để mở chi tiết ngay trên trang (lưới phòng �
 
 1. Tình hình hiện tại: nhiệt độ, độ ẩm, cửa, quạt, còi.
 2. **Cần chú ý**: mọi vấn đề của phòng gom vào một chỗ, việc nghiêm trọng (chữ đỏ) đứng trước. Không có vấn đề thì hiện "Mọi chỉ số đang bình thường".
-3. Dự báo AI cho 15 phút tới, kèm khuyến nghị.
+3. Dự báo AI tại mốc 5 và 10 phút tới, kèm khuyến nghị.
 4. Biểu đồ nhiệt độ.
 5. Điều khiển thiết bị.
 6. Danh sách thiết bị trong phòng.
@@ -80,3 +80,23 @@ Thiết bị mới kích hoạt đã có sẵn kênh chuẩn.
 ## Kiểm tra dữ liệu từng kênh
 
 Trong tab **Kênh** của thiết bị, mỗi kênh hiện giá trị gần nhất mà thiết bị gửi lên, ví dụ "5,2 °C · 71 %", "Cửa đóng", "Đang chạy". Kênh đã khai báo nhưng không có dữ liệu hiện **"Không có dữ liệu"** màu vàng. Dòng trên cùng cho biết số đo gần nhất cách đây bao lâu, và báo nếu thiết bị có thể đã mất kết nối. Phần này dành cho Admin, Quản lý và Kỹ thuật viên.
+
+## Chấm công ca trực
+
+Nhân viên vào Ca trực, chọn kho và ca phù hợp rồi gửi yêu cầu check-in. Có thể gửi từ 15 phút trước giờ bắt đầu đến trước lúc ca kết thúc. Chờ Quản lý duyệt; chỉ khi yêu cầu được duyệt và ca đang có hiệu lực mới được thao tác có yêu cầu ca trực. Khi xong việc, check-out để kết thúc quyền thao tác của ca. Xem được trang tổng quan không có nghĩa mọi thao tác ghi dữ liệu đã được mở quyền.
+
+## Tiếp nhận và xử lý cảnh báo
+
+1. Mở Cảnh báo hoặc cột cảnh báo của phòng, kiểm tra đúng kho, phòng và loại sự cố.
+2. Bấm Tiếp nhận nếu có quyền. Đây là ghi nhận người xử lý, không phải tắt sự cố.
+3. Với nhiệt độ vượt ngưỡng: kiểm tra cửa có kín, cảm biến có gửi số đo mới và quạt có hoạt động. Nhờ Kỹ thuật viên xử lý phần cứng khi cần.
+4. Với cảnh báo dự báo: đọc cả hai mốc 5 và 10 phút, thời điểm dữ liệu và khuyến nghị; kiểm tra số đo thật trước khi quyết định điều khiển. AI không tự đổi trạng thái quạt.
+5. Theo dõi dữ liệu mới. Một số cảnh báo tự đóng khi đủ điều kiện hồi phục; chỉ chọn Xử lý xong khi đã xác minh và tài khoản có quyền.
+
+## Đọc dự báo và biểu đồ
+
+Số đo thực tế và dự báo là hai phần khác nhau. Nét đứt thể hiện nhiệt độ ước lượng tại mốc sau 5 và 10 phút, màu cam khi có mốc vượt ngưỡng. Khoảng giữa các điểm là đường nối để đọc biểu đồ, không phải số đo hay cam kết nhiệt độ an toàn liên tục. Không thấy thẻ AI chưa chắc là không có số liệu: mô hình còn cần lịch sử đủ dài, dải nhiệt phù hợp và dịch vụ dự báo sẵn sàng.
+
+## Nhập lô hàng
+
+Chọn đúng kho và phòng lạnh, loại sản phẩm, mã lô, số lượng, ngày nhận và hạn sử dụng. Kiểm tra dải nhiệt độ phòng phù hợp loại sản phẩm rồi lưu. Nhân viên cần ca trực được duyệt để nhập/sửa. Khi bị từ chối, đọc thông báo, kiểm tra ngưỡng phòng, loại sản phẩm và ngày tháng; không nới ngưỡng chỉ để bỏ qua kiểm tra.

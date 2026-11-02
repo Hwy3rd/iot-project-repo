@@ -163,6 +163,13 @@ describe('ChatbotToolExecutorService', () => {
       ),
       coldRoomStatus as never,
       alertsRepo as never,
+      {
+        mode: 'rag',
+        context: jest.fn().mockResolvedValue(''),
+        search: jest
+          .fn()
+          .mockResolvedValue({ method: 'semantic', matches: [] }),
+      } as never,
     );
   });
 

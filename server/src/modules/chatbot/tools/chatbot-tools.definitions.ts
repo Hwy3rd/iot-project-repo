@@ -402,7 +402,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
     // surface implementation details through this tool, per system-prompt
     // rule #5.
     description:
-      'Tìm kiếm trong tài liệu nghiệp vụ/quy trình vận hành/xử lý sự cố của hệ thống theo từ khoá, trả về đoạn nội dung khớp kèm tên file.',
+      'Tìm kiếm ngữ nghĩa trong tài liệu nghiệp vụ, vận hành và xử lý sự cố. Hãy truyền cả câu hỏi tự nhiên; kết quả có đoạn trích, tên tài liệu, mục và phương thức tìm kiếm. Chỉ dùng làm căn cứ nghiệp vụ, không dùng làm số liệu kho hiện tại.',
     input_schema: {
       type: 'object',
       properties: { query: { type: 'string' } },

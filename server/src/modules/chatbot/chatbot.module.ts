@@ -26,6 +26,7 @@ import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { ChatbotRateLimitGuard } from './guards/chatbot-rate-limit.guard';
 import { ChatbotRateLimiterService } from './guards/chatbot-rate-limiter.service';
+import { ChatbotKnowledgeService } from './tools/chatbot-knowledge.service';
 import { ChatbotToolExecutorService } from './tools/chatbot-tool-executor.service';
 
 @Module({
@@ -62,6 +63,7 @@ import { ChatbotToolExecutorService } from './tools/chatbot-tool-executor.servic
     ChatbotRateLimiterService,
     ChatbotRateLimitGuard,
     ChatbotGateway,
+    ChatbotKnowledgeService,
     ChatbotToolExecutorService,
     ChatbotOrchestratorService,
   ],

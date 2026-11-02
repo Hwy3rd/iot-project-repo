@@ -11,6 +11,8 @@ services:
       additional_contexts:
         docs: ./docs
     container_name: node_server
+    volumes:
+      - chatbot_rag_cache:/app/.cache/chatbot-rag
     ports:
       - "${APP_PORT:-8080}:3000"
     # Optional so datastore-only dev works without a root .env.
@@ -42,6 +44,8 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
       - AI_SERVICE_URL=http://ai-service:8000
+      - CHATBOT_DOCS_DIR=/app/docs
+      - CHATBOT_RAG_INDEX_PATH=/app/.cache/chatbot-rag/index.json
     command: sh -c "node node_modules/typeorm/cli.js migration:run -d dist/database/data-source.js && node dist/main.js"
     healthcheck:
       test:
@@ -246,6 +250,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  chatbot_rag_cache:
   redisdata:
   mysql_data:
   mongo_data:

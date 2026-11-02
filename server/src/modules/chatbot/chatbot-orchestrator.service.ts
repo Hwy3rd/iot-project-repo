@@ -246,10 +246,21 @@ export class ChatbotOrchestratorService {
       history.map((message) => this.toGeminiContent(message)),
     );
     const toolDeclarations = this.toolDeclarationsFor(caller);
+    const knowledgeContext = await deadline.wait(() =>
+      this.toolExecutor.getKnowledgeContext(
+        history
+          .filter((m) => m.role === MessageRole.USER)
+          .slice(-2)
+          .map((m) => m.content ?? '')
+          .join('\n'),
+        deadline.signal,
+      ),
+    );
     const systemInstruction = buildChatbotSystemInstruction(
       new Date(),
       CHATBOT_TIMEZONE,
       workingWarehouse,
+      knowledgeContext,
     );
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
@@ -343,7 +354,12 @@ export class ChatbotOrchestratorService {
       const execResults = await deadline.wait(() =>
         Promise.all(
           toolCalls.map((call) =>
-            this.toolExecutor.execute(call.name, call.arguments, caller),
+            this.toolExecutor.execute(
+              call.name,
+              call.arguments,
+              caller,
+              deadline.signal,
+            ),
           ),
         ),
       );
@@ -421,7 +437,9 @@ export class ChatbotOrchestratorService {
       (tool) =>
         (caller.role === UserRole.ADMIN ||
           tool.allowedRoles.includes(caller.role)) &&
-        !CHATBOT_TOOLS_NOT_IMPLEMENTED.has(tool.name),
+        !CHATBOT_TOOLS_NOT_IMPLEMENTED.has(tool.name) &&
+        (tool.name !== 'search_docs' ||
+          this.toolExecutor.knowledgeMode === 'rag'),
     ).map((tool) => ({
       name: tool.name,
       description: tool.description,

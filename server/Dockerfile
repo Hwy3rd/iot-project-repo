@@ -33,6 +33,8 @@ COPY --from=docs --chown=node:node \
   BUSINESS_RULES.md SYSTEM_OPERATIONS_GUIDE.md TROUBLESHOOTING.md \
   ./docs/
 
+RUN mkdir -p /app/.cache/chatbot-rag && chown -R node:node /app/.cache
+
 USER node
 
 EXPOSE 3000

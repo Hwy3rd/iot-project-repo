@@ -26,7 +26,12 @@ describe('ChatbotOrchestratorService', () => {
     appendToolMessage: jest.Mock;
   };
   let llmService: { generateContent: jest.Mock };
-  let toolExecutor: { execute: jest.Mock; resolveWorkingWarehouse: jest.Mock };
+  let toolExecutor: {
+    execute: jest.Mock;
+    resolveWorkingWarehouse: jest.Mock;
+    getKnowledgeContext: jest.Mock;
+    knowledgeMode: string;
+  };
   let realtime: { emitToUser: jest.Mock };
   let redis: { set: jest.Mock; get: jest.Mock; eval: jest.Mock };
   let orchestrator: ChatbotOrchestratorService;
@@ -50,6 +55,8 @@ describe('ChatbotOrchestratorService', () => {
     };
     llmService = { generateContent: jest.fn() };
     toolExecutor = {
+      getKnowledgeContext: jest.fn().mockResolvedValue(''),
+      knowledgeMode: 'rag',
       execute: jest.fn().mockResolvedValue({ result: [] }),
       resolveWorkingWarehouse: jest.fn().mockResolvedValue({
         id: 'w3',
@@ -75,6 +82,40 @@ describe('ChatbotOrchestratorService', () => {
   });
 
   afterEach(() => jest.useRealTimers());
+
+  it('includes retrieved sources while preserving the selected warehouse', async () => {
+    toolExecutor.getKnowledgeContext.mockResolvedValue(
+      '{"method":"semantic","matches":[{"citation":"Quy tắc — Ca trực"}]}',
+    );
+    llmService.generateContent.mockResolvedValue(textResponse('Hướng dẫn'));
+    await orchestrator.sendMessage('c1', caller, 'Điều kiện nhập hàng?', 'w3');
+    expect(toolExecutor.getKnowledgeContext).toHaveBeenCalledWith(
+      'Xin chào',
+      expect.any(AbortSignal),
+    );
+    const system =
+      llmService.generateContent.mock.calls[0][0].config.systemInstruction;
+    expect(system).toContain('Quy tắc — Ca trực');
+    expect(system).toContain('WH-HN-03');
+  });
+
+  it.each(['none', 'prompt'])(
+    'does not expose search_docs in the %s baseline',
+    async (mode) => {
+      toolExecutor.knowledgeMode = mode;
+      llmService.generateContent.mockResolvedValue(textResponse('Hướng dẫn'));
+      await orchestrator.sendMessage('c1', caller, 'Xin chào');
+      const declarations =
+        llmService.generateContent.mock.calls[0][0].config.tools[0]
+          .functionDeclarations;
+      expect(
+        declarations.some((t: { name: string }) => t.name === 'search_docs'),
+      ).toBe(false);
+      expect(
+        declarations.some((t: { name: string }) => t.name === 'get_alerts'),
+      ).toBe(true);
+    },
+  );
 
   it('replays only the recent history window to the model', async () => {
     llmService.generateContent.mockResolvedValue(textResponse('Chào bạn'));
@@ -216,6 +257,7 @@ describe('ChatbotOrchestratorService', () => {
         'get_cold_room_detail',
         {},
         { ...caller, workingWarehouseId: 'w3' },
+        expect.any(AbortSignal),
       );
     });
 

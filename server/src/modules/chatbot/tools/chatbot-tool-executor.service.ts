@@ -27,7 +27,7 @@ import { ProductType } from '../../product-types/entities/product-type.entity';
 import { TelemetryService } from '../../telemetry/telemetry.service';
 import { Warehouse } from '../../warehouses/entities/warehouse.entity';
 import { WorkShift } from '../../work-shifts/entities/work-shift.entity';
-import { searchChatbotDocs } from './chatbot-docs-search';
+import { ChatbotKnowledgeService } from './chatbot-knowledge.service';
 import {
   UNRESTRICTED_ACCESS,
   type WarehouseAccess,
@@ -151,12 +151,22 @@ export class ChatbotToolExecutorService {
     private readonly coldRoomStatus: ColdRoomStatusService,
     @InjectRepository(Alert)
     private readonly alertsRepo: Repository<Alert>,
+    private readonly knowledge: ChatbotKnowledgeService,
   ) {}
+
+  get knowledgeMode() {
+    return this.knowledge.mode;
+  }
+
+  getKnowledgeContext(query: string, signal?: AbortSignal): Promise<string> {
+    return this.knowledge.context(query, signal);
+  }
 
   async execute(
     name: string,
     args: Record<string, unknown>,
     caller: ChatbotToolCaller,
+    signal?: AbortSignal,
   ): Promise<ChatbotToolResult> {
     const def = CHATBOT_TOOLS.find((tool) => tool.name === name);
     if (!def) {
@@ -191,7 +201,12 @@ export class ChatbotToolExecutorService {
     }
 
     try {
-      const result = await this.dispatch(name, args, { ...caller, access });
+      const result = await this.dispatch(
+        name,
+        args,
+        { ...caller, access },
+        signal,
+      );
       return { result };
     } catch (error) {
       if (error instanceof ChatbotToolError) {
@@ -229,6 +244,7 @@ export class ChatbotToolExecutorService {
     name: string,
     args: Record<string, unknown>,
     caller: ChatbotToolCaller,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     switch (name) {
       case 'get_alerts':
@@ -264,7 +280,7 @@ export class ChatbotToolExecutorService {
       case 'get_system_health_summary':
         return this.getSystemHealthSummary(args, caller);
       case 'search_docs':
-        return Promise.resolve(this.searchDocs(args));
+        return Promise.resolve(this.searchDocs(args, signal));
       default:
         throw new ChatbotToolError(`Tool "${name}" chưa có handler thực thi.`);
     }
@@ -1124,9 +1140,9 @@ export class ChatbotToolExecutorService {
 
   // Not warehouse-scoped — the 3 whitelisted docs are business-wide
   // content, same for every role that can reach this tool.
-  private searchDocs(args: Record<string, unknown>) {
+  private searchDocs(args: Record<string, unknown>, signal?: AbortSignal) {
     const query = this.requireString(args, 'query');
-    return searchChatbotDocs(query);
+    return this.knowledge.search(query, signal);
   }
 }
 
