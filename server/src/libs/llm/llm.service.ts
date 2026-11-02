@@ -5,6 +5,7 @@ import {
   DEFAULT_LLM_MAX_OUTPUT_TOKENS,
   DEFAULT_LLM_MODEL,
   DEFAULT_LLM_RETRY_ATTEMPTS,
+  DEFAULT_LLM_REQUEST_TIMEOUT_MS,
   LLM_CLIENT,
   LLM_RETRY_STATUS_CODES,
 } from './llm.constant';
@@ -21,6 +22,7 @@ export class LlmService {
   private readonly model: string;
   private readonly maxOutputTokens: number;
   private readonly retryAttempts: number;
+  private readonly requestTimeoutMs: number;
 
   constructor(
     @Inject(LLM_CLIENT) private readonly client: GoogleGenAI,
@@ -31,6 +33,14 @@ export class LlmService {
       config.get<string>('LLM_MAX_OUTPUT_TOKENS') ??
         DEFAULT_LLM_MAX_OUTPUT_TOKENS,
     );
+    const timeout = Number(
+      config.get<string>('LLM_REQUEST_TIMEOUT_MS') ??
+        DEFAULT_LLM_REQUEST_TIMEOUT_MS,
+    );
+    this.requestTimeoutMs =
+      Number.isFinite(timeout) && timeout > 0
+        ? timeout
+        : DEFAULT_LLM_REQUEST_TIMEOUT_MS;
     this.retryAttempts = Number(
       config.get<string>('LLM_RETRY_ATTEMPTS') ?? DEFAULT_LLM_RETRY_ATTEMPTS,
     );
@@ -48,13 +58,16 @@ export class LlmService {
         // discussed earlier (switching to a cheaper/different model after
         // repeated 429s) — that would sit as a second layer above this one
         // if it's ever built, not a replacement for it.
+        ...params.config,
         httpOptions: {
+          timeout: this.requestTimeoutMs,
+          ...params.config?.httpOptions,
           retryOptions: {
             attempts: this.retryAttempts,
             httpStatusCodes: LLM_RETRY_STATUS_CODES,
+            ...params.config?.httpOptions?.retryOptions,
           },
         },
-        ...params.config,
       },
     });
   }

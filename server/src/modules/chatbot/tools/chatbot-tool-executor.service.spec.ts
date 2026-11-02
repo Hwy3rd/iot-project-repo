@@ -79,6 +79,7 @@ describe('ChatbotToolExecutorService', () => {
   };
   let coldRoomsRepo: { find: jest.Mock };
   let alertsService: { findAll: jest.Mock };
+  let telemetry: { findRaw: jest.Mock; findHourlySummary: jest.Mock };
   let coldRoomStatus: { findStatuses: jest.Mock };
   let alertsByType: { type: string; count: string }[];
   let service: ChatbotToolExecutorService;
@@ -140,9 +141,13 @@ describe('ChatbotToolExecutorService', () => {
     };
     const alertsRepo = { createQueryBuilder: jest.fn(() => queryBuilder) };
 
+    telemetry = {
+      findRaw: jest.fn().mockResolvedValue([]),
+      findHourlySummary: jest.fn().mockResolvedValue({ readings: [] }),
+    };
     service = new ChatbotToolExecutorService(
       alertsService as never,
-      {} as never,
+      telemetry as never,
       {} as never,
       devicesRepo as never,
       batchesRepo as never,
@@ -612,6 +617,105 @@ describe('ChatbotToolExecutorService', () => {
       expect(result.roomsNeedingAttention.items[0].reasons).toEqual([
         'mất tín hiệu 30 phút',
       ]);
+    });
+  });
+  describe('bounded telemetry', () => {
+    beforeEach(() => {
+      assignments = [{ warehouseId: 'w1' }];
+      devicesRepo.findOne.mockResolvedValue({
+        id: 'd1',
+        uniqueId: 'ESP1',
+        coldRoomId: 'cr1',
+      });
+    });
+
+    it('enforces the raw limit on the backend and reports partial coverage', async () => {
+      telemetry.findRaw.mockResolvedValue(
+        Array.from({ length: 501 }, (_, i) => ({
+          ts: new Date(i),
+          temperature: -18,
+        })),
+      );
+      const output = (
+        await run(
+          'get_telemetry_raw',
+          { deviceId: 'ESP1', limit: 20000 },
+          UserRole.MANAGER,
+        )
+      ).result as {
+        devices: { readings: unknown[]; hasMore: boolean; note: string }[];
+      };
+      expect(telemetry.findRaw).toHaveBeenCalledWith(
+        'd1',
+        expect.objectContaining({ limit: 501 }),
+      );
+      expect(output.devices[0].readings).toHaveLength(500);
+      expect(output.devices[0].hasMore).toBe(true);
+      expect(output.devices[0].note).toContain('một phần');
+    });
+
+    it('defaults to a capped raw query even when the model omits limit', async () => {
+      await run('get_telemetry_raw', { deviceId: 'ESP1' }, UserRole.MANAGER);
+      expect(telemetry.findRaw).toHaveBeenCalledWith(
+        'd1',
+        expect.objectContaining({ limit: 101 }),
+      );
+    });
+
+    it.each([0, -1, 1.5, '500', NaN, Infinity])(
+      'rejects invalid limit %s before querying telemetry',
+      async (limit) => {
+        const output = await run(
+          'get_telemetry_raw',
+          { deviceId: 'ESP1', limit },
+          UserRole.MANAGER,
+        );
+        expect(output.error).toContain('số nguyên dương');
+        expect(telemetry.findRaw).not.toHaveBeenCalled();
+      },
+    );
+
+    it('shares the point budget across devices and reports rooms with more than five devices', async () => {
+      devicesRepo.find.mockResolvedValue(
+        Array.from({ length: 6 }, (_, i) => ({
+          id: 'd' + i,
+          uniqueId: 'ESP' + i,
+          coldRoomId: 'cr1',
+        })),
+      );
+      const output = (
+        await run(
+          'get_telemetry_hourly',
+          { coldRoomId: 'cr1' },
+          UserRole.MANAGER,
+        )
+      ).result as { devices: unknown[]; note: string };
+      expect(output.devices).toHaveLength(5);
+      expect(output.note).toContain('một phần thiết bị');
+      expect(telemetry.findHourlySummary).toHaveBeenCalledTimes(5);
+      for (const args of telemetry.findHourlySummary.mock
+        .calls as unknown[][]) {
+        expect(args[2]).toBe(20);
+        expect(args[3]).toBe('Asia/Ho_Chi_Minh');
+      }
+    });
+
+    it('keeps cross-warehouse access blocked before calling the summary service', async () => {
+      devicesRepo.findOne.mockResolvedValue({
+        id: 'd2',
+        uniqueId: 'ESP2',
+        coldRoomId: 'cr3',
+      });
+      expect(
+        (
+          await run(
+            'get_telemetry_hourly',
+            { deviceId: 'ESP2' },
+            UserRole.MANAGER,
+          )
+        ).error,
+      ).toContain('không có quyền');
+      expect(telemetry.findHourlySummary).not.toHaveBeenCalled();
     });
   });
 });

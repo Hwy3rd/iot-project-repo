@@ -3,6 +3,7 @@ import { BatchStatus } from '../../../libs/constants/batch.constant';
 import { CommandStatus } from '../../../libs/constants/command.constant';
 import { DeviceStatus } from '../../../libs/constants/device.constant';
 import { MAX_PAGE_LIMIT } from '../../../libs/constants/pagination.constant';
+import { CHATBOT_TELEMETRY_RAW_MAX_LIMIT } from '../../../libs/constants/chatbot.constant';
 import { UserRole } from '../../../libs/constants/user.constant';
 
 // Generic tool-calling schema — `name`/`description`/`input_schema` (plain
@@ -189,7 +190,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_telemetry_hourly',
     description:
-      'Nhiệt độ/cửa tổng hợp theo giờ (avg/min/max nhiệt độ, số lần mở cửa...) trong khoảng thời gian (mặc định 24 giờ qua). Truyền coldRoomId để lấy cho mọi thiết bị trong phòng, hoặc deviceId cho 1 thiết bị.',
+      'Thống kê nhiệt độ/cửa trong khoảng thời gian (mặc định 24 giờ qua), kèm thống kê toàn khoảng. Tự tổng hợp theo giờ/ngày/tháng để giới hạn số điểm. Các count là số mẫu, không phải số sự cố riêng biệt. Truyền coldRoomId cho phòng hoặc deviceId cho 1 thiết bị; nếu có note thì nói rõ phạm vi bị giới hạn.',
     input_schema: {
       type: 'object',
       properties: {
@@ -206,7 +207,7 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
   {
     name: 'get_telemetry_raw',
     description:
-      'Mẫu cảm biến thô gần nhất (chỉ giữ trong thời gian ngắn, không dùng tra lịch sử xa). Truyền coldRoomId (mọi thiết bị trong phòng) hoặc deviceId. Chỉ cần nhiệt độ hiện tại của phòng thì dùng get_cold_room_detail.',
+      'Mẫu cảm biến thô theo thứ tự cũ đến mới trong khoảng ngắn. limit là tổng số mẫu tối đa cho toàn lần gọi, được chia giữa các thiết bị; mặc định 100, tối đa 500. Kết quả có hasMore/note nếu chưa đủ dữ liệu: không kết luận toàn khoảng từ một phần mẫu. Chỉ cần nhiệt độ hiện tại thì dùng get_cold_room_detail; phân tích lịch sử dài thì dùng get_telemetry_hourly.',
     input_schema: {
       type: 'object',
       properties: {
@@ -214,7 +215,11 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
         deviceId: DEVICE_REF,
         from: { type: 'string', description: DATE_DESC },
         to: { type: 'string', description: DATE_DESC },
-        limit: { type: 'integer', minimum: 1, maximum: 500 },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: CHATBOT_TELEMETRY_RAW_MAX_LIMIT,
+        },
       },
     },
     allowedRoles: DEVICE_LOG_ROLES,
