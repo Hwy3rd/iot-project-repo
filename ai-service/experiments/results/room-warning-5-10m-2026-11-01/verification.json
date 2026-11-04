@@ -1,0 +1,24 @@
+{
+  "raw_manifest_matches": true,
+  "source_split_disjoint": true,
+  "phases": {
+    "source": {
+      "labels_and_ids_exact": true,
+      "cached_hgb_predictions_exact": true,
+      "legacy_checkpoint_replay_exact": true,
+      "legacy_old_metrics_reproduced": true,
+      "old_15m_metrics_reproduced": true,
+      "same_window_labels_for_every_policy": true
+    },
+    "temporal": {
+      "labels_and_ids_exact": true,
+      "cached_hgb_predictions_exact": true,
+      "legacy_checkpoint_replay_exact": true,
+      "legacy_old_metrics_reproduced": true,
+      "old_15m_metrics_reproduced": true,
+      "same_window_labels_for_every_policy": true
+    }
+  },
+  "runtime_and_dependencies_unchanged": true,
+  "serialized_metrics_recomputed_exact": true
+}

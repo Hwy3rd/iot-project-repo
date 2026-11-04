@@ -1,0 +1,32 @@
+{
+  "runtime_and_inputs_unchanged": true,
+  "manifest_verified": true,
+  "source": {
+    "samples": 72700,
+    "choices_recomputed_from_validation": true,
+    "validation_component_checkpoints_replayed": true,
+    "hgb_test_checkpoint_replayed": true,
+    "baseline_and_finetuned_seeds_replayed": [
+      20261031,
+      20261101,
+      20261102
+    ],
+    "max_new_gru_replay_absolute_difference": 0.0,
+    "blend_predictions_exact": true,
+    "metrics_recomputed_exact": true
+  },
+  "temporal": {
+    "samples": 72324,
+    "choices_recomputed_from_validation": true,
+    "validation_component_checkpoints_replayed": true,
+    "hgb_test_checkpoint_replayed": true,
+    "baseline_and_finetuned_seeds_replayed": [
+      20261031,
+      20261101,
+      20261102
+    ],
+    "max_new_gru_replay_absolute_difference": 0.0,
+    "blend_predictions_exact": true,
+    "metrics_recomputed_exact": true
+  }
+}

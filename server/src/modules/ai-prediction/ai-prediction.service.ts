@@ -12,16 +12,19 @@ import {
   AiPredictRequestDto,
   AiPredictResponseDto,
   ColdRoomPrediction,
+  isAiPredictResponse,
 } from './dto/ai-prediction.dto';
 
-interface StoredPrediction extends Omit<ColdRoomPrediction, 'predictedAt'> {
+interface StoredPrediction {
+  response: AiPredictResponseDto;
   // When it was stored (ms epoch) — fields of one hash share the key's TTL,
   // so freshness per device is checked against this instead.
   at: number;
 }
 
 const RISK_ORDER = ['NORMAL', 'WARNING', 'CRITICAL'];
-const riskRank = (riskLevel: string) => RISK_ORDER.indexOf(riskLevel);
+const riskRank = (value: AiPredictResponseDto) =>
+  (value.will_exceed_threshold ? 10 : 0) + RISK_ORDER.indexOf(value.risk_level);
 
 @Injectable()
 export class AiPredictionService {
@@ -44,7 +47,7 @@ export class AiPredictionService {
   }
 
   /**
-   * Calls the FastAPI AI microservice to predict temperature 15 minutes ahead.
+   * Calls FastAPI for separate forecasts at 5 and 10 minutes.
    * Fault-tolerant with timeout: never throws. While the circuit is open
    * (the service failed repeatedly) it returns null without calling out.
    */
@@ -73,7 +76,13 @@ export class AiPredictionService {
         return null;
       }
 
-      const result = (await response.json()) as AiPredictResponseDto;
+      const result: unknown = await response.json();
+      if (!isAiPredictResponse(result)) {
+        this.recordFailure(
+          'AI service returned an incompatible 5/10-minute forecast',
+        );
+        return null;
+      }
       this.consecutiveFailures = 0;
       return result;
     } catch (error) {
@@ -96,11 +105,7 @@ export class AiPredictionService {
     prediction: AiPredictResponseDto,
   ): Promise<void> {
     const value: StoredPrediction = {
-      predictedTemp15m: prediction.predicted_temp_15m,
-      willExceedThreshold: prediction.will_exceed_threshold,
-      violationType: prediction.violation_type,
-      riskLevel: prediction.risk_level,
-      recommendation: prediction.recommendation,
+      response: prediction,
       at: Date.now(),
     };
     const key = aiPredictionKey(coldRoomId);
@@ -129,10 +134,28 @@ export class AiPredictionService {
       const freshSince = Date.now() - AI_PREDICTION_TTL_SECONDS * 1000;
       let worst: StoredPrediction | null = null;
       for (const raw of Object.values(fields)) {
-        const candidate = JSON.parse(raw) as StoredPrediction;
-        if (candidate.at < freshSince) continue;
-        const rank = riskRank(candidate.riskLevel);
-        const worstRank = worst ? riskRank(worst.riskLevel) : -1;
+        let candidate: StoredPrediction;
+        try {
+          candidate = JSON.parse(raw) as StoredPrediction;
+          if (
+            !candidate ||
+            !Number.isFinite(candidate.at) ||
+            candidate.at < freshSince ||
+            !isAiPredictResponse(candidate.response)
+          )
+            continue;
+        } catch {
+          continue;
+        }
+        // Expire the complete set before its +5m checkpoint becomes past.
+        if (
+          Date.parse(candidate.response.as_of) +
+            AI_PREDICTION_TTL_SECONDS * 1000 <=
+          Date.now()
+        )
+          continue;
+        const rank = riskRank(candidate.response);
+        const worstRank = worst ? riskRank(worst.response) : -1;
         if (
           !worst ||
           rank > worstRank ||
@@ -143,12 +166,18 @@ export class AiPredictionService {
       }
       if (!worst) return null;
       return {
-        predictedAt: new Date(worst.at),
-        predictedTemp15m: worst.predictedTemp15m,
-        willExceedThreshold: worst.willExceedThreshold,
-        violationType: worst.violationType,
-        riskLevel: worst.riskLevel,
-        recommendation: worst.recommendation,
+        predictedAt: new Date(worst.response.as_of),
+        forecasts: worst.response.forecasts.map((point) => ({
+          horizonMinutes: point.horizon_minutes,
+          predictedTemp: point.predicted_temp,
+          willExceedThreshold: point.will_exceed_threshold,
+          violationType: point.violation_type,
+        })),
+        firstViolationMinutes: worst.response.first_violation_minutes,
+        willExceedThreshold: worst.response.will_exceed_threshold,
+        violationType: worst.response.violation_type,
+        riskLevel: worst.response.risk_level,
+        recommendation: worst.response.recommendation,
       };
     } catch (error) {
       this.logger.warn(

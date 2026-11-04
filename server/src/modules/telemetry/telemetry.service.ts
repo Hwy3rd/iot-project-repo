@@ -387,15 +387,22 @@ export class TelemetryService {
       );
 
       if (prediction.will_exceed_threshold) {
+        const firstBreach = prediction.forecasts.find(
+          (point) => point.will_exceed_threshold,
+        );
+        if (!firstBreach) return;
         await this.alertsService.raise({
           coldRoomId: coldRoom.id,
           deviceId,
           type: AlertType.TEMPERATURE_PREDICTED,
-          triggerValue: prediction.predicted_temp_15m,
+          triggerValue: firstBreach.predicted_temp,
           threshold:
             prediction.violation_type === 'OVERHEAT' ? tempMax : tempMin,
           details: {
-            predictedTemp15m: prediction.predicted_temp_15m,
+            forecastSchema: prediction.forecast_schema,
+            asOf: prediction.as_of,
+            forecasts: prediction.forecasts,
+            firstViolationMinutes: prediction.first_violation_minutes,
             violationType: prediction.violation_type,
             riskLevel: prediction.risk_level,
             recommendation: prediction.recommendation,
@@ -404,9 +411,12 @@ export class TelemetryService {
         return;
       }
 
-      const predicted = prediction.predicted_temp_15m;
-      const recovered =
-        predicted <= tempMax - hysteresis && predicted >= tempMin + hysteresis;
+      // Both checkpoints must recover; a safe +10m forecast cannot hide +5m risk.
+      const recovered = prediction.forecasts.every(
+        (point) =>
+          point.predicted_temp <= tempMax - hysteresis &&
+          point.predicted_temp >= tempMin + hysteresis,
+      );
       if (recovered) {
         await this.alertsService.resolveAuto({
           type: AlertType.TEMPERATURE_PREDICTED,
