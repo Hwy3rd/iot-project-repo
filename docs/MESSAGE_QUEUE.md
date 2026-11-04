@@ -1,5 +1,9 @@
 # Message Queue & Messaging
 
+> Luồng retry/clean session và phục hồi thông báo được cập nhật trong
+> [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md). Redis là tín hiệu xử lý sớm;
+> MySQL giữ outbox/delivery, firmware giữ mẫu chưa ACK trong LittleFS.
+
 > Hệ thống có hai kênh truyền message bất đồng bộ: **BullMQ trên Redis** cho job nền giữa `app` và `worker`, và **MQTT (Mosquitto, hoặc EMQX Cloud tuỳ `MQTT_MODE`)** để nhận telemetry từ thiết bị và gửi lệnh điều khiển xuống thiết bị. Tài liệu này mô tả từng queue, job, lịch chạy, cách hệ thống xử lý lỗi, cách vận hành, và cách thêm queue mới. Chi tiết nghiệp vụ gửi thông báo xem [NOTIFICATION.md](NOTIFICATION.md), còn hạ tầng Redis/Mosquitto xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md).
 
 ---

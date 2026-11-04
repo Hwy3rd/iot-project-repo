@@ -2,6 +2,10 @@
 
 Hệ thống giám sát & quản lý kho lạnh: theo dõi nhiệt độ/thiết bị IoT theo thời gian thực, quản lý lô hàng, cảnh báo, ca trực nhân viên, và phân quyền theo vai trò (RBAC) trên nhiều kho.
 
+Phục hồi sau mất mạng: ESP32 lưu mẫu vào LittleFS và gửi bù đến khi backend
+xác nhận; thông báo được lưu trong MySQL và tự thử gửi lại. Cần migration,
+quyền MQTT và chuẩn bị LittleFS theo [OFFLINE_RECOVERY.md](docs/OFFLINE_RECOVERY.md).
+
 ## Kiến trúc
 
 | Thành phần | Công nghệ |

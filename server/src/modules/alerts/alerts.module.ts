@@ -8,12 +8,14 @@ import { User } from '../users/entities/user.entity';
 import { AlertsController } from './alerts.controller';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Alert, User, ColdRoom]),
     // alerts:changed pushes to the warehouse room (see REALTIME_EVENTS).
     RealtimeModule,
+    NotificationsModule,
     // Producer only — this module never processes the queue. The consumer
     // (AlertNotificationProcessor) lives in the worker process and
     // registers the same queue name there; both share the connection

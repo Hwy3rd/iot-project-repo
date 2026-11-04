@@ -60,7 +60,7 @@ esp32-cold-room-03|esp32-cold-room-03|<mat_khau_03>
 ```
 
 File này chứa mật khẩu, được Git bỏ qua. Dùng UTF-8 không BOM và xuống dòng LF.
-Mỗi tài khoản chỉ được publish telemetry/ack và subscribe commands/config của ID
+Mỗi tài khoản chỉ được publish telemetry/ack và subscribe commands/config/telemetry-ack của ID
 đã gán. Quyền không dựa vào clientId tự khai: đổi clientId thành ID node khác
 không mở rộng quyền. Không dùng lại username backend hoặc ID/username node khác.
 
@@ -187,8 +187,9 @@ cần thử node trên Wi-Fi khác server, kiểm tra heartbeat, telemetry Mongo
 API biểu đồ, WebSocket website và config/ack về đúng node. Tiếp tục thử hai node
 ở hai phòng/kho để xác nhận phân loại và quyền truy cập độc lập.
 
-Chuyển broker không tự bổ sung hàng đợi gửi bù khi node mất Internet hoặc backend
-ngừng nhận. Giữ các biến `MQTT_CLOUD_*` trong `.env` để quay lại EMQX bằng chế độ
+Firmware có hàng đợi LittleFS và gửi bù đến khi backend ACK. Để bật đầy đủ,
+chuẩn bị LittleFS, deploy migration/backend và tạo lại broker để nhận ACL mới;
+xem [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md). Giữ các biến `MQTT_CLOUD_*` trong `.env` để quay lại EMQX bằng chế độ
 `cloud` nếu cần.
 
 ## Tham khảo

@@ -6,7 +6,8 @@
 //   commands  — server → device, one Command per message
 //   ack       — device → server, the outcome of a command
 //   config    — server → device, retained: alarm thresholds of its room
-export type DeviceTopicKind = 'telemetry' | 'commands' | 'ack' | 'config';
+export type DeviceTopicKind =
+  'telemetry' | 'telemetry-ack' | 'commands' | 'ack' | 'config';
 
 export function deviceTopic(uniqueId: string, kind: DeviceTopicKind): string {
   return `devices/${uniqueId}/${kind}`;

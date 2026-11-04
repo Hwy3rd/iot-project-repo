@@ -32,6 +32,7 @@
 #include <freertos/queue.h>
 #include <time.h>
 #include <sys/time.h>
+#include "offline_telemetry.h"
 
 #if ESP_IDF_VERSION_MAJOR < 5
 #error "Can Arduino-ESP32 core 3.x tro len (Tools > Board > Boards Manager > esp32)"
@@ -61,6 +62,7 @@
 // Client ID = DEVICE_ID (phai KHOP `unique_id` tren server); topic ghep tu ID
 #define MQTT_CLIENT_ID       DEVICE_ID
 #define MQTT_TOPIC_TELEMETRY "devices/" DEVICE_ID "/telemetry"
+#define MQTT_TOPIC_TELEMETRY_ACK "devices/" DEVICE_ID "/telemetry-ack"
 #define MQTT_TOPIC_COMMANDS  "devices/" DEVICE_ID "/commands"
 #define MQTT_TOPIC_ACK       "devices/" DEVICE_ID "/ack"
 #define MQTT_TOPIC_CONFIG    "devices/" DEVICE_ID "/config"
@@ -142,8 +144,9 @@ const unsigned long MANUAL_OVERRIDE_MS = 10UL * 60UL * 1000UL;   // 10 phut
 DHT dht(DHT_PIN, DHT_TYPE);
 esp_mqtt_client_handle_t mqttClient = nullptr;
 Preferences  prefs;
+OfflineTelemetryQueue telemetryQueue;
 
-enum MqttInboxTopic : uint8_t { INBOX_COMMANDS, INBOX_CONFIG };
+enum MqttInboxTopic : uint8_t { INBOX_COMMANDS, INBOX_CONFIG, INBOX_TELEMETRY_ACK };
 struct MqttInboxItem {
   MqttInboxTopic topic;
   uint16_t length;
@@ -203,6 +206,7 @@ struct RoomConfig {
   float hysteresis;
   unsigned long doorOpenMaxS;
   char  version[40];         // server dat; gui lai trong telemetry de doi chieu
+  char  coldRoomId[37];      // giu phong goc cua mau khi gui bu
 };
 RoomConfig roomConfig;
 
@@ -242,6 +246,7 @@ float readDCVoltage() {
 // ======================== WIFI ========================
 void connectWiFi() {
   Serial.printf("Dang ket noi WiFi: %s ", WIFI_SSID);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   unsigned long t = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t < 15000) {
@@ -302,6 +307,8 @@ void onMqttEvent(void* arg, esp_event_base_t base, int32_t eventId, void* eventD
         Serial.println("[LOI] Subscribe topic lenh that bai!");
       if (esp_mqtt_client_subscribe(mqttClient, MQTT_TOPIC_CONFIG, 1) < 0)
         Serial.println("[LOI] Subscribe topic cau hinh that bai!");
+      if (esp_mqtt_client_subscribe(mqttClient, MQTT_TOPIC_TELEMETRY_ACK, 1) < 0)
+        Serial.println("[LOI] Subscribe topic xac nhan telemetry that bai!");
       break;
 
     case MQTT_EVENT_DISCONNECTED:
@@ -340,6 +347,9 @@ void onMqttEvent(void* arg, esp_event_base_t base, int32_t eventId, void* eventD
       else if (topicLen == (int)strlen(MQTT_TOPIC_CONFIG) &&
                strncmp(event->topic, MQTT_TOPIC_CONFIG, topicLen) == 0)
         item.topic = INBOX_CONFIG;
+      else if (topicLen == (int)strlen(MQTT_TOPIC_TELEMETRY_ACK) &&
+               strncmp(event->topic, MQTT_TOPIC_TELEMETRY_ACK, topicLen) == 0)
+        item.topic = INBOX_TELEMETRY_ACK;
       else
         break;
       // Tin bi chia manh (lon hon bo dem esp-mqtt) hoac qua MQTT_MSG_MAX -> bo
@@ -446,14 +456,11 @@ void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFaul
     return;
   }
 
-  if (!mqttConnected) {   // esp-mqtt tu ket noi lai; mau nay bo qua
-    Serial.println("[MQTT] Chua ket noi broker, bo qua mau nay");
-    return;
-  }
-
-  StaticJsonDocument<640> doc;
+  StaticJsonDocument<896> doc;
 
   doc["ts"] = ts;
+  doc["replayed"] = false;
+  if (*roomConfig.coldRoomId) doc["coldRoomId"] = roomConfig.coldRoomId;
 
   if (sensorFault || isnan(temp))
     doc["temperature"] = nullptr;
@@ -483,8 +490,12 @@ void publishTelemetry(float temp, float humidity, bool doorOpen, bool sensorFaul
   if (roomConfig.hasConfig) doc["configVersion"] = roomConfig.version;
   else                      doc["configVersion"] = nullptr;
 
-  char payload[640];
+  char payload[896];
   serializeJson(doc, payload);
+  // Commit truoc khi gui, ke ca dang online. Chi ACK tu backend moi xoa ban sao.
+  if (!telemetryQueue.append(ts, payload))
+    Serial.println("[OFFLINE] Mau nay KHONG co ban sao ben vung");
+  if (!mqttConnected) return;
 
   // QoS 1: broker xac nhan tung tin (log "[MQTT OK #id]"); server chong trung
   // theo (deviceId, ts) nen tin gui lai khong bi luu 2 lan.
@@ -613,6 +624,7 @@ void useDefaultConfig() {
   roomConfig.hysteresis   = DEFAULT_HYSTERESIS;
   roomConfig.doorOpenMaxS = DEFAULT_DOOR_OPEN_MAX_S;
   roomConfig.version[0]   = '\0';
+  roomConfig.coldRoomId[0] = '\0';
 }
 
 void printConfig() {
@@ -635,6 +647,7 @@ void loadConfig() {
     roomConfig.hysteresis   = prefs.getFloat("hyst", roomConfig.hysteresis);
     roomConfig.doorOpenMaxS = prefs.getULong("door", roomConfig.doorOpenMaxS);
     prefs.getString("ver", roomConfig.version, sizeof(roomConfig.version));
+    prefs.getString("room", roomConfig.coldRoomId, sizeof(roomConfig.coldRoomId));
   }
   prefs.end();
 }
@@ -648,6 +661,7 @@ void saveConfig() {
     prefs.putFloat("hyst", roomConfig.hysteresis);
     prefs.putULong("door", roomConfig.doorOpenMaxS);
     prefs.putString("ver", roomConfig.version);
+    prefs.putString("room", roomConfig.coldRoomId);
   } else {
     prefs.clear();
   }
@@ -664,12 +678,13 @@ void onConfigMessage(byte* payload, unsigned int length) {
     return;
   }
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   if (deserializeJson(doc, (const byte*)payload, length)) {
     Serial.println("[CAU HINH] Bo qua: JSON khong hop le");
     return;
   }
   const char* version = doc["version"] | "";
+  const char* roomId = doc["coldRoomId"] | "";
   float tmin = doc["tempMin"]    | NAN;
   float tmax = doc["tempMax"]    | NAN;
   float hyst = doc["hysteresis"] | NAN;
@@ -681,7 +696,8 @@ void onConfigMessage(byte* payload, unsigned int length) {
     return;
   }
   // Broker gui lai tin retained moi lan ket noi lai -> khong ghi NVS neu khong doi
-  if (roomConfig.hasConfig && strcmp(roomConfig.version, version) == 0) return;
+  if (roomConfig.hasConfig && strcmp(roomConfig.version, version) == 0 &&
+      strcmp(roomConfig.coldRoomId, roomId) == 0) return;
 
   roomConfig.hasConfig    = true;
   roomConfig.tempMin      = tmin;
@@ -689,12 +705,20 @@ void onConfigMessage(byte* payload, unsigned int length) {
   roomConfig.hysteresis   = hyst;
   roomConfig.doorOpenMaxS = (unsigned long)door;
   strlcpy(roomConfig.version, version, sizeof(roomConfig.version));
+  strlcpy(roomConfig.coldRoomId, roomId, sizeof(roomConfig.coldRoomId));
   saveConfig();
   tempAlarm = false;   // danh gia lai tu dau voi nguong moi
   printConfig();
 }
 
 void onMqttMessage(MqttInboxTopic topic, byte* payload, unsigned int length) {
+  // Xu ly LittleFS tren loop(), khong tren task MQTT (tranh truy cap dong thoi).
+  if (topic == INBOX_TELEMETRY_ACK) {
+    StaticJsonDocument<192> doc;
+    if (!deserializeJson(doc, (const byte*)payload, length))
+      telemetryQueue.acknowledge(doc["ts"] | "", doc["status"] | "");
+    return;
+  }
   if (topic == INBOX_CONFIG) {
     // Nhan duoc tin tu server = chieu server -> board qua Cloudflare thong
     if (mqttConfigSession != mqttConnectCount)
@@ -993,6 +1017,7 @@ void setup() {
   // Nguong phong da nhan lan truoc (NVS); server gui ban moi khi ket noi MQTT
   loadConfig();
   printConfig();
+  telemetryQueue.begin();
 
   Serial.println("\n[KET NOI MANG & MQTT]");
   connectWiFi();
@@ -1012,7 +1037,8 @@ void loop() {
   // esp-mqtt tu ket noi lai broker; chi can giu WiFi song
   if (WiFi.status() != WL_CONNECTED && millis() - lastWifiRetry > 5000) {
     lastWifiRetry = millis();
-    connectWiFi();
+    // Khong cho 15 giay nhu luc khoi dong: tiep tuc do va dieu khien khi mat mang.
+    WiFi.reconnect();
   }
   drainMqttInbox();
   checkMqttConfigReceived();
@@ -1042,4 +1068,9 @@ void loop() {
     // Gui telemetry len server qua MQTT
     publishTelemetry(temp, hum, !closed, fault, dcVolt);
   }
+  // esp-mqtt van gui ngam qua MQTT/TLS/WS/WSS. Retry QoS 0 khong tao them
+  // hang doi QoS 1 trong RAM; ban sao LittleFS duoc giu den ACK cua backend.
+  telemetryQueue.flushOne(mqttConnected, [](const char* payload) {
+    return mqttPublish(MQTT_TOPIC_TELEMETRY, payload, 0) >= 0;
+  });
 }

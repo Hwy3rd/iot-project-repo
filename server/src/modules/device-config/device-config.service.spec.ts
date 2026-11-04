@@ -73,6 +73,7 @@ describe('DeviceConfigService', () => {
     expect(mqttClient.publishAsync).toHaveBeenCalledWith(
       'devices/esp32-01/config',
       JSON.stringify({
+        coldRoomId: 'r1',
         version: UPDATED_AT.toISOString(),
         tempMin: 28,
         tempMax: 30,
