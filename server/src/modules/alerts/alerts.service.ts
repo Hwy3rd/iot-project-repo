@@ -29,6 +29,8 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { QueryAlertDto } from './dto/query-alert.dto';
 import { Alert } from './entities/alert.entity';
 import { buildActiveKey } from './alerts.util';
+import { NotificationsService } from '../notifications/notifications.service';
+import { v5 as uuidv5 } from 'uuid';
 
 export interface RaiseAlertInput {
   coldRoomId: string;
@@ -70,7 +72,39 @@ export class AlertsService {
     private readonly realtime: RealtimeGateway,
     @InjectQueue(QUEUE_NAMES.ALERT_NOTIFICATIONS)
     private readonly notificationsQueue: Queue,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  // One historical incident per device/type/hour. It never touches an active
+  // incident. A replay after a crash produces the same ID and no second push.
+  async recordHistorical(
+    input: RaiseAlertInput,
+    observedAt: Date,
+  ): Promise<void> {
+    const id = uuidv5(
+      `telemetry-replay:${input.deviceId}:${input.type}:${input.coldRoomId}:${observedAt.toISOString().slice(0, 13)}`,
+      uuidv5.URL,
+    );
+    try {
+      await this.alertsRepository.manager.transaction(async (manager) => {
+        const alert = manager.create(Alert, {
+          ...input,
+          id,
+          batchId: null,
+          activeKey: null,
+          status: AlertStatus.RESOLVED,
+          resolution: AlertResolution.AUTO,
+          createdAt: observedAt,
+          resolvedAt: new Date(),
+        });
+        // TypeORM's deep-partial type cannot represent a JSON Record<string, unknown>.
+        await manager.insert(Alert, alert as never);
+        await this.notifications.captureAlert(manager, alert);
+      });
+    } catch (error) {
+      if (!isMysqlDuplicateKeyError(error)) throw error;
+    }
+  }
 
   // Opens a new alert for (type, device|batch), or — if one is already
   // open/acknowledged for the same incident — refreshes it with the latest
@@ -102,10 +136,17 @@ export class AlertsService {
         threshold: input.threshold ?? null,
         details: input.details ?? null,
       });
-      const saved = await this.alertsRepository.save(alert);
+      const saved = await this.alertsRepository.manager.transaction(
+        async (manager) => {
+          const saved = await manager.save(Alert, alert);
+          await this.notifications.captureAlert(manager, saved);
+          return saved;
+        },
+      );
       // Only for a genuinely new incident — a refresh (the catch branch
       // below) means recipients were already notified once for this one.
-      await this.enqueueNotification(saved.id);
+      // Never await Redis: the durable outbox is polled independently.
+      void this.enqueueNotification(saved.id);
       await this.announceChange(saved.coldRoomId);
       return saved;
     } catch (error) {
@@ -258,7 +299,16 @@ export class AlertsService {
   // source of truth, the push is a convenience on top of it.
   private async enqueueNotification(alertId: string): Promise<void> {
     try {
-      await this.notificationsQueue.add('notify', { alertId });
+      await this.notificationsQueue.add(
+        'notify',
+        { alertId },
+        {
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: 100,
+          removeOnFail: 1000,
+        },
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to enqueue notification for alert ${alertId}: ${(error as Error).message}`,

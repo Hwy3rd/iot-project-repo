@@ -15,6 +15,7 @@ import { Device } from '../devices/entities/device.entity';
 // settings instead of a value baked into the firmware. `version` is echoed
 // back in telemetry (configVersion) to show which settings the device runs.
 export interface DeviceConfigMessage {
+  coldRoomId: string;
   version: string;
   tempMin: number;
   tempMax: number;
@@ -30,6 +31,7 @@ export function configVersion(room: ColdRoom): string {
 
 export function buildConfigMessage(room: ColdRoom): DeviceConfigMessage {
   return {
+    coldRoomId: room.id,
     version: configVersion(room),
     tempMin: room.tempMin,
     tempMax: room.tempMax,

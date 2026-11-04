@@ -5,7 +5,10 @@ Xem [hướng dẫn chi tiết và kết quả kiểm thử](HUONG_DAN_KET_NOI_E
 
 ESP32 ở mỗi kho và backend cùng kết nối đến cloud broker qua Internet.
 Website tiếp tục nhận dữ liệu qua backend; lịch sử được backend lưu vào MongoDB.
-Chuyển broker không cung cấp bộ đệm telemetry khi backend hoặc Internet bị ngắt.
+Firmware có bộ đệm LittleFS và ACK từ backend để gửi bù khi backend hoặc Internet
+bị ngắt. Cần chuẩn bị LittleFS và deploy theo [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md).
+Trên EMQX, cấp backend quyền publish `devices/+/telemetry-ack`, và mỗi board
+quyền subscribe `devices/<DEVICE_ID>/telemetry-ack` của chính nó.
 
 ## Thông tin broker
 

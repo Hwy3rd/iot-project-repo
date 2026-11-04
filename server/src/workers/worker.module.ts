@@ -16,6 +16,7 @@ import { DeviceChannel } from '../modules/device-channels/entities/device-channe
 import { Notification } from '../modules/notifications/entities/notification.entity';
 import { PushSubscription } from '../modules/notifications/entities/push-subscription.entity';
 import { NotificationsService } from '../modules/notifications/notifications.service';
+import { NotificationRecoveryService } from '../modules/notifications/notification-recovery.service';
 import { TelemetryRollupService } from '../modules/telemetry/telemetry-rollup.service';
 import { TELEMETRY_MODELS } from '../modules/telemetry/telemetry.models';
 import { User } from '../modules/users/entities/user.entity';
@@ -81,6 +82,7 @@ import { WorkShiftSweepProcessor } from './processors/work-shift-sweep.processor
     TelemetryRollupService,
     TelemetryRollupProcessor,
     NotificationsService,
+    NotificationRecoveryService,
     AlertNotificationProcessor,
     CommandDispatcherService,
     CommandRetryProcessor,
