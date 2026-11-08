@@ -479,6 +479,28 @@ export interface ColdRoomPrediction {
   recommendation: string
 }
 
+
+export type AiForecastStatusCode =
+  | 'ready' | 'collecting_data' | 'unsupported_range' | 'no_device'
+  | 'no_data' | 'stale_data' | 'prediction_expired' | 'sensor_error'
+  | 'temperature_out_of_range' | 'service_unavailable' | 'unavailable' | 'pending'
+
+export interface AiForecastStatus {
+  code: AiForecastStatusCode
+  checkedAt: string
+  deviceUniqueId?: string
+  lastReadingAt?: string
+  collectedSamples?: number
+  requiredSamples?: number
+  requiredHistoryMinutes?: number
+  supportedMinTemp?: number
+  supportedMaxTemp?: number
+  currentTemp?: number
+  tempMin?: number
+  tempMax?: number
+  reason?: 'room_thresholds' | 'current_reading'
+}
+
 /** GET /cold-rooms/:id/telemetry — one room's temperature, bucketed. */
 export interface ColdRoomSeries {
   coldRoomId: string
@@ -503,6 +525,7 @@ export interface ColdRoomSeries {
     fanPowerFault?: number
   }[]
   prediction?: ColdRoomPrediction | null
+  predictionStatus?: AiForecastStatus
 }
 
 export type ChatMessageRole = 'user' | 'assistant' | 'tool' | 'system'

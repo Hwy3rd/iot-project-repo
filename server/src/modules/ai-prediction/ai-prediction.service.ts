@@ -35,6 +35,8 @@ export class AiPredictionService {
   // calls the AI service.
   private consecutiveFailures = 0;
   private openUntil = 0;
+  private lastRequestFailed = false;
+  private cacheUnavailable = false;
 
   constructor(
     private readonly configService: ConfigService,
@@ -84,6 +86,7 @@ export class AiPredictionService {
         return null;
       }
       this.consecutiveFailures = 0;
+      this.lastRequestFailed = false;
       return result;
     } catch (error) {
       this.recordFailure(
@@ -131,6 +134,7 @@ export class AiPredictionService {
   async getLatest(coldRoomId: string): Promise<ColdRoomPrediction | null> {
     try {
       const fields = await this.redis.hgetall(aiPredictionKey(coldRoomId));
+      this.cacheUnavailable = false;
       const freshSince = Date.now() - AI_PREDICTION_TTL_SECONDS * 1000;
       let worst: StoredPrediction | null = null;
       for (const raw of Object.values(fields)) {
@@ -180,6 +184,7 @@ export class AiPredictionService {
         recommendation: worst.response.recommendation,
       };
     } catch (error) {
+      this.cacheUnavailable = true;
       this.logger.warn(
         `Could not read AI prediction for room ${coldRoomId}: ${
           error instanceof Error ? error.message : String(error)
@@ -189,7 +194,13 @@ export class AiPredictionService {
     }
   }
 
+  getUnavailableReason(): 'service_unavailable' | 'unavailable' | null {
+    if (this.cacheUnavailable) return 'unavailable';
+    return this.lastRequestFailed ? 'service_unavailable' : null;
+  }
+
   private recordFailure(message: string) {
+    this.lastRequestFailed = true;
     this.consecutiveFailures += 1;
     if (this.consecutiveFailures < AI_PREDICTION_FAILURE_THRESHOLD) {
       this.logger.warn(message);

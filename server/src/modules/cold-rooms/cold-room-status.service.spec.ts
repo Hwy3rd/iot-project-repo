@@ -31,6 +31,13 @@ const rawQuery = (rows: unknown[]) => {
   return qb;
 };
 
+const modelQuery = (value: unknown) => ({
+  sort: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
+  lean: jest.fn().mockReturnThis(),
+  exec: jest.fn().mockResolvedValue(value),
+});
+
 describe('ColdRoomStatusService', () => {
   let service: ColdRoomStatusService;
   const coldRooms = { find: jest.fn(), findOne: jest.fn() };
@@ -39,10 +46,11 @@ describe('ColdRoomStatusService', () => {
     find: jest.fn().mockResolvedValue([{ id: 'd1' }]),
   };
   const alerts = { createQueryBuilder: jest.fn() };
-  const raw = { aggregate: jest.fn() };
+  const raw = { aggregate: jest.fn(), findOne: jest.fn(), find: jest.fn() };
   const channels = { find: jest.fn().mockResolvedValue([]) };
   const aiPrediction = {
     predict: jest.fn(),
+    getUnavailableReason: jest.fn().mockReturnValue(null),
     getLatest: jest.fn().mockResolvedValue(null),
   };
 
@@ -216,6 +224,163 @@ describe('ColdRoomStatusService', () => {
   });
 
   describe('findSeries', () => {
+    describe('prediction availability', () => {
+      const checkedAt = new Date('2026-11-08T10:00:00Z');
+      const room = { id: 'r1', tempMin: 0, tempMax: 4 };
+      const latest = {
+        deviceId: 'd1',
+        ts: checkedAt,
+        temperature: 2,
+        sensorFault: false,
+      };
+      const history = () =>
+        Array.from({ length: 13 }, (_, lag) => ({
+          ts: new Date(checkedAt.getTime() - lag * 300_000),
+          temperature: 2,
+        }));
+
+      beforeEach(() => {
+        jest.useFakeTimers().setSystemTime(checkedAt);
+        coldRooms.findOne.mockResolvedValue(room);
+        devices.find.mockResolvedValue([{ id: 'd1', uniqueId: 'esp32-01' }]);
+        raw.aggregate.mockResolvedValue([]);
+        raw.findOne.mockReturnValue(modelQuery(latest));
+        raw.find.mockReturnValue(modelQuery(history()));
+        aiPrediction.getLatest.mockResolvedValue(null);
+        aiPrediction.getUnavailableReason.mockReturnValue(null);
+      });
+      afterEach(() => jest.useRealTimers());
+
+      it('explains unsupported room thresholds even if a former forecast is cached', async () => {
+        coldRooms.findOne.mockResolvedValue({
+          ...room,
+          tempMin: 29,
+          tempMax: 31,
+        });
+        aiPrediction.getLatest.mockResolvedValue({ forecasts: [] });
+        const series = await service.findSeries('r1');
+        expect(series.prediction).toBeNull();
+        expect(series.predictionStatus).toMatchObject({
+          code: 'unsupported_range',
+          reason: 'room_thresholds',
+          tempMin: 29,
+          tempMax: 31,
+          supportedMaxTemp: 19.6,
+        });
+        expect(raw.findOne).not.toHaveBeenCalled();
+      });
+
+      it('distinguishes no installed device from no received measurements', async () => {
+        devices.find.mockResolvedValueOnce([]);
+        expect((await service.findSeries('r1')).predictionStatus.code).toBe(
+          'no_device',
+        );
+        devices.find.mockResolvedValueOnce([
+          { id: 'd1', uniqueId: 'esp32-01' },
+        ]);
+        raw.findOne.mockReturnValueOnce(modelQuery(null));
+        expect((await service.findSeries('r1')).predictionStatus.code).toBe(
+          'no_data',
+        );
+      });
+
+      it('reports stale data instead of claiming that one more hour is needed', async () => {
+        raw.findOne.mockReturnValue(
+          modelQuery({
+            ...latest,
+            ts: new Date(checkedAt.getTime() - 300_000),
+          }),
+        );
+        const series = await service.findSeries('r1');
+        expect(series.predictionStatus.code).toBe('stale_data');
+        expect(raw.find).not.toHaveBeenCalled();
+      });
+
+      it('identifies a sensor fault and out-of-model readings separately', async () => {
+        raw.findOne.mockReturnValueOnce(
+          modelQuery({ ...latest, temperature: null, sensorFault: true }),
+        );
+        expect((await service.findSeries('r1')).predictionStatus.code).toBe(
+          'sensor_error',
+        );
+        raw.findOne.mockReturnValueOnce(
+          modelQuery({ ...latest, temperature: 25 }),
+        );
+        expect((await service.findSeries('r1')).predictionStatus).toMatchObject(
+          {
+            code: 'unsupported_range',
+            reason: 'current_reading',
+            currentTemp: 25,
+          },
+        );
+      });
+
+      it('explains why forecasting is paused once actual temperature is already outside room limits', async () => {
+        raw.findOne.mockReturnValue(modelQuery({ ...latest, temperature: 5 }));
+        expect((await service.findSeries('r1')).predictionStatus.code).toBe(
+          'temperature_out_of_range',
+        );
+        expect(raw.find).not.toHaveBeenCalled();
+      });
+
+      it('counts valid checkpoints and keeps gaps visible in the progress', async () => {
+        raw.find.mockReturnValue(
+          modelQuery(history().filter((_, lag) => lag !== 6)),
+        );
+        const series = await service.findSeries('r1');
+        expect(series.predictionStatus).toMatchObject({
+          code: 'collecting_data',
+          collectedSamples: 12,
+          requiredSamples: 13,
+          requiredHistoryMinutes: 60,
+          deviceUniqueId: 'esp32-01',
+        });
+        expect(raw.findOne).toHaveBeenCalledWith(
+          expect.objectContaining({
+            coldRoomId: 'r1',
+            deviceId: { $in: ['d1'] },
+            replayed: { $ne: true },
+          }),
+          expect.anything(),
+        );
+        expect(raw.find).toHaveBeenCalledWith(
+          expect.objectContaining({ coldRoomId: 'r1', deviceId: 'd1' }),
+          expect.anything(),
+        );
+      });
+
+      it('distinguishes a failed AI call, a missing cache, and a pending forecast', async () => {
+        aiPrediction.getUnavailableReason.mockReturnValueOnce(
+          'service_unavailable',
+        );
+        expect((await service.findSeries('r1')).predictionStatus.code).toBe(
+          'service_unavailable',
+        );
+        aiPrediction.getUnavailableReason.mockReturnValueOnce('unavailable');
+        expect((await service.findSeries('r1')).predictionStatus.code).toBe(
+          'unavailable',
+        );
+        expect((await service.findSeries('r1')).predictionStatus.code).toBe(
+          'pending',
+        );
+        expect(aiPrediction.predict).not.toHaveBeenCalled();
+      });
+
+      it('keeps the chart available if status inspection fails', async () => {
+        const query = modelQuery(null);
+        query.exec.mockRejectedValue(
+          new Error('storage details must stay private'),
+        );
+        raw.findOne.mockReturnValue(query);
+        const series = await service.findSeries('r1');
+        expect(series.points).toEqual([]);
+        expect(series.predictionStatus).toEqual({
+          code: 'unavailable',
+          checkedAt,
+        });
+      });
+    });
+
     it('throws NotFoundException for an unknown room', async () => {
       coldRooms.findOne.mockResolvedValue(null);
       await expect(service.findSeries('ghost')).rejects.toThrow(

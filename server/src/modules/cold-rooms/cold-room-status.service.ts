@@ -21,6 +21,16 @@ import type { TelemetryRange } from './dto/query-cold-room-telemetry.dto';
 import { ColdRoom } from './entities/cold-room.entity';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
 import type { ColdRoomPrediction } from '../ai-prediction/dto/ai-prediction.dto';
+import type { AiForecastStatus } from '../ai-prediction/dto/ai-forecast-status.dto';
+import { inspectPredictionHistory } from '../telemetry/prediction-history';
+import {
+  AI_PREDICTION_HISTORY_MAX_ROWS,
+  AI_PREDICTION_HISTORY_WINDOW_MS,
+  AI_PREDICTION_SAMPLE_MAX_AGE_MS,
+  AI_PREDICTION_SUPPORTED_MAX_TEMP,
+  AI_PREDICTION_SUPPORTED_MIN_TEMP,
+  AI_PREDICTION_TTL_SECONDS,
+} from '../../libs/constants/ai-prediction.constant';
 
 // A room's rows can span many warehouses when asked by warehouseIds; this
 // keeps one response bounded.
@@ -94,6 +104,7 @@ export interface ColdRoomSeries {
   points: ColdRoomSeriesPoint[];
   /** Latest AI forecast stored at ingest; null when none is recent enough. */
   prediction: ColdRoomPrediction | null;
+  predictionStatus: AiForecastStatus;
 }
 
 export interface ColdRoomStatus {
@@ -215,6 +226,7 @@ export class ColdRoomStatusService {
     // Computed at ingest (TelemetryService) — never calls the AI service
     // here, so the chart doesn't wait on it.
     const prediction = await this.aiPredictionService.getLatest(coldRoomId);
+    const predictionStatus = await this.describePrediction(room, prediction);
 
     return {
       coldRoomId,
@@ -230,8 +242,134 @@ export class ColdRoomStatusService {
           typeof humidity === 'number' ? Math.round(humidity * 10) / 10 : null,
         ...rest,
       })),
-      prediction,
+      prediction: predictionStatus.code === 'ready' ? prediction : null,
+      predictionStatus,
     };
+  }
+
+  // Diagnostic reads never call the model. Only one device's bounded history
+  // is inspected when no forecast exists; ready rooms need no extra DB query.
+  private async describePrediction(
+    room: Pick<ColdRoom, 'id' | 'tempMin' | 'tempMax'>,
+    prediction: ColdRoomPrediction | null,
+  ): Promise<AiForecastStatus> {
+    const checkedAt = new Date();
+    const base = { checkedAt };
+    const supported = {
+      supportedMinTemp: AI_PREDICTION_SUPPORTED_MIN_TEMP,
+      supportedMaxTemp: AI_PREDICTION_SUPPORTED_MAX_TEMP,
+    };
+    if (
+      room.tempMin < supported.supportedMinTemp ||
+      room.tempMax > supported.supportedMaxTemp
+    ) {
+      return {
+        ...base,
+        ...supported,
+        code: 'unsupported_range',
+        reason: 'room_thresholds',
+        tempMin: Number(room.tempMin),
+        tempMax: Number(room.tempMax),
+      };
+    }
+    if (prediction) return { ...base, code: 'ready' };
+
+    try {
+      const devices = await this.devicesRepository.find({
+        where: {
+          coldRoomId: room.id,
+          status: Not(DeviceStatus.DECOMMISSIONED),
+        },
+        select: { id: true, uniqueId: true },
+      });
+      if (!devices.length) return { ...base, code: 'no_device' };
+      const latest = await this.rawModel
+        .findOne(
+          {
+            coldRoomId: room.id,
+            deviceId: { $in: devices.map((device) => device.id) },
+            replayed: { $ne: true },
+            ts: { $lte: checkedAt },
+          },
+          { deviceId: 1, ts: 1, temperature: 1, sensorFault: 1 },
+        )
+        .sort({ ts: -1 })
+        .lean()
+        .exec();
+      if (!latest) return { ...base, code: 'no_data' };
+      const source = {
+        ...base,
+        deviceUniqueId: devices.find((device) => device.id === latest.deviceId)
+          ?.uniqueId,
+        lastReadingAt: latest.ts,
+      };
+      if (
+        checkedAt.getTime() - latest.ts.getTime() >=
+        AI_PREDICTION_TTL_SECONDS * 1000
+      ) {
+        return { ...source, code: 'stale_data' };
+      }
+      const temperature = latest.temperature;
+      if (
+        latest.sensorFault ||
+        typeof temperature !== 'number' ||
+        !Number.isFinite(temperature)
+      ) {
+        return { ...source, code: 'sensor_error' };
+      }
+      if (
+        temperature < supported.supportedMinTemp ||
+        temperature > supported.supportedMaxTemp
+      ) {
+        return {
+          ...source,
+          ...supported,
+          code: 'unsupported_range',
+          reason: 'current_reading',
+          currentTemp: temperature,
+        };
+      }
+      if (temperature < room.tempMin || temperature > room.tempMax) {
+        return { ...source, code: 'temperature_out_of_range' };
+      }
+      const rows = await this.rawModel
+        .find(
+          {
+            deviceId: latest.deviceId,
+            coldRoomId: room.id,
+            ts: {
+              $gte: new Date(
+                latest.ts.getTime() -
+                  AI_PREDICTION_HISTORY_WINDOW_MS -
+                  AI_PREDICTION_SAMPLE_MAX_AGE_MS,
+              ),
+              $lte: latest.ts,
+            },
+            sensorFault: false,
+            temperature: { $ne: null },
+          },
+          { temperature: 1, ts: 1 },
+        )
+        .sort({ ts: -1 })
+        .limit(AI_PREDICTION_HISTORY_MAX_ROWS)
+        .lean()
+        .exec();
+      const history = inspectPredictionHistory(rows, latest.ts, temperature);
+      const progress = {
+        ...source,
+        collectedSamples: history.collectedSamples,
+        requiredSamples: history.requiredSamples,
+        requiredHistoryMinutes: AI_PREDICTION_HISTORY_WINDOW_MS / 60_000,
+      };
+      if (!history.history) return { ...progress, code: 'collecting_data' };
+      return {
+        ...progress,
+        code: this.aiPredictionService.getUnavailableReason() ?? 'pending',
+      };
+    } catch {
+      // A diagnostic failure must not remove the temperature chart.
+      return { ...base, code: 'unavailable' };
+    }
   }
 
   // $sort on the { coldRoomId, ts } index then $group/$first lets Mongo
