@@ -15,3 +15,7 @@ firmware/cold_room_monitor/config.h
 
 # Arduino binaries can embed private Wi-Fi/MQTT credentials
 firmware/cold_room_monitor/build/
+
+# Chatbot benchmark output (never credentials or indexed vectors)
+chatbot_benchmark_results.json
+chatbot_rag_results.json

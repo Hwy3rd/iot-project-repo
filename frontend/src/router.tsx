@@ -12,6 +12,7 @@ import { DevicesPage } from './pages/DevicesPage'
 import { LoginPage } from './pages/LoginPage'
 import { MonitoringPage } from './pages/MonitoringPage'
 import { NotificationsPage } from './pages/NotificationsPage'
+import { ChatbotDocumentsPage } from './pages/ChatbotDocumentsPage'
 import { ChatbotPage } from './pages/ChatbotPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ProductTypesPage } from './pages/ProductTypesPage'
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
             element: <RequireRole roles={['admin']} />,
             children: [
               { path: 'users', element: <UsersPage /> },
+              { path: 'chatbot-documents', element: <ChatbotDocumentsPage /> },
             ],
           },
           { path: '*', element: <NotFoundPage /> },

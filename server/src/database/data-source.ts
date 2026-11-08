@@ -19,6 +19,7 @@ import { NotificationDelivery } from '../modules/notifications/entities/notifica
 import { PushSubscription } from '../modules/notifications/entities/push-subscription.entity';
 import { DeviceStatusHistory } from '../modules/device-status-history/entities/device-status-history.entity';
 import { Conversation } from '../modules/chatbot/entities/conversation.entity';
+import { ChatbotDocument } from '../modules/chatbot/documents/chatbot-document.entity';
 import { Message } from '../modules/chatbot/entities/message.entity';
 
 // Shared between the Nest app (spread into TypeOrmModule.forRoot in
@@ -58,6 +59,7 @@ export const dataSourceOptions: DataSourceOptions = {
     DeviceStatusHistory,
     Conversation,
     Message,
+    ChatbotDocument,
   ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
 };

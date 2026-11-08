@@ -58,3 +58,5 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 #other data
 /docs
+# Local RAG vectors and retrieval benchmark output
+/.cache/

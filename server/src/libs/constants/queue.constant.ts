@@ -4,4 +4,5 @@ export const QUEUE_NAMES = {
   TELEMETRY_ROLLUP: 'telemetry-rollup',
   ALERT_NOTIFICATIONS: 'alert-notifications',
   COMMAND_DISPATCH: 'command-dispatch',
+  CHATBOT_DOCUMENTS: 'chatbot-documents',
 } as const;

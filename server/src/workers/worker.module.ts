@@ -1,3 +1,5 @@
+import { ChatbotDocumentsModule } from '../modules/chatbot/documents/chatbot-documents.module';
+import { ChatbotDocumentProcessor } from './processors/chatbot-document.processor';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -73,10 +75,12 @@ import { WorkShiftSweepProcessor } from './processors/work-shift-sweep.processor
       Command,
       DeviceChannel,
     ]),
+    ChatbotDocumentsModule,
     WebPushModule,
     MqttModule,
   ],
   providers: [
+    ChatbotDocumentProcessor,
     BatchExpiryProcessor,
     WorkShiftSweepProcessor,
     TelemetryRollupService,
