@@ -154,7 +154,7 @@ Sau khi xử lý, thiết bị gửi ack lên `devices/{unique_id}/ack`:
 
 ## Ngưỡng cảnh báo của phòng
 
-Còi tại chỗ báo theo ngưỡng của phòng mà thiết bị được gắn vào, không theo hằng số trong firmware. Server gửi ngưỡng xuống `devices/{unique_id}/config` dưới dạng tin **retained**, mỗi khi phòng được sửa hoặc xoá, khi thiết bị được claim, ngừng dùng hoặc xoá, và mỗi lần backend kết nối lại broker:
+Quạt tự động và còi tại chỗ dùng ngưỡng của phòng mà thiết bị được gắn vào, không theo hằng số trong firmware. Server gửi ngưỡng xuống `devices/{unique_id}/config` dưới dạng tin **retained**, mỗi khi phòng được sửa hoặc xoá, khi thiết bị được claim, ngừng dùng hoặc xoá, và mỗi lần backend kết nối lại broker:
 
 ```json
 {
@@ -170,6 +170,12 @@ Còi tại chỗ báo theo ngưỡng của phòng mà thiết bị được gắ
 - Thiết bị lưu ngưỡng vào NVS (`Preferences`), nên mất mạng hoặc khởi động lại vẫn báo đúng ngưỡng. Chỉ ghi flash khi `version` đổi.
 - Payload rỗng nghĩa là thiết bị không còn gắn phòng nào: thiết bị xoá ngưỡng đã lưu và quay về ngưỡng dự phòng.
 - Chưa từng nhận ngưỡng thì dùng ngưỡng dự phòng: nhiệt độ ≥ `DEFAULT_TEMP_MAX` (40°C), cửa mở quá `DEFAULT_DOOR_OPEN_MAX_S` (15 giây).
+
+**Quạt tự động theo nhiệt độ.** Nhiệt độ > `tempMax` thì bật quạt; nhiệt độ < `tempMin` thì tắt quạt. Trong khoảng hai ngưỡng, kể cả bằng ngưỡng, giữ trạng thái tự động trước đó để tránh đóng/ngắt liên tục. Khi mới khởi động, trạng thái tự động là tắt cho đến khi nhiệt độ vượt ngưỡng trên; vẫn giữ thời gian chờ khởi động 3 giây. Nếu cảm biến lỗi, giữ trạng thái tự động trước đó. Không có cấu hình phòng thì quạt dùng dải dự phòng `DEFAULT_TEMP_MAX - DEFAULT_HYSTERESIS` đến `DEFAULT_TEMP_MAX` (39–40°C). `hysteresis` của phòng tiếp tục dùng cho còi; quạt dùng trực tiếp dải `tempMin`–`tempMax`.
+
+Logic chạy tại ESP32 cả khi mất Wi-Fi, dùng ngưỡng đã lưu trong NVS. Cấu hình mới nhận từ backend được dùng ở vòng xử lý tiếp theo. Lệnh `on`/`off` vẫn ghi đè quạt trong 10 phút; bộ điều khiển nhiệt độ tiếp tục cập nhật trong thời gian đó, và lấy lại quyền điều khiển khi hết hạn hoặc nhận `auto`.
+
+Kiểm tra logic quạt trên máy tính (cần `g++`): chạy `./scripts/test-firmware-fan.ps1` từ thư mục gốc repo. Bộ kiểm tra bao gồm chu kỳ làm lạnh, đúng bằng ngưỡng, lỗi cảm biến, đổi cấu hình, nhiệt độ âm và dải dự phòng.
 
 **Chống chạy trùng.** Nếu chưa nhận được ack, server sẽ gửi lại lệnh (tối đa 5 lần, cách nhau 10 giây, trong vòng 60 giây). Thiết bị nhớ 8 lệnh gần nhất (`RECENT_COMMANDS`). Lệnh đã chạy rồi thì thiết bị chỉ gửi lại ack cũ, không chạy lại.
 
@@ -197,7 +203,7 @@ Chiều ngược lại: Frontend → NestJS (`POST /commands`) → `devices/{uni
 
 | Điều kiện | Hành động |
 |-----------|-----------|
-| Chế độ tự động của quạt | Quạt luôn chạy, cửa đóng hay mở không ảnh hưởng. Chỉ lệnh bật/tắt từ giao diện mới đổi trạng thái quạt (trong 10 phút) |
+| Chế độ tự động của quạt | Nhiệt độ > `tempMax`: bật; < `tempMin`: tắt; ở giữa hoặc bằng ngưỡng: giữ trạng thái tự động trước đó. Không phụ thuộc cửa hay Wi-Fi. Lệnh thủ công vẫn ghi đè trong 10 phút |
 | Cửa mở quá `doorOpenMaxSeconds` của phòng | Kích hoạt còi |
 | Nhiệt độ > `tempMax` hoặc < `tempMin` của phòng | Kích hoạt còi; chỉ tắt khi nhiệt độ vào lại trong ngưỡng thêm `hysteresis` độ, để còi không bật tắt liên tục quanh ngưỡng |
 | Lỗi nguồn quạt (`fanFault`) kéo dài ≥ `FAN_FAULT_CONFIRM_MS` (2 giây) | Kích hoạt còi, server mở cảnh báo "Thiết bị gặp lỗi" kèm loại lỗi. Không xét trong 25 giây khởi động (`FAN_SPINUP_GRACE_MS`) và 10 giây sau khi tắt (`FAN_SPINDOWN_GRACE_MS`). Mức chuẩn = mức **ổn định** (±0.1 V trong 3 giây) **cao nhất** đo được trong 60 giây sau khởi động (`FAN_LEARN_MS`), nên quạt lên điện áp chậm không bị chốt nhầm giá trị trung gian; trong 60 giây này chưa xét điện áp vọt |
