@@ -56,7 +56,7 @@ export class DevicesController {
 
   @Roles(...DEVICE_VIEW_ROLES)
   @Serialize(DeviceResponseDto)
-  @WarehouseListScope({ requireShift: true })
+  @WarehouseListScope()
   @Get()
   findAll(
     @ScopedWarehouses() access: WarehouseAccess,
@@ -66,7 +66,7 @@ export class DevicesController {
   }
 
   @Roles(...DEVICE_VIEW_ROLES)
-  @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, { requireShift: true })
+  @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM)
   @Serialize(DeviceResponseDto)
   @Get(':id')
   findOne(@Param('id') id: string) {

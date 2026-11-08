@@ -155,7 +155,7 @@ export function NotificationsPage() {
                 <TableRow key={n.id} {...rowOpenProps(() => view(n))}>
                   <TableCell className="max-w-xl min-w-64 pl-4 whitespace-normal">
                     <span className={n.readAt ? 'font-normal' : 'font-semibold'}>{n.title}</span>
-                    <span className="mt-0.5 line-clamp-2 text-muted-foreground">{n.body}</span>
+                    <span className="mt-0.5 line-clamp-2 whitespace-pre-line text-muted-foreground">{n.body}</span>
                   </TableCell>
                   <TableCell>
                     {n.readAt ? (

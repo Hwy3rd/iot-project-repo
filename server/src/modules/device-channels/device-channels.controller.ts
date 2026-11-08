@@ -72,7 +72,6 @@ export class DeviceChannelsController {
   @Roles(...CHANNEL_VIEW_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
     paramName: 'deviceId',
-    requireShift: true,
   })
   @Serialize(DeviceChannelResponseDto)
   @Get()
@@ -83,7 +82,6 @@ export class DeviceChannelsController {
   @Roles(...CHANNEL_VIEW_ROLES)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
     paramName: 'deviceId',
-    requireShift: true,
   })
   @Serialize(DeviceChannelResponseDto)
   @Get(':id')

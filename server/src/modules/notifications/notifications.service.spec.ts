@@ -1,10 +1,13 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { IsNull, QueryFailedError, Repository } from 'typeorm';
+import { In, IsNull, QueryFailedError, Repository } from 'typeorm';
 import { AlertType } from '../../libs/constants/alert.constant';
 import { NotificationStatus } from '../../libs/constants/notification.constant';
+import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import { Alert } from '../alerts/entities/alert.entity';
+import { User } from '../users/entities/user.entity';
+import { WorkShift } from '../work-shifts/entities/work-shift.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { Notification } from './entities/notification.entity';
@@ -39,6 +42,7 @@ describe('NotificationsService', () => {
   let notificationsRepository: MockRepository<Notification>;
   let coldRoomsRepository: MockRepository<ColdRoom>;
   let warehouseStaffRepository: MockRepository<WarehouseStaff>;
+  let usersRepository: MockRepository<User>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -60,6 +64,10 @@ describe('NotificationsService', () => {
           provide: getRepositoryToken(WarehouseStaff),
           useValue: createMockRepository<WarehouseStaff>(),
         },
+        {
+          provide: getRepositoryToken(User),
+          useValue: createMockRepository<User>(),
+        },
       ],
     }).compile();
 
@@ -75,6 +83,12 @@ describe('NotificationsService', () => {
     );
     coldRoomsRepository = module.get(getRepositoryToken(ColdRoom));
     warehouseStaffRepository = module.get(getRepositoryToken(WarehouseStaff));
+    usersRepository = module.get(getRepositoryToken(User));
+    usersRepository.find!.mockResolvedValue([]);
+    // reachableAssignees(): nobody assigned is Staff unless a test says so.
+    (usersRepository as { manager?: unknown }).manager = {
+      find: jest.fn().mockResolvedValue([]),
+    };
   });
 
   describe('subscribe', () => {
@@ -161,13 +175,16 @@ describe('NotificationsService', () => {
       const createdAt = new Date('2026-10-25T10:00:00Z');
       const manager = {
         findOne: jest.fn().mockResolvedValue({ warehouseId: 'w1' }),
-        find: jest
-          .fn()
-          .mockResolvedValue([
-            { userId: 'u1' },
-            { userId: 'u1' },
-            { userId: 'u2' },
-          ]),
+        find: jest.fn(
+          (entity: unknown, options: { where: { role?: UserRole } }) =>
+            Promise.resolve(
+              entity === User
+                ? options.where.role === UserRole.ADMIN
+                  ? [{ id: 'admin1' }, { id: 'u2' }]
+                  : []
+                : [{ userId: 'u1' }, { userId: 'u1' }, { userId: 'u2' }],
+            ),
+        ),
         insert: jest.fn(),
       };
       await service.captureAlert(
@@ -183,13 +200,56 @@ describe('NotificationsService', () => {
         NotificationOutbox,
         expect.objectContaining({
           id: 'a1',
-          recipients: ['u1', 'u2'],
+          recipients: ['u1', 'u2', 'admin1'],
           createdAt,
           processedAt: null,
         }),
       );
       expect(notificationsRepository.save).not.toHaveBeenCalled();
+      expect(manager.find).toHaveBeenCalledWith(User, {
+        where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
+        select: { id: true },
+      });
     });
+    it('leaves out Staff who are not on shift at the warehouse', async () => {
+      const manager = {
+        findOne: jest.fn().mockResolvedValue({ warehouseId: 'w1' }),
+        find: jest.fn(
+          (entity: unknown, options: { where: { role?: UserRole } }) =>
+            Promise.resolve(
+              entity === User
+                ? options.where.role === UserRole.STAFF
+                  ? [{ id: 'staffOn' }, { id: 'staffOff' }]
+                  : []
+                : entity === WorkShift
+                  ? [{ staffId: 'staffOn' }]
+                  : [
+                      { userId: 'manager1' },
+                      { userId: 'staffOn' },
+                      { userId: 'staffOff' },
+                    ],
+            ),
+        ),
+        insert: jest.fn(),
+      };
+
+      await service.captureAlert(
+        manager as never,
+        { id: 'a2', coldRoomId: 'c1', type: AlertType.OFFLINE } as Alert,
+      );
+
+      expect(manager.find).toHaveBeenCalledWith(
+        WorkShift,
+        expect.objectContaining({
+          where: expect.objectContaining({ warehouseId: 'w1' }) as unknown,
+        }),
+      );
+      expect(manager.insert).toHaveBeenCalledWith(
+        NotificationOutbox,
+        expect.objectContaining({ recipients: ['manager1', 'staffOn'] }),
+      );
+    });
+
     const alert = {
       id: 'al1',
       coldRoomId: 'c1',
@@ -207,7 +267,28 @@ describe('NotificationsService', () => {
       expect(warehouseStaffRepository.find).not.toHaveBeenCalled();
     });
 
-    it('returns [] when nobody is assigned to the warehouse', async () => {
+    it('also notifies active admins, once each, even with no staff assigned', async () => {
+      coldRoomsRepository.findOne!.mockResolvedValue({ warehouseId: 'w1' });
+      warehouseStaffRepository.find!.mockResolvedValue([]);
+      usersRepository.find!.mockResolvedValue([{ id: 'admin1' }]);
+      notificationsRepository.create!.mockImplementation(
+        (v: Partial<Notification>) => v,
+      );
+
+      const result = await service.notifyNewAlert(alert);
+
+      expect(usersRepository.find).toHaveBeenCalledWith({
+        where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
+        select: { id: true },
+      });
+      expect(notificationsRepository.create).toHaveBeenCalledTimes(1);
+      expect(notificationsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'admin1', dedupeKey: 'al1:admin1' }),
+      );
+      expect(result).toHaveLength(1);
+    });
+
+    it('returns [] when nobody is assigned to the warehouse and there is no admin', async () => {
       coldRoomsRepository.findOne!.mockResolvedValue({ warehouseId: 'w1' });
       warehouseStaffRepository.find!.mockResolvedValue([]);
 
@@ -353,6 +434,66 @@ describe('NotificationsService', () => {
         expect.objectContaining({ body }),
       );
     });
+
+    it('opens the body with the warehouse and room', async () => {
+      coldRoomsRepository.findOne!.mockResolvedValue({
+        id: 'c1',
+        name: 'Phòng mát 01',
+        warehouseId: 'w1',
+        warehouse: { name: 'Hà Nội' },
+      });
+      warehouseStaffRepository.find!.mockResolvedValue([{ userId: 'u1' }]);
+      notificationsRepository.create!.mockImplementation(
+        (v: Partial<Notification>) => v,
+      );
+
+      await service.notifyNewAlert({
+        id: 'al6',
+        coldRoomId: 'c1',
+        type: AlertType.OFFLINE,
+        triggerValue: null,
+      } as unknown as Alert);
+
+      expect(coldRoomsRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'c1' },
+        relations: { warehouse: true },
+      });
+      expect(notificationsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Thiết bị mất kết nối',
+          body: 'Kho Hà Nội › Phòng mát 01\nXem chi tiết trong ứng dụng.',
+        }),
+      );
+    });
+
+    it('says how long the door has been open', async () => {
+      coldRoomsRepository.findOne!.mockResolvedValue({
+        id: 'c1',
+        warehouseId: 'w1',
+      });
+      warehouseStaffRepository.find!.mockResolvedValue([{ userId: 'u1' }]);
+      notificationsRepository.create!.mockImplementation(
+        (v: Partial<Notification>) => v,
+      );
+      notificationsRepository.save!.mockImplementation(
+        (v: Partial<Notification>[]) => v,
+      );
+
+      await service.notifyNewAlert({
+        id: 'al5',
+        coldRoomId: 'c1',
+        type: AlertType.DOOR_OPEN_TOO_LONG,
+        triggerValue: null,
+        details: { openSeconds: 20, maxSeconds: 15 },
+      } as unknown as Alert);
+
+      expect(notificationsRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Cửa kho mở quá lâu',
+          body: 'Cửa đã mở 20 giây (cho phép 15 giây).',
+        }),
+      );
+    });
   });
 
   describe('findAll', () => {
@@ -367,6 +508,34 @@ describe('NotificationsService', () => {
         skip: 0,
         take: 20,
       });
+    });
+
+    it('shows Staff only alerts of the warehouses they are on shift at', async () => {
+      notificationsRepository.findAndCount!.mockResolvedValue([[], 0]);
+      (
+        usersRepository as unknown as { manager: { find: jest.Mock } }
+      ).manager.find.mockResolvedValue([{ warehouseId: 'w1' }]);
+
+      await service.findAll('u1', {}, UserRole.STAFF);
+
+      expect(notificationsRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: [
+            { userId: 'u1', alertId: IsNull() },
+            { userId: 'u1', alert: { coldRoom: { warehouseId: In(['w1']) } } },
+          ],
+        }),
+      );
+    });
+
+    it('shows off-shift Staff no alert notifications at all', async () => {
+      notificationsRepository.findAndCount!.mockResolvedValue([[], 0]);
+
+      await service.findAll('u1', {}, UserRole.STAFF);
+
+      expect(notificationsRepository.findAndCount).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'u1', alertId: IsNull() } }),
+      );
     });
 
     it('adds an unread filter only when unreadOnly=true', async () => {

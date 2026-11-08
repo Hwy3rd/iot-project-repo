@@ -8,6 +8,16 @@ import { WorkShift } from '../../modules/work-shifts/entities/work-shift.entity'
 import { activeShiftCutoff } from '../../modules/work-shifts/work-shift-schedule';
 import { UNRESTRICTED_ACCESS, WarehouseAccess } from './warehouse-access';
 
+// "Working a shift right now": check-in approved by a Manager, not checked
+// out, and the shift not over (plus the grace period after it). The one
+// definition behind every Staff scope check — REST, chatbot, realtime and
+// who gets an alert's notification.
+export const activeShiftWhere = (now = new Date()) => ({
+  status: WorkShiftStatus.APPROVED,
+  checkOutAt: IsNull(),
+  scheduledEndAt: MoreThan(activeShiftCutoff(now)),
+});
+
 // Single source of truth for "which warehouses may this caller read, for an
 // action allowed to `allowedRoles`" (docs/RBAC.md §3). Used by WarehouseScopeGuard for REST list routes and by
 // the chatbot's tool executor — so a chatbot tool can never see more than
@@ -23,12 +33,12 @@ export class WarehouseAccessService {
 
   // Admin: unrestricted. Everyone else: the warehouses they're assigned to
   // if their role is in `allowedRoles` (any role when it's empty/undefined),
-  // else none; with `requireShift`, Staff only get the warehouses they're
-  // checked into a shift at.
+  // else none. Staff only get the warehouses they're checked into an active
+  // shift at, unless `allowOffShift` (the attendance flow only).
   async resolve(
     user: { id: string; role: UserRole },
     allowedRoles: UserRole[] | undefined,
-    options: { requireShift?: boolean } = {},
+    options: { allowOffShift?: boolean } = {},
   ): Promise<WarehouseAccess> {
     if (user.role === UserRole.ADMIN) {
       return UNRESTRICTED_ACCESS(user.id, user.role);
@@ -46,7 +56,7 @@ export class WarehouseAccessService {
     if (user.role !== UserRole.STAFF) {
       return { ...none, warehouseIds, staffWarehouseIds: [] };
     }
-    if (options.requireShift && warehouseIds.length > 0) {
+    if (!options.allowOffShift && warehouseIds.length > 0) {
       warehouseIds = await this.warehousesWithActiveShift(
         user.id,
         warehouseIds,
@@ -68,9 +78,7 @@ export class WarehouseAccessService {
       where: {
         staffId: userId,
         warehouseId: In(warehouseIds),
-        status: WorkShiftStatus.APPROVED,
-        checkOutAt: IsNull(),
-        scheduledEndAt: MoreThan(activeShiftCutoff(now)),
+        ...activeShiftWhere(now),
       },
     });
     return [...new Set(shifts.map((shift) => shift.warehouseId))];

@@ -44,8 +44,10 @@ export class WorkShiftsController {
 
   // Staff of the warehouse in the body; the shift is picked by the server.
   @Roles(UserRole.STAFF)
+  // Checking in is how a Staff gets on shift, so it can't require one.
   @WarehouseScope(WarehouseScopeSource.WAREHOUSE_BODY, {
     paramName: 'warehouseId',
+    allowOffShift: true,
   })
   @Serialize(WorkShiftResponseDto)
   @Audit({
@@ -71,7 +73,11 @@ export class WorkShiftsController {
 
   // Staff: only their own shift, same rule as the list endpoint.
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
-  @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM, { ownStaffOnly: true })
+  // A Staff may read their own shift (e.g. a pending check-in) off shift.
+  @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM, {
+    ownStaffOnly: true,
+    allowOffShift: true,
+  })
   @Serialize(WorkShiftResponseDto)
   @Get(':id')
   findOne(@Param('id') id: string) {
@@ -111,8 +117,10 @@ export class WorkShiftsController {
   }
 
   @Roles(UserRole.STAFF)
+  // Checking out may land after the shift's grace period has ended.
   @WarehouseScope(WarehouseScopeSource.WORK_SHIFT_PARAM, {
     ownStaffOnly: true,
+    allowOffShift: true,
   })
   @Serialize(WorkShiftResponseDto)
   @Audit({

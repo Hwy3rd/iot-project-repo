@@ -278,7 +278,7 @@ export class BatchesService {
     await this.batchesRepository.save(batch);
   }
 
-  // `access` comes from @WarehouseListScope({ requireShift: true }) with the
+  // `access` comes from @WarehouseListScope() with the
   // same roles as DELETE /batches/:id, so each row is judged exactly like
   // that route's @WarehouseScope would judge it.
   async bulkRemove(

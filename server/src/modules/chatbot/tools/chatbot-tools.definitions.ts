@@ -41,10 +41,6 @@ export interface ChatbotToolDefinition {
   // they're assigned to, same model as WarehouseScopeGuard — see
   // WarehouseAccessService.
   allowedRoles: UserRole[];
-  // Mirrors the REST route's @WarehouseScope({ requireShift }): in a
-  // warehouse where the caller acts as Staff, the data is only reachable
-  // while they're checked into a shift there.
-  requireShift?: boolean;
   scope: ChatbotToolScope;
 }
 
@@ -160,7 +156,6 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       },
     },
     allowedRoles: ALL_ROLES,
-    requireShift: true,
     scope: 'coldRoomId',
   },
   {
@@ -173,7 +168,6 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       required: ['deviceId'],
     },
     allowedRoles: ALL_ROLES,
-    requireShift: true,
     scope: 'deviceId',
   },
   {
@@ -201,7 +195,6 @@ export const CHATBOT_TOOLS: ChatbotToolDefinition[] = [
       },
     },
     allowedRoles: ALL_ROLES,
-    requireShift: true,
     scope: 'deviceId',
   },
   {

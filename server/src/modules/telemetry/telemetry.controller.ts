@@ -23,7 +23,6 @@ export class TelemetryController {
   @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TECHNICIAN, UserRole.STAFF)
   @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM, {
     paramName: 'deviceId',
-    requireShift: true,
   })
   @Serialize(TelemetryHourlyResponseDto)
   @Get('hourly')

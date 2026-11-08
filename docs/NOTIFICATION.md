@@ -36,7 +36,7 @@ Hiện tại notification **chỉ được sinh từ alert mới**. Cột `notif
 (worker) AlertNotificationProcessor.process()  ◀────────┘
          │
          ├─ 1. NotificationsService.notifyNewAlert(alert)
-         │       cold room → warehouse → mọi user trong warehouse_staff
+         │       cold room → warehouse → user trong warehouse_staff (Staff: chỉ người đang trong ca) + mọi Admin active
          │       INSERT 1 notification / user, status = pending
          │
          └─ 2. deliver(notification) — tuần tự từng notification
@@ -73,11 +73,11 @@ Hiện có hai loại thực sự được raise, đều từ `TelemetryService`
 
 Các `AlertType` khác đã có nhãn tiếng Việt sẵn (mục 4) nhưng chưa có code nào sinh ra chúng.
 
-**Cho ai:** mọi user có dòng trong `warehouse_staff` của warehouse chứa cold room phát sinh alert, **không phân biệt role** (Manager, Technician, Staff đều nhận).
+**Cho ai:** mọi user có dòng trong `warehouse_staff` của warehouse chứa cold room phát sinh alert, **không phân biệt role** (Manager, Technician, Staff đều nhận), **cộng mọi Admin đang hoạt động** (Admin không được gán vào warehouse nên được thêm riêng; nếu một user xuất hiện ở cả hai nguồn thì chỉ nhận một lần).
 
 Hệ quả cần biết:
-- **Admin không được gán vào warehouse thì không nhận** — dù Admin có quyền xem mọi alert qua API.
-- **Staff nhận cả khi không trong ca trực.** Việc chọn người nhận không xét ca trực, khác với quyền thao tác (xem [RBAC.md](RBAC.md)).
+- **Admin nhận alert của mọi warehouse.** Admin bị khoá (`status = locked`) không nhận — recovery bỏ qua user không `active` khi tạo notification.
+- **Staff chỉ nhận khi đang trong ca trực tại kho đó** (ca được duyệt, chưa check-out, chưa quá giờ kết thúc + 5 phút — xem [RBAC.md](RBAC.md) mục 3). Xét hai lần: lúc tạo notification, và lại ngay trước khi gửi push (Staff hết ca giữa chừng thì không nhận nữa). Danh sách thông báo trong app của Staff cũng chỉ hiện cảnh báo của kho đang trong ca.
 - User gán vào warehouse nhưng chưa bật push trên trình duyệt nào vẫn có notification, với `status = failed`. Họ vẫn thấy nó qua `GET /notifications`.
 
 ---
@@ -201,4 +201,4 @@ Những điểm dưới đây là hành vi hiện tại của code, cần xử l
 | Không có realtime qua WebSocket | App đang mở không tự cập nhật danh sách alert/notification | `RealtimeGateway.emitToWarehouse()` đã có sẵn, chưa được gọi |
 | `GET /notifications` không phân trang | Danh sách lớn dần theo thời gian | Thêm phân trang theo `created_at` |
 | Không có endpoint xem danh sách thiết bị đã đăng ký | Cột `user_agent` được lưu nhưng chưa dùng | `GET /notifications/subscriptions` cho màn "quản lý thiết bị" |
-| Chọn người nhận bỏ qua Admin không gán warehouse và bỏ qua ca trực | Xem mục 3 | Tuỳ yêu cầu nghiệp vụ |
+| Admin nhận alert của mọi warehouse (chưa lọc theo kho) | Xem mục 3 | Tuỳ yêu cầu nghiệp vụ |

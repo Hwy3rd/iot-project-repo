@@ -256,11 +256,17 @@ export class ChatbotOrchestratorService {
         deadline.signal,
       ),
     );
+    // What the caller may reach right now, so the model refuses (and
+    // warns) before calling a tool it would be denied.
+    const permissions = await deadline.wait(() =>
+      this.toolExecutor.describePermissions(caller),
+    );
     const systemInstruction = buildChatbotSystemInstruction(
       new Date(),
       CHATBOT_TIMEZONE,
       workingWarehouse,
       knowledgeContext,
+      permissions,
     );
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {

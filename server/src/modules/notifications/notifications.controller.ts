@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GetUserId } from '../../common/decorators/get-user-id.decorator';
+import { GetUserRole } from '../../common/decorators/get-user-role.decorator';
+import { UserRole } from '../../libs/constants/user.constant';
 import { Public } from '../../common/decorators/public.decorator';
 import { Serialize } from '../../common/decorators/serialize.decorator';
 import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
@@ -58,8 +60,12 @@ export class NotificationsController {
 
   @Serialize(NotificationResponseDto)
   @Get()
-  findAll(@GetUserId() userId: string, @Query() query: QueryNotificationDto) {
-    return this.notificationsService.findAll(userId, query);
+  findAll(
+    @GetUserId() userId: string,
+    @GetUserRole() role: UserRole,
+    @Query() query: QueryNotificationDto,
+  ) {
+    return this.notificationsService.findAll(userId, query, role);
   }
 
   @Serialize(NotificationResponseDto)

@@ -699,6 +699,137 @@ describe('TelemetryService', () => {
     });
   });
 
+  describe('door open alert wiring', () => {
+    // Room allows the door open for 15 s.
+    const doorRoomDevice = {
+      ...activeDevice,
+      coldRoom: { ...activeDevice.coldRoom, doorOpenMaxSeconds: 15 },
+    };
+    const at = (seconds: number) =>
+      new Date(sample.ts.getTime() - seconds * 1000);
+    // findOne calls in order: newest sample (ingest), then — only while the
+    // door stays open — the newest closed sample and the first open one.
+    const mockFindOne = (...results: unknown[]) => {
+      for (const result of results)
+        rawModel.findOne.mockReturnValueOnce(createQueryChainOne(result));
+    };
+    const createQueryChainOne = (result: unknown) => ({
+      sort: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(result),
+    });
+    type AlertInput = { type: AlertType; details?: Record<string, unknown> };
+    const doorCalls = (mock: jest.Mock): AlertInput[] =>
+      (mock.mock.calls as [AlertInput][])
+        .map(([input]) => input)
+        .filter((input) => input.type === AlertType.DOOR_OPEN_TOO_LONG);
+
+    beforeEach(() =>
+      devicesRepository.findOne.mockResolvedValue(doorRoomDevice),
+    );
+
+    it('does nothing the moment the door opens', async () => {
+      mockFindOne({ ts: at(5), doorOpen: false });
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(doorCalls(alertsService.raise)).toHaveLength(0);
+      expect(doorCalls(alertsService.resolveAuto)).toHaveLength(0);
+    });
+
+    it('stays quiet while the door has been open for less than the limit', async () => {
+      mockFindOne(
+        { ts: at(5), doorOpen: true },
+        { ts: at(20) },
+        { ts: at(10) },
+      );
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(doorCalls(alertsService.raise)).toHaveLength(0);
+    });
+
+    it('raises once open for the limit, timed from the first open sample', async () => {
+      mockFindOne(
+        { ts: at(5), doorOpen: true },
+        { ts: at(25) },
+        { ts: at(20) },
+      );
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(alertsService.raise).toHaveBeenCalledWith({
+        coldRoomId: 'c1',
+        deviceId: 'd1',
+        type: AlertType.DOOR_OPEN_TOO_LONG,
+        details: {
+          openSince: at(20).toISOString(),
+          openSeconds: 20,
+          maxSeconds: 15,
+        },
+      });
+      // The open period ends at the newest closed sample before this one.
+      expect(rawModel.findOne).toHaveBeenNthCalledWith(
+        2,
+        { deviceId: 'd1', doorOpen: false, ts: { $lt: sample.ts } },
+        { ts: 1 },
+      );
+      expect(rawModel.findOne).toHaveBeenNthCalledWith(
+        3,
+        { deviceId: 'd1', ts: { $gt: at(25), $lte: sample.ts } },
+        { ts: 1 },
+      );
+    });
+
+    it('counts from the oldest sample when the door was never seen closed', async () => {
+      mockFindOne({ ts: at(5), doorOpen: true }, null, { ts: at(60) });
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(rawModel.findOne).toHaveBeenNthCalledWith(
+        3,
+        { deviceId: 'd1', ts: { $lte: sample.ts } },
+        { ts: 1 },
+      );
+      expect(doorCalls(alertsService.raise)[0].details).toMatchObject({
+        openSeconds: 60,
+      });
+    });
+
+    it('auto-resolves on the open-to-closed edge only', async () => {
+      mockFindOne({ ts: at(5), doorOpen: true });
+      await service.ingest('d1', { ...sample, doorOpen: false });
+
+      expect(alertsService.resolveAuto).toHaveBeenCalledWith({
+        type: AlertType.DOOR_OPEN_TOO_LONG,
+        deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
+      });
+
+      alertsService.resolveAuto.mockClear();
+      mockFindOne({ ts: at(5), doorOpen: false });
+      await service.ingest('d1', {
+        ...sample,
+        ts: new Date(sample.ts.getTime() + 5000),
+        doorOpen: false,
+      });
+      expect(doorCalls(alertsService.resolveAuto)).toHaveLength(0);
+    });
+
+    it('ignores replayed samples', async () => {
+      mockFindOne({ ts: at(5), doorOpen: true });
+
+      await service.ingest('d1', {
+        ...sample,
+        doorOpen: true,
+        replayed: true,
+      });
+
+      expect(doorCalls(alertsService.raise)).toHaveLength(0);
+    });
+  });
+
   describe('AI prediction wiring', () => {
     // The shared model now supports both chilled and frozen rooms.
     const chillDevice = {

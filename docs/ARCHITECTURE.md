@@ -48,7 +48,7 @@ Mọi request đi qua pipeline theo đúng thứ tự sau (đăng ký ở `RbacM
 
 1. **`JwtAuthGuard`** — bắt buộc có `access_token` hợp lệ trong cookie, trừ route đánh dấu `@Public()`.
 2. **`RolesGuard`** — role của caller (từ JWT payload) phải nằm trong `@Roles(...)` của route.
-3. **`WarehouseScopeGuard`** — nếu route có `@WarehouseScope(...)`, kiểm tra caller có được gán vào warehouse liên quan (qua `WarehouseStaff`), và nếu là Staff + `requireShift: true`, kiểm tra thêm đang có `WorkShift` đã được duyệt và chưa quá giờ kết thúc + 5 phút. Admin luôn bỏ qua bước này.
+3. **`WarehouseScopeGuard`** — nếu route có `@WarehouseScope(...)`, kiểm tra caller có được gán vào warehouse liên quan (qua `WarehouseStaff`), và nếu là Staff, kiểm tra thêm đang có `WorkShift` đã được duyệt và chưa quá giờ kết thúc + 5 phút ở warehouse đó (mặc định cho mọi route; chỉ luồng chấm công khai báo `allowOffShift` để bỏ qua). Admin luôn bỏ qua bước này.
 4. Controller/service xử lý nghiệp vụ.
 5. **`TransformInterceptor`** (response thành công) bọc `{ success, statusCode, message, data }`, áp `@Serialize(dto)` nếu có.
 6. **`GlobalExceptionFilter`** (mọi lỗi, kể cả lỗi không lường trước) chuẩn hoá về `{ success: false, statusCode, path, timestamp, message, errors? }`.

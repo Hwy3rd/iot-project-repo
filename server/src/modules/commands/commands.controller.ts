@@ -38,7 +38,6 @@ export class CommandsController {
   @Roles(UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.STAFF)
   @WarehouseScope(WarehouseScopeSource.CHANNEL_BODY, {
     paramName: 'channelId',
-    requireShift: true,
   })
   @Serialize(CommandResponseDto)
   @Post()

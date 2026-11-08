@@ -17,6 +17,7 @@ import { Server } from 'socket.io';
 import { Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import { blockedUserKey, REDIS_CLIENT } from '../../libs/redis/redis.constant';
+import { WarehouseAccessService } from '../../common/rbac/warehouse-access.service';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { JoinWarehouseDto } from './dto/join-warehouse.dto';
 import type { AppSocket, SocketData } from './realtime.types';
@@ -62,6 +63,7 @@ export class RealtimeGateway
     @InjectRepository(WarehouseStaff)
     private readonly warehouseStaffRepository: Repository<WarehouseStaff>,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly warehouseAccess: WarehouseAccessService,
   ) {}
 
   // Auth runs as handshake middleware, not in handleConnection: socket.io
@@ -134,7 +136,8 @@ export class RealtimeGateway
   }
 
   // Admins may join any warehouse (full access per the permission matrix in
-  // docs/system-design.md); everyone else only one they're assigned to.
+  // docs/system-design.md); everyone else only one they're assigned to —
+  // Staff only while on shift there, like every Staff read (docs/RBAC.md §3).
   @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
   @SubscribeMessage('join:warehouse')
   async handleJoinWarehouse(
@@ -155,6 +158,16 @@ export class RealtimeGateway
       });
       if (!assigned) {
         throw new WsException(`Not assigned to warehouse ${dto.warehouseId}`);
+      }
+      if (
+        user.role === UserRole.STAFF &&
+        (
+          await this.warehouseAccess.warehousesWithActiveShift(user.id, [
+            dto.warehouseId,
+          ])
+        ).length === 0
+      ) {
+        throw new WsException(`Not on shift at warehouse ${dto.warehouseId}`);
       }
     }
 

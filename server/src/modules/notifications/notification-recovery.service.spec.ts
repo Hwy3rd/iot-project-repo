@@ -12,6 +12,7 @@ import { Alert } from '../alerts/entities/alert.entity';
 import { User } from '../users/entities/user.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
+import { WorkShift } from '../work-shifts/entities/work-shift.entity';
 import { FindOperator } from 'typeorm';
 
 interface TestRow {
@@ -43,6 +44,8 @@ function database() {
         return row[key] == null;
       if (value instanceof FindOperator && value.type === 'lessThanOrEqual')
         return Number(row[key]) <= Number(value.value);
+      if (value instanceof FindOperator && value.type === 'moreThan')
+        return Number(row[key]) > Number(value.value);
       return row[key] === value;
     });
   const repo = (entity: unknown) => ({
@@ -262,6 +265,33 @@ describe('Durable notification recovery', () => {
     db.rows(WarehouseStaff).length = 0;
     await recovery.sweep();
     expect(webPush.send).not.toHaveBeenCalled();
+  });
+
+  it('does not push to Staff who are no longer on shift there', async () => {
+    db.rows(User)[0].role = 'staff';
+    await recovery.sweep();
+    expect(webPush.send).not.toHaveBeenCalled();
+  });
+
+  it('pushes to Staff on shift at the alert warehouse', async () => {
+    db.rows(User)[0].role = 'staff';
+    db.rows(WorkShift).push({
+      staffId: 'u1',
+      warehouseId: 'w1',
+      status: 'approved',
+      checkOutAt: null,
+      scheduledEndAt: new Date(now.getTime() + 3_600_000),
+    });
+    await recovery.sweep();
+    expect(webPush.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends to an admin, who is never assigned to a warehouse', async () => {
+    db.rows(WarehouseStaff).length = 0;
+    db.rows(User)[0].role = 'admin';
+    await recovery.sweep();
+    expect(webPush.send).toHaveBeenCalledTimes(1);
+    expect(db.rows(NotificationDelivery)[0].status).toBe('sent');
   });
 
   it('reclaims the leased send when a worker dies before delivery', async () => {
