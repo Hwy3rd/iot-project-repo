@@ -14,6 +14,8 @@ import { Command } from '../modules/commands/entities/command.entity';
 import { AuditLog } from '../modules/audit-logs/entities/audit-log.entity';
 import { Alert } from '../modules/alerts/entities/alert.entity';
 import { Notification } from '../modules/notifications/entities/notification.entity';
+import { NotificationOutbox } from '../modules/notifications/entities/notification-outbox.entity';
+import { NotificationDelivery } from '../modules/notifications/entities/notification-delivery.entity';
 import { PushSubscription } from '../modules/notifications/entities/push-subscription.entity';
 import { DeviceStatusHistory } from '../modules/device-status-history/entities/device-status-history.entity';
 import { Conversation } from '../modules/chatbot/entities/conversation.entity';
@@ -50,6 +52,8 @@ export const dataSourceOptions: DataSourceOptions = {
     AuditLog,
     Alert,
     Notification,
+    NotificationOutbox,
+    NotificationDelivery,
     PushSubscription,
     DeviceStatusHistory,
     Conversation,

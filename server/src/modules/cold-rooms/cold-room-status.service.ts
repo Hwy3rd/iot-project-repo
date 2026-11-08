@@ -255,6 +255,7 @@ export class ColdRoomStatusService {
       // bring in what it sent from another one.
       {
         $match: {
+          replayed: { $ne: true },
           $or: installed.map((d) => ({
             coldRoomId: d.coldRoomId,
             deviceId: d.id,

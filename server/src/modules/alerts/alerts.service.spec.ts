@@ -11,6 +11,7 @@ import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AlertsService } from './alerts.service';
 import { Alert } from './entities/alert.entity';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type MockRepository<T extends object> = Partial<
   Record<keyof Repository<T>, jest.Mock>
@@ -36,11 +37,16 @@ describe('AlertsService', () => {
   let service: AlertsService;
   let alertsRepository: MockRepository<Alert>;
   let notificationsQueue: { add: jest.Mock };
+  let notifications: { captureAlert: jest.Mock };
   let realtime: { emitToWarehouse: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        {
+          provide: NotificationsService,
+          useValue: { captureAlert: jest.fn() },
+        },
         AlertsService,
         {
           provide: getRepositoryToken(Alert),
@@ -63,8 +69,24 @@ describe('AlertsService', () => {
     }).compile();
 
     service = module.get(AlertsService);
+    notifications = module.get(NotificationsService);
     realtime = module.get(RealtimeGateway);
     alertsRepository = module.get(getRepositoryToken(Alert));
+    Object.defineProperty(alertsRepository, 'manager', {
+      value: {
+        transaction: jest.fn(
+          (
+            callback: (manager: {
+              save: (entity: unknown, value: unknown) => Promise<Alert>;
+            }) => Promise<unknown>,
+          ) =>
+            callback({
+              save: (_entity: unknown, value: unknown) =>
+                alertsRepository.save!(value) as Promise<Alert>,
+            }),
+        ),
+      },
+    });
     notificationsQueue = module.get(
       getQueueToken(QUEUE_NAMES.ALERT_NOTIFICATIONS),
     );
@@ -72,6 +94,27 @@ describe('AlertsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('does not publish a new incident if its durable notification snapshot fails', async () => {
+    notifications.captureAlert.mockRejectedValueOnce(
+      new Error('outbox unavailable'),
+    );
+    alertsRepository.create!.mockImplementation(
+      (value: Partial<Alert>) => value,
+    );
+    alertsRepository.save!.mockImplementation((value: Partial<Alert>) =>
+      Promise.resolve({ id: 'a1', ...value }),
+    );
+    await expect(
+      service.raise({
+        coldRoomId: 'c1',
+        deviceId: 'd1',
+        type: AlertType.TEMPERATURE_OUT_OF_RANGE,
+      }),
+    ).rejects.toThrow('outbox unavailable');
+    expect(notificationsQueue.add).not.toHaveBeenCalled();
+    expect(realtime.emitToWarehouse).not.toHaveBeenCalled();
   });
 
   describe('raise', () => {
@@ -116,9 +159,16 @@ describe('AlertsService', () => {
         activeKey: 'temperature_out_of_range:d1',
       });
       // A genuinely new alert enqueues a notification job for it.
-      expect(notificationsQueue.add).toHaveBeenCalledWith('notify', {
-        alertId: 'a1',
-      });
+      expect(notificationsQueue.add).toHaveBeenCalledWith(
+        'notify',
+        {
+          alertId: 'a1',
+        },
+        expect.objectContaining({
+          attempts: 5,
+          backoff: { type: 'exponential', delay: 5000 },
+        }),
+      );
     });
 
     it('does not fail raise() when enqueueing the notification job fails', async () => {

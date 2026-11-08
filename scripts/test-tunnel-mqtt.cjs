@@ -253,11 +253,19 @@ async function blocked(sender, receiver, topic) {
     [
       "devices/" + first.id + "/commands",
       "devices/" + first.id + "/config",
+      "devices/" + first.id + "/telemetry-ack",
+      "devices/" + second.id + "/telemetry-ack",
       "devices/" + second.id + "/commands",
     ],
     { qos: 1 },
   );
-  await other.subscribeAsync("devices/" + second.id + "/commands", { qos: 1 });
+  await other.subscribeAsync(
+    [
+      "devices/" + second.id + "/commands",
+      "devices/" + second.id + "/telemetry-ack",
+    ],
+    { qos: 1 },
+  );
   await delivered(device, backend, "devices/" + first.id + "/telemetry");
   await delivered(other, backend, "devices/" + second.id + "/telemetry");
   check(
@@ -266,6 +274,13 @@ async function blocked(sender, receiver, topic) {
   await delivered(backend, device, "devices/" + first.id + "/config");
   await delivered(device, backend, "devices/" + first.id + "/ack");
   check("backend config and device ack cross TCP/WebSocket in both directions");
+  await delivered(backend, device, "devices/" + first.id + "/telemetry-ack");
+  await delivered(backend, other, "devices/" + second.id + "/telemetry-ack");
+  await blocked(device, device, "devices/" + first.id + "/telemetry-ack");
+  await blocked(device, other, "devices/" + second.id + "/telemetry-ack");
+  check(
+    "backend telemetry acknowledgements reach each device; devices cannot forge acknowledgements",
+  );
   // The valid recipient must receive the very message hidden from the other one.
   const payload = "cross-account:" + randomUUID();
   let leaked = false;
@@ -302,6 +317,10 @@ async function blocked(sender, receiver, topic) {
   const spoof = await connect(ws, first.user, first.password, second.id);
   await spoof.subscribeAsync("devices/" + second.id + "/commands", { qos: 1 });
   await blocked(backend, spoof, "devices/" + second.id + "/commands");
+  await spoof.subscribeAsync("devices/" + second.id + "/telemetry-ack", {
+    qos: 1,
+  });
+  await blocked(backend, spoof, "devices/" + second.id + "/telemetry-ack");
   await blocked(spoof, backend, "devices/" + second.id + "/telemetry");
   check(
     "spoofing MQTT clientId does not change per-username topic permissions",

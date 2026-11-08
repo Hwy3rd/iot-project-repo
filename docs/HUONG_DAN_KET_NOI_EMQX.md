@@ -64,10 +64,12 @@ Trong **Client Authorization / Authorization**, dùng tab **Username** để th�
 | `iot-backend` | Subscribe | `devices/+/ack` | Allow |
 | `iot-backend` | Publish | `devices/+/commands` | Allow |
 | `iot-backend` | Publish | `devices/+/config` | Allow |
+| `iot-backend` | Publish | `devices/+/telemetry-ack` | Allow |
 | `esp32-cold-room-01` | Publish | `devices/esp32-cold-room-01/telemetry` | Allow |
 | `esp32-cold-room-01` | Publish | `devices/esp32-cold-room-01/ack` | Allow |
 | `esp32-cold-room-01` | Subscribe | `devices/esp32-cold-room-01/commands` | Allow |
 | `esp32-cold-room-01` | Subscribe | `devices/esp32-cold-room-01/config` | Allow |
+| `esp32-cold-room-01` | Subscribe | `devices/esp32-cold-room-01/telemetry-ack` | Allow |
 
 Trong tab **All Users**, thêm quy tắc cuối cùng:
 
@@ -83,6 +85,11 @@ EMQX xét quy tắc Username/Client ID trước All Users. Cấu hình trên cho
 - `ack`: ESP32 xác nhận đã xử lý lệnh.
 - `commands`: backend gửi lệnh điều khiển.
 - `config`: backend gửi cấu hình phòng lạnh.
+- `telemetry-ack`: backend xác nhận đã xử lý mẫu; ESP32 mới xoá bản sao LittleFS.
+
+Để bật lưu/gửi bù, cần firmware, backend/migration và filesystem đã chuẩn bị
+theo [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md). Chỉ đổi broker hoặc quyền MQTT
+không tự tạo bộ đệm trên board.
 
 Dấu `+` là ký tự đại diện cho một cấp topic, giúp backend nhận dữ liệu của nhiều ID. Tài khoản thiết bị được cấp các topic cụ thể của chính nó.
 

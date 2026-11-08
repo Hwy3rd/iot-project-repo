@@ -1,5 +1,10 @@
 # Notification — Thông báo đẩy (Web Push)
 
+> Cơ chế gửi bền vững và retry hiện tại xem
+> [OFFLINE_RECOVERY.md](OFFLINE_RECOVERY.md): outbox/delivery MySQL, retry từng
+> browser và khôi phục sau restart. Các mô tả cũ về gửi một lần bên dưới được
+> thay thế bởi luồng đó.
+
 > Tài liệu thiết kế cơ chế thông báo: khi nào hệ thống gửi thông báo, gửi cho ai, đi qua những thành phần nào, trạng thái của một thông báo, và những việc frontend cần làm để nhận được. Schema chi tiết xem [DATABASE_DESIGN.md](DATABASE_DESIGN.md) (`notifications`, `push_subscriptions`), danh sách endpoint xem [API_DESIGN.md](API_DESIGN.md) mục 16.
 
 ---

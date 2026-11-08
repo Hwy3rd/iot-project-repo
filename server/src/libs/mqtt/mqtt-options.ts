@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { randomUUID, X509Certificate } from 'node:crypto';
+import { X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { IClientOptions } from 'mqtt';
 
@@ -19,12 +19,12 @@ export function createMqttConnection(config: ConfigService): {
     throw new Error('MQTT_CA_FILE requires a TLS connection (mqtts or wss)');
   }
   const options: IClientOptions = {
-    clientId: `iot-app-${randomUUID()}`,
+    clientId: `${config.get<string>('MQTT_CLIENT_ID')?.trim() || 'iot-backend'}-${process.env.MQTT_CLIENT_ROLE || 'app'}`,
     username: config.get<string>('MQTT_USERNAME') || undefined,
     password: config.get<string>('MQTT_PASSWORD') || undefined,
     reconnectPeriod: 5000,
     connectTimeout: 10_000,
-    clean: true,
+    clean: false,
   };
   if (secure) {
     options.rejectUnauthorized = true;
