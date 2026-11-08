@@ -3,6 +3,7 @@ import {
   Activity,
   Bell,
   Bot,
+  BookOpen,
   Boxes,
   CalendarClock,
   Clock,
@@ -67,6 +68,7 @@ export const NAV: NavGroup[] = [
     label: 'Quản trị',
     items: [
       { to: '/users', label: 'Người dùng', icon: Users, roles: ['admin'] },
+      { to: '/chatbot-documents', label: 'Tài liệu chatbot', icon: BookOpen, roles: ['admin'] },
       { to: '/audit-logs', label: 'Nhật ký hệ thống', icon: ScrollText, roles: ['admin', 'manager'] },
     ],
   },

@@ -137,7 +137,13 @@ Dựa trên `ColdRoomStatusService` (phần phục vụ màn hình giám sát: 1
 
 Ngưỡng "mất tín hiệu" 10 phút giống frontend (`frontend/src/lib/room-status.ts`).
 
-### 5.4 `search_docs`
+### 5.4 Dữ liệu nhiệt độ có giới hạn
+
+get_telemetry_hourly tính thống kê trên toàn khoảng yêu cầu trong MongoDB, dùng trung bình có trọng số theo sampleCount. Chuỗi tự chọn giờ/ngày/tháng và được giới hạn tổng số điểm giữa các thiết bị. Các trường Count là số mẫu, không phải số sự cố. Tất cả mốc nhóm dùng giờ Việt Nam.
+
+get_telemetry_raw kiểm tra limit là số nguyên dương, mặc định 100 và chặn tối đa 500 mẫu cho toàn lần gọi. Một mẫu bổ sung trên mỗi thiết bị giúp phát hiện còn dữ liệu; hasMore/note báo rõ phạm vi chưa đầy đủ. Khoảng ngày không hợp lệ bị từ chối ngay tại service. Kết quả JSON quá lớn được thay bằng lỗi yêu cầu thu hẹp truy vấn, không cắt chuỗi JSON.
+
+### 5.5 search_docs
 
 Tìm theo từ khoá trong **đúng 3 file** được liệt kê trong `CHATBOT_SEARCHABLE_DOCS`: `BUSINESS_RULES.md`, `SYSTEM_OPERATIONS_GUIDE.md`, `TROUBLESHOOTING.md`. Các tài liệu kỹ thuật nội bộ (kể cả file này) không bao giờ được đưa cho model. Thư mục tài liệu lấy từ `CHATBOT_DOCS_DIR` (image Docker copy `docs/` vào `/app/docs`); mặc định khi chạy dev là `../docs` tính từ `server/`.
 
@@ -167,6 +173,10 @@ Lỗi trong tool (không có quyền, không tìm thấy, thiếu tham số) đ�
 | Độ dài tin nhắn | 2000 ký tự | `CHATBOT_MESSAGE_MAX_LENGTH` |
 | Tin nhắn mỗi user | 10/phút, 200/ngày | `CHATBOT_RATE_LIMIT_PER_MINUTE` / `_PER_DAY` (Redis, cửa sổ cố định, dùng chung socket và REST) |
 | Lượt đồng thời | 1 lượt / cuộc trò chuyện | Khoá Redis `chatbot:turn:<id>`, TTL 180 s phòng khi process chết giữa lượt |
+| Thời hạn xử lý / lượt | 120 s, dùng chung cho mọi lần gọi model, retry và tool đọc dữ liệu | `CHATBOT_TURN_TIMEOUT_MS` |
+| Timeout mỗi lần gọi Gemini | 30 s (cấu hình được) | `LLM_REQUEST_TIMEOUT_MS` |
+| Kết quả tool gửi model | 32 KB/tool, 64 KB/lượt (UTF-8) | `CHATBOT_TOOL_RESULT_MAX_BYTES` / `CHATBOT_TURN_TOOL_RESULTS_MAX_BYTES` |
+| Điểm telemetry | Raw tối đa 500 mẫu/lần gọi; hourly tối đa 100 điểm/lần gọi, chia giữa các thiết bị | `CHATBOT_TELEMETRY_*` |
 | Số vòng gọi model / lượt | 5 | `MAX_TOOL_ITERATIONS` |
 | Lịch sử gửi cho model | 40 tin user/assistant gần nhất | `CHATBOT_HISTORY_LIMIT` |
 | Token đầu ra | 1024 | `LLM_MAX_OUTPUT_TOKENS` |
@@ -181,6 +191,8 @@ Lỗi `400`, `401`, `404` ở `chatbot:send` không bị tính vào rate limit. 
 | Tình huống | Kết quả người dùng thấy |
 |---|---|
 | Gemini lỗi sau khi hết retry (hết quota 429, mất mạng, 5xx) | Lượt kết thúc bằng **một tin assistant** thông báo lỗi (hết hạn mức hoặc tạm thời không phản hồi). Lịch sử vẫn đúng định dạng. |
+| Hết thời hạn 120 s | Hủy chờ AI/tool, trả tin assistant thông báo quá thời gian; kết quả tới muộn bị bỏ qua. Trước khi ghi kiểm tra token khóa Redis còn thuộc lượt này. |
+| Model trả rỗng hoặc chỉ có khoảng trắng | Trả tin assistant dự phòng có nội dung để giao diện kết thúc trạng thái chờ. |
 | Hết 5 vòng mà model chưa trả lời bằng text | Tin assistant dự phòng: "chưa thể hoàn tất câu trả lời trong giới hạn số bước". |
 | Lỗi ngoài dự kiến sau khi đã nhận tin (vd DB lỗi) | Sự kiện `chatbot:error`; frontend hiện thông báo lỗi. |
 | Tool lỗi | Model nhận `{ error }` và tự giải thích. |
@@ -206,7 +218,7 @@ Số đo trên môi trường local (`gemini-3.5-flash-lite`, tháng 09/2026):
 
 Các hướng cải thiện chưa làm:
 
-- **Timeout cho mỗi lần gọi Gemini** (khoảng 10–15 s) kèm thử lại. Hiện không đặt timeout, nên một request bị treo làm người dùng chờ đủ thời gian đó.
+- Đã có timeout 30 s cho mỗi lần gọi Gemini và thời hạn chung 120 s cho lượt. AbortSignal dừng chờ ở client; không bảo đảm hủy xử lý phía nhà cung cấp. Không chạy tiếp vòng tool/model khi thao tác trả kết quả sau thời hạn.
 - **Gói trả phí hoặc model khác**: đo lại bằng cùng bộ câu hỏi trước khi đổi.
 - **Streaming câu trả lời** (`generateContentStream`) để hiện chữ dần: không giảm tổng thời gian nhưng người dùng thấy phản hồi sớm hơn; phải sửa cả backend lẫn frontend.
 
@@ -219,6 +231,7 @@ Các hướng cải thiện chưa làm:
 | `GEMINI_API_KEY` | — | Key Google AI Studio. Thiếu thì app vẫn chạy, chỉ lượt chat báo lỗi. |
 | `LLM_MODEL` | `gemini-3.5-flash-lite` | Model được pin rõ ràng (không dùng alias kiểu `-latest`), để thay đổi phía Google không âm thầm đổi hành vi hay chi phí. |
 | `LLM_MAX_OUTPUT_TOKENS` | `1024` | Giới hạn token đầu ra mỗi lần gọi. |
+| `LLM_REQUEST_TIMEOUT_MS` | `30000` | Timeout mỗi lần gọi Gemini; mọi retry vẫn nằm trong thời hạn chung của lượt. |
 | `LLM_RETRY_ATTEMPTS` | `3` | Tổng số lần thử, tính cả lần đầu. |
 | `CHATBOT_RATE_LIMIT_PER_MINUTE` | `10` | Tin nhắn mỗi user mỗi phút. |
 | `CHATBOT_RATE_LIMIT_PER_DAY` | `200` | Tin nhắn mỗi user mỗi ngày. |
@@ -251,7 +264,6 @@ Các hướng cải thiện chưa làm:
 ## 13. Hạn chế đã biết
 
 - Ba tool tổng hợp (`get_inventory_summary`, `get_staff_performance_summary`, `get_previous_shift_summary`) chưa được triển khai.
-- Không có timeout cho lần gọi Gemini (mục 9).
 - Model `flash-lite` không phải lúc nào cũng làm theo gợi ý trong kết quả tool: ví dụ vẫn gọi thêm tool nhiệt độ dù `get_cold_room_detail` đã ghi rõ phòng không có mẫu gần đây.
 - Không streaming: người dùng chỉ thấy câu trả lời khi đã hoàn tất (trong lúc chờ có dòng "Đang tra cứu…").
 - Rate limit dùng cửa sổ cố định: sát ranh giới cửa sổ có thể lọt tới gấp đôi giới hạn.

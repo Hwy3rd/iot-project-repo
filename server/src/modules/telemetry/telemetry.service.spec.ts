@@ -37,7 +37,7 @@ describe('TelemetryService', () => {
     findOne: jest.Mock;
     updateOne: jest.Mock;
   };
-  let hourlyModel: { find: jest.Mock };
+  let hourlyModel: { find: jest.Mock; aggregate: jest.Mock };
   let devicesRepository: { findOne: jest.Mock; existsBy: jest.Mock };
   let alertsService: {
     raise: jest.Mock;
@@ -105,7 +105,7 @@ describe('TelemetryService', () => {
         },
         {
           provide: getModelToken(TelemetryHourly.name),
-          useValue: { find: jest.fn() },
+          useValue: { find: jest.fn(), aggregate: jest.fn() },
         },
         {
           provide: getRepositoryToken(Device),
@@ -1203,6 +1203,127 @@ describe('TelemetryService', () => {
       await service.findRaw('d1', { ...range, limit: 50 });
 
       expect(chain.limit).toHaveBeenCalledWith(50);
+    });
+  });
+  describe('bounded reads and summaries', () => {
+    beforeEach(() => {
+      devicesRepository.existsBy.mockResolvedValue(true);
+    });
+
+    it.each([0, -1, 1.5, NaN, Infinity])(
+      'rejects unsafe raw limit %s for direct service callers',
+      async (limit) => {
+        await expect(service.findRaw('d1', { limit })).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(rawModel.find).not.toHaveBeenCalled();
+      },
+    );
+
+    it('caps large raw limits even when HTTP validation is bypassed', async () => {
+      const chain = createQueryChain();
+      rawModel.find.mockReturnValue(chain);
+      await service.findRaw('d1', { limit: 20000 });
+      expect(chain.limit).toHaveBeenCalledWith(5000);
+    });
+
+    it.each([{ from: 'invalid' }, { to: 'invalid' }])(
+      'rejects invalid dates before querying MongoDB',
+      async (range) => {
+        await expect(service.findHourly('d1', range)).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.findRaw('d1', range)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(rawModel.find).not.toHaveBeenCalled();
+        expect(hourlyModel.find).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', 'hour'],
+      ['2026-01-01T00:00:00Z', '2026-01-10T00:00:00Z', 'day'],
+      ['2025-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'month'],
+    ])('chooses bounded buckets for %s to %s', async (from, to, unit) => {
+      hourlyModel.aggregate.mockReturnValue({
+        exec: jest
+          .fn()
+          .mockResolvedValue([
+            { summary: [{ sampleCount: 400, avgTemp: -18 }], readings: [] },
+          ]),
+      });
+      const output = await service.findHourlySummary(
+        'd1',
+        { from, to },
+        100,
+        'Asia/Ho_Chi_Minh',
+      );
+      expect(output.bucketUnit).toBe(unit);
+      const [pipeline] = hourlyModel.aggregate.mock.calls[0] as [
+        {
+          $facet: {
+            readings: { $group: { _id: { $dateTrunc: unknown } } }[];
+            summary: {
+              $limit?: number;
+              $group: { weightedTemp: { $sum: { $multiply: unknown[] } } };
+            }[];
+          };
+        }[],
+      ];
+      expect(pipeline[1].$facet.readings[0].$group._id.$dateTrunc).toEqual({
+        date: '$hourBucket',
+        unit,
+        timezone: 'Asia/Ho_Chi_Minh',
+      });
+      expect(pipeline[1].$facet.summary.some((stage) => stage.$limit)).toBe(
+        false,
+      );
+      // Weight by sample count: a sparse hour must not count like a full hour.
+      expect(
+        pipeline[1].$facet.summary[0].$group.weightedTemp.$sum.$multiply,
+      ).toContain('$sampleCount');
+      expect(output.summary).toEqual({ sampleCount: 400, avgTemp: -18 });
+    });
+
+    it('keeps whole-range statistics when the detailed series is clipped', async () => {
+      hourlyModel.aggregate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([
+          {
+            summary: [{ sampleCount: 9000, minTemp: -24, maxTemp: -10 }],
+            readings: Array.from({ length: 101 }, (_, i) => ({
+              hourBucket: new Date(i),
+            })),
+          },
+        ]),
+      });
+      const output = await service.findHourlySummary(
+        'd1',
+        {},
+        100,
+        'Asia/Ho_Chi_Minh',
+      );
+      expect(output.readings).toHaveLength(100);
+      expect(output.summary).toEqual({
+        sampleCount: 9000,
+        minTemp: -24,
+        maxTemp: -10,
+      });
+      expect(output.note).toContain('toàn khoảng');
+    });
+
+    it('returns empty coverage rather than inventing statistics when no buckets exist', async () => {
+      hourlyModel.aggregate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ summary: [], readings: [] }]),
+      });
+      const output = await service.findHourlySummary(
+        'd1',
+        {},
+        100,
+        'Asia/Ho_Chi_Minh',
+      );
+      expect(output.summary).toBeNull();
+      expect(output.readings).toEqual([]);
     });
   });
 });

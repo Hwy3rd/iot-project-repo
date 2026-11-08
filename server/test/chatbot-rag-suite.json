@@ -1,0 +1,18 @@
+[
+  {"id":"R01","query":"Quản lý kho có được bật tắt quạt từ xa không?","file":"BUSINESS_RULES.md","heading":"Ai được gửi lệnh điều khiển"},
+  {"id":"R02","query":"Tôi tắt bằng tay rồi thiết bị tự bật lại sau một lúc là vì sao?","file":"BUSINESS_RULES.md","heading":"Lệnh thủ công và chế độ tự động"},
+  {"id":"R03","query":"Khi nào yêu cầu bật quạt không còn hiệu lực nếu board chưa xác nhận?","file":"BUSINESS_RULES.md","heading":"Thời hạn của một lệnh"},
+  {"id":"R04","query":"Sao lô hàng bị từ chối khi phòng lạnh không khớp nhiệt độ loại sản phẩm?","file":"TROUBLESHOOTING.md","heading":"Lô hàng bị từ chối khi tạo"},
+  {"id":"R05","query":"Tôi đã xin vào ca nhưng chưa duyệt thì có nhập kho được không?","file":"BUSINESS_RULES.md","heading":"Phân quyền theo kho và ca trực"},
+  {"id":"R06","query":"Nhiều bản tin nhiệt độ quá cao có tạo hàng loạt cảnh báo trùng nhau không?","file":"BUSINESS_RULES.md","heading":"Vòng đời và chống trùng cảnh báo"},
+  {"id":"R07","query":"AI đoán trước bao lâu và có tự điều khiển quạt không?","file":"BUSINESS_RULES.md","heading":"Dự báo nhiệt độ bằng AI"},
+  {"id":"R08","query":"Phòng không thấy dự báo thì phải kiểm tra những điều kiện nào?","file":"TROUBLESHOOTING.md","heading":"Không thấy dự báo AI"},
+  {"id":"R09","query":"Đường dự đoán nối hai chấm có phải số đo thực không?","file":"SYSTEM_OPERATIONS_GUIDE.md","heading":"Đọc dự báo và biểu đồ"},
+  {"id":"R10","query":"Mã để gắn board vào phòng có thời hạn bao nhiêu và ai tạo được?","file":"BUSINESS_RULES.md","heading":"Vòng đời thiết bị và Claim Code"},
+  {"id":"R11","query":"Lệnh báo bị thay thế nghĩa là hỏng thiết bị à?","file":"TROUBLESHOOTING.md","heading":"Lệnh \"Bị thay thế\""},
+  {"id":"R12","query":"Board chuyển mạng wifi rồi mất dữ liệu, địa chỉ nội bộ có dùng được không?","file":"TROUBLESHOOTING.md","heading":"Thiết bị ở mạng Wi-Fi khác không gửi dữ liệu"},
+  {"id":"R13","query":"Mở ứng dụng ở đâu để bấm nút tắt còi?","file":"SYSTEM_OPERATIONS_GUIDE.md","heading":"Bật, tắt quạt hoặc còi"},
+  {"id":"R14","query":"Muốn báo rằng mình đang xử lý cảnh báo rồi kiểm tra thực tế thì làm theo bước nào?","file":"SYSTEM_OPERATIONS_GUIDE.md","heading":"Tiếp nhận và xử lý cảnh báo"},
+  {"id":"R15","query":"Hệ thống có loại cảnh báo riêng khi nhiệt tăng quá lâu hoặc pin dưới 20% không?","file":"BUSINESS_RULES.md","heading":"Danh mục cảnh báo và phạm vi đang triển khai"},
+  {"id":"R16","query":"Chatbot tự xuất hàng và xác nhận sự cố thay tôi được chứ?","file":"BUSINESS_RULES.md","heading":"Phạm vi của chatbot"}
+]

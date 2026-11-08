@@ -38,8 +38,15 @@ export const CHATBOT_EVENTS = {
   ERROR: 'chatbot:error',
 } as const;
 
+// A shared deadline for model calls, retries and tool reads. Keep below the
+// Redis lease to leave time for the terminal message and lock cleanup.
+export const CHATBOT_TURN_TIMEOUT_MS = 120_000;
+export const CHATBOT_TOOL_RESULT_MAX_BYTES = 32_000;
+export const CHATBOT_TURN_TOOL_RESULTS_MAX_BYTES = 64_000;
+export const CHATBOT_TELEMETRY_RAW_DEFAULT_LIMIT = 100;
+export const CHATBOT_TELEMETRY_RAW_MAX_LIMIT = 500;
+export const CHATBOT_TELEMETRY_MAX_POINTS = 100;
+
 // One turn at a time per conversation (see ChatbotOrchestratorService):
-// the lock's TTL only matters if the process dies mid-turn, so it just has
-// to outlast the longest realistic turn (MAX_TOOL_ITERATIONS Gemini calls,
-// each with its own SDK retries).
+// the lease exceeds the turn deadline, leaving time for persistence and cleanup.
 export const CHATBOT_TURN_LOCK_TTL_SECONDS = 180;
