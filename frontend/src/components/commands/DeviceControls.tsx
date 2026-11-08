@@ -43,7 +43,7 @@ const STATE_LABEL: Partial<Record<ChannelType, [on: string, off: string]>> = {
 /**
  * One-click on/off for every actuator channel of a device, with its live
  * state and how the last command went. Shown to whoever may send commands
- * (Admin, Technician, Staff on shift — the backend enforces the shift).
+ * (Admin, Manager, Technician, Staff on shift — the backend enforces the shift).
  *
  * `reading` is the device's latest state when the caller already has it live
  * (monitoring, over the socket); null = known to be unusable (stale); omitted
@@ -68,7 +68,7 @@ export function DeviceControls({
   className?: string
 }) {
   const { user } = useAuth()
-  const canControl = hasRole(user?.role, ['admin', 'technician', 'staff'])
+  const canControl = hasRole(user?.role, ['admin', 'manager', 'technician', 'staff'])
   const canSeeReadings = hasRole(user?.role, ['admin', 'manager', 'technician'])
   const usable = canControl && !!device.coldRoomId && device.status !== 'decommissioned'
 

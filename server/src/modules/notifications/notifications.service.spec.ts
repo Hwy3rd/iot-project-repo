@@ -496,6 +496,53 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('markAllRead', () => {
+    it('marks every unread notification of the user as read', async () => {
+      notificationsRepository.find!.mockResolvedValue([
+        { id: 'n1' },
+        { id: 'n2' },
+      ]);
+      notificationsRepository.update!.mockResolvedValue({ affected: 2 });
+
+      await expect(
+        service.markAllRead('u1', UserRole.MANAGER),
+      ).resolves.toEqual({ updated: 2 });
+
+      expect(notificationsRepository.find).toHaveBeenCalledWith({
+        where: [{ userId: 'u1', readAt: IsNull() }],
+        select: { id: true },
+      });
+      expect(notificationsRepository.update).toHaveBeenCalledWith(
+        { id: In(['n1', 'n2']), userId: 'u1' },
+        { readAt: expect.any(Date) as unknown },
+      );
+    });
+
+    it('leaves Staff notifications of off-shift warehouses alone', async () => {
+      (
+        usersRepository as unknown as { manager: { find: jest.Mock } }
+      ).manager.find.mockResolvedValue([{ warehouseId: 'w1' }]);
+      notificationsRepository.find!.mockResolvedValue([]);
+
+      await expect(service.markAllRead('u1', UserRole.STAFF)).resolves.toEqual({
+        updated: 0,
+      });
+
+      expect(notificationsRepository.find).toHaveBeenCalledWith({
+        where: [
+          { userId: 'u1', readAt: IsNull(), alertId: IsNull() },
+          {
+            userId: 'u1',
+            readAt: IsNull(),
+            alert: { coldRoom: { warehouseId: In(['w1']) } },
+          },
+        ],
+        select: { id: true },
+      });
+      expect(notificationsRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findAll', () => {
     it('scopes to the given userId', async () => {
       notificationsRepository.findAndCount!.mockResolvedValue([[], 0]);

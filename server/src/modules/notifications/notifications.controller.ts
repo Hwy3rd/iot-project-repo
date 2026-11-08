@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -66,6 +68,14 @@ export class NotificationsController {
     @Query() query: QueryNotificationDto,
   ) {
     return this.notificationsService.findAll(userId, query, role);
+  }
+
+  // Marks what GET /notifications would show as read (Staff: only the
+  // warehouses they're on shift at).
+  @HttpCode(HttpStatus.OK)
+  @Post('read-all')
+  markAllRead(@GetUserId() userId: string, @GetUserRole() role: UserRole) {
+    return this.notificationsService.markAllRead(userId, role);
   }
 
   @Serialize(NotificationResponseDto)

@@ -57,9 +57,9 @@ Nếu thiết bị đã khai báo một kênh nhưng không gửi số liệu c�
 ## Ai được gửi lệnh điều khiển
 
 - **Admin**: gửi lệnh tới mọi thiết bị.
+- **Quản lý**: gửi lệnh (bật, tắt, tự động) tới thiết bị ở các kho được phân công; không cần ca trực.
 - **Kỹ thuật viên**: gửi lệnh tới thiết bị ở các kho được phân công.
 - **Nhân viên**: gửi lệnh tới thiết bị ở kho được phân công, **chỉ khi đang trong ca trực đã được duyệt**.
-- **Quản lý**: chỉ xem lịch sử lệnh, không gửi lệnh.
 
 Mọi lệnh được lưu vĩnh viễn kèm người gửi và không xoá được.
 
@@ -86,7 +86,7 @@ Thiết bị có chế độ tự động: quạt bật khi nhiệt độ > `tem
 
 ## Phân quyền theo kho và ca trực
 
-Hệ thống có bốn vai trò. **Admin** quản lý toàn hệ thống. **Quản lý (Manager)** quản lý phòng, ngưỡng nhiệt độ, lô hàng, ca trực và cảnh báo trong các kho được phân công; Quản lý không gửi lệnh quạt/còi. **Kỹ thuật viên (Technician)** phụ trách thiết bị, kênh, ghép nối, bảo trì và lệnh điều khiển tại kho được giao; không cần ca trực. **Nhân viên (Staff)** được xem tổng quan, phòng, biểu đồ, lô hàng và cảnh báo tại kho được phân công; xem chi tiết thiết bị và một số dữ liệu kỹ thuật còn tùy quyền của chức năng.
+Hệ thống có bốn vai trò. **Admin** quản lý toàn hệ thống. **Quản lý (Manager)** quản lý phòng, ngưỡng nhiệt độ, lô hàng, ca trực và cảnh báo trong các kho được phân công, và được gửi lệnh quạt/còi tại các kho đó. **Kỹ thuật viên (Technician)** phụ trách thiết bị, kênh, ghép nối, bảo trì và lệnh điều khiển tại kho được giao; không cần ca trực. **Nhân viên (Staff)** được xem tổng quan, phòng, biểu đồ, lô hàng và cảnh báo tại kho được phân công; xem chi tiết thiết bị và một số dữ liệu kỹ thuật còn tùy quyền của chức năng.
 
 Nhân viên chỉ được tạo/sửa lô hàng, xác nhận cảnh báo hoặc gửi lệnh khi có ca được duyệt, đã check-in, chưa check-out và đang trong thời gian ca (cộng 5 phút sau giờ kết thúc). Gửi yêu cầu check-in chưa đủ: cần Quản lý duyệt. Ra ngoài kho được phân công vẫn bị từ chối dù đang trong ca.
 

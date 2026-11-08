@@ -10,6 +10,9 @@ import {
   RowActionsHead,
 } from '@/components/common/RowDetail'
 import { PageHeader } from '@/components/common/PageHeader'
+import { Button } from '@/components/ui/button'
+import { CheckCheck } from 'lucide-react'
+import { useMarkAllNotificationsRead } from '@/lib/useMarkAllNotificationsRead'
 import { EnablePushButton } from '@/components/notifications/PushNotifications'
 import { ToneBadge } from '@/components/common/StatusBadge'
 import {
@@ -114,6 +117,14 @@ export function NotificationsPage() {
     createdFrom: param(f.createdFrom),
     createdTo: param(f.createdTo),
   }
+  // Same query as the header bell's badge (shared cache entry).
+  const { data: unread } = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => notificationsApi.list({ unreadOnly: true, limit: 1 }),
+    select: (d) => d.meta.total,
+  })
+  const markAllRead = useMarkAllNotificationsRead()
+
   const query = useQuery({
     queryKey: ['notifications', params],
     queryFn: () => notificationsApi.list(params),
@@ -122,7 +133,24 @@ export function NotificationsPage() {
 
   return (
     <>
-      <PageHeader title="Thông báo" description="Thông báo của bạn." actions={<EnablePushButton />} />
+      <PageHeader
+        title="Thông báo"
+        description="Thông báo của bạn."
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={unread === 0 || markAllRead.isPending}
+              onClick={() => markAllRead.mutate()}
+            >
+              <CheckCheck aria-hidden="true" />
+              Đánh dấu đã đọc tất cả
+            </Button>
+            <EnablePushButton />
+          </>
+        }
+      />
       <ListCard
         list={list}
         query={query}

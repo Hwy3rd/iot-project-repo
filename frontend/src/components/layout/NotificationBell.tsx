@@ -4,9 +4,10 @@ import { Spinner } from '@/components/common/States'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { formatDateTime, formatRelative } from '@/lib/format'
+import { useMarkAllNotificationsRead } from '@/lib/useMarkAllNotificationsRead'
 import { cn } from '@/lib/utils'
 import { useQuery } from '@tanstack/react-query'
-import { Bell } from 'lucide-react'
+import { Bell, CheckCheck } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
@@ -29,6 +30,7 @@ export function NotificationBell() {
     queryFn: () => notificationsApi.list({ limit: RECENT }),
     enabled: open,
   })
+  const markAllRead = useMarkAllNotificationsRead()
   const count = data ?? 0
   const label = count > 0 ? `Thông báo, ${count} chưa đọc` : 'Thông báo'
 
@@ -54,11 +56,25 @@ export function NotificationBell() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(24rem,calc(100vw-2rem))] gap-0 p-0">
-        <div className="flex items-baseline justify-between gap-2 border-b px-4 py-3">
-          <h2 className="font-semibold">Thông báo</h2>
-          <span className="text-xs text-muted-foreground">
-            {count > 0 ? `${count} chưa đọc` : 'Đã đọc hết'}
-          </span>
+        <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
+          <div className="flex items-baseline gap-2">
+            <h2 className="font-semibold">Thông báo</h2>
+            <span className="text-xs text-muted-foreground">
+              {count > 0 ? `${count} chưa đọc` : 'Đã đọc hết'}
+            </span>
+          </div>
+          {count > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={markAllRead.isPending}
+              onClick={() => markAllRead.mutate()}
+            >
+              <CheckCheck aria-hidden="true" />
+              Đọc tất cả
+            </Button>
+          )}
         </div>
 
         <div className="max-h-[min(26rem,60dvh)] overflow-y-auto">

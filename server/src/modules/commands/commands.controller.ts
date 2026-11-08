@@ -32,10 +32,9 @@ const VIEW_ROLES = [
 export class CommandsController {
   constructor(private readonly commandsService: CommandsService) {}
 
-  // Manager gets read-only visibility (see docs/rbac.md); issuing a
-  // command is Technician's "điều khiển chủ động" or Staff's limited
-  // "điều khiển cơ bản" (requires an active shift).
-  @Roles(UserRole.ADMIN, UserRole.TECHNICIAN, UserRole.STAFF)
+  // Admin anywhere; Manager and Technician in the warehouses they're
+  // assigned to; Staff only while on shift there (docs/RBAC.md).
+  @Roles(UserRole.ADMIN, UserRole.MANAGER, UserRole.TECHNICIAN, UserRole.STAFF)
   @WarehouseScope(WarehouseScopeSource.CHANNEL_BODY, {
     paramName: 'channelId',
   })

@@ -178,11 +178,11 @@ Phần yêu cầu trích nguồn hiện được thực hiện bằng prompt; ch
 
 Đây là **kịch bản mong muốn để giải thích cơ chế**, chưa phải kết quả benchmark API thật.
 
-Tài liệu chứa quy tắc: **Quản lý chỉ xem lịch sử lệnh, không gửi lệnh.**
+Tài liệu chứa quy tắc: **Nhân viên chỉ gửi lệnh khi đang trong ca trực đã được duyệt.**
 
-Người dùng hỏi: **“Tài khoản manager có tắt bộ làm mát được không?”**
+Người dùng hỏi: **“Tài khoản nhân viên có tắt bộ làm mát được không?”**
 
-Hệ thống cần tìm được mục **Ai được gửi lệnh điều khiển** dù câu hỏi diễn đạt khác câu trong tài liệu. Sau khi tìm được đoạn đó, Gemini có căn cứ trả lời rằng Quản lý không có quyền gửi lệnh bật/tắt quạt và ghi nguồn là Quy tắc nghiệp vụ — Ai được gửi lệnh điều khiển.
+Hệ thống cần tìm được mục **Ai được gửi lệnh điều khiển** dù câu hỏi diễn đạt khác câu trong tài liệu. Sau khi tìm được đoạn đó, Gemini có căn cứ trả lời rằng Nhân viên chỉ gửi được lệnh bật/tắt quạt khi đang trong ca trực đã được duyệt và ghi nguồn là Quy tắc nghiệp vụ — Ai được gửi lệnh điều khiển.
 
 Có thể hỏi tiếp: **“Phòng A hiện tại bao nhiêu độ?”** Với câu này, văn bản hướng dẫn không chứng minh nhiệt độ hiện tại. Chatbot phải gọi công cụ lấy dữ liệu phòng có kiểm tra quyền. Một câu hỏi như “Phòng A đang vượt ngưỡng thì nên kiểm tra gì?” có thể cần cả dữ liệu thực tế và hướng dẫn từ tài liệu.
 

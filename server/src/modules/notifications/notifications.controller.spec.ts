@@ -11,6 +11,7 @@ describe('NotificationsController', () => {
     unsubscribe: jest.fn(),
     findAll: jest.fn(),
     markRead: jest.fn(),
+    markAllRead: jest.fn(),
   };
   const config = { get: jest.fn() };
 
@@ -73,6 +74,15 @@ describe('NotificationsController', () => {
     expect(notificationsService.findAll).toHaveBeenCalledWith(
       'u1',
       query,
+      UserRole.STAFF,
+    );
+  });
+
+  it('delegates markAllRead to the service with the caller and role', async () => {
+    await controller.markAllRead('u1', UserRole.STAFF);
+
+    expect(notificationsService.markAllRead).toHaveBeenCalledWith(
+      'u1',
       UserRole.STAFF,
     );
   });

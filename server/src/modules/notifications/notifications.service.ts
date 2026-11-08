@@ -242,25 +242,7 @@ export class NotificationsService {
     }
     const createdAt = createdBetween(query.createdFrom, query.createdTo);
     if (createdAt) where.createdAt = createdAt;
-    let scoped: FindOptionsWhere<Notification>[] = [where];
-    if (role === UserRole.STAFF) {
-      const shifts = await this.usersRepository.manager.find(WorkShift, {
-        where: { staffId: userId, ...activeShiftWhere() },
-        select: { warehouseId: true },
-      });
-      const warehouseIds = [...new Set(shifts.map((s) => s.warehouseId))];
-      scoped = [
-        { ...where, alertId: IsNull() },
-        ...(warehouseIds.length
-          ? [
-              {
-                ...where,
-                alert: { coldRoom: { warehouseId: In(warehouseIds) } },
-              },
-            ]
-          : []),
-      ];
-    }
+    const scoped = await this.visibleTo(userId, role, where);
     const pagination = resolvePagination(query);
     const [items, total] = await this.notificationsRepository.findAndCount({
       where: (() => {
@@ -275,6 +257,60 @@ export class NotificationsService {
       take: pagination.take,
     });
     return Paginated.of(items, total, pagination);
+  }
+
+  // `where` narrowed to what the user may see: everything of theirs, except
+  // that Staff only see the alerts of the warehouses they're on shift at.
+  // Shared by the list and "mark all read", so the latter never touches a
+  // notification the user can't currently see.
+  private async visibleTo(
+    userId: string,
+    role: UserRole | undefined,
+    where: FindOptionsWhere<Notification>,
+  ): Promise<FindOptionsWhere<Notification>[]> {
+    if (role !== UserRole.STAFF) return [where];
+    const shifts = await this.usersRepository.manager.find(WorkShift, {
+      where: { staffId: userId, ...activeShiftWhere() },
+      select: { warehouseId: true },
+    });
+    const warehouseIds = [...new Set(shifts.map((s) => s.warehouseId))];
+    return [
+      { ...where, alertId: IsNull() },
+      ...(warehouseIds.length
+        ? [
+            {
+              ...where,
+              alert: { coldRoom: { warehouseId: In(warehouseIds) } },
+            },
+          ]
+        : []),
+    ];
+  }
+
+  // Marks every unread notification the user can see as read. Ids first:
+  // update() can't filter through the alert → cold room relation.
+  async markAllRead(
+    userId: string,
+    role?: UserRole,
+  ): Promise<{ updated: number }> {
+    const unread = await this.notificationsRepository.find({
+      where: await this.visibleTo(userId, role, {
+        userId,
+        readAt: IsNull(),
+      }),
+      select: { id: true },
+    });
+    if (unread.length === 0) return { updated: 0 };
+    const readAt = new Date();
+    let updated = 0;
+    for (let i = 0; i < unread.length; i += 500) {
+      const result = await this.notificationsRepository.update(
+        { id: In(unread.slice(i, i + 500).map((n) => n.id)), userId },
+        { readAt },
+      );
+      updated += result.affected ?? 0;
+    }
+    return { updated };
   }
 
   async findOne(id: string): Promise<Notification> {
