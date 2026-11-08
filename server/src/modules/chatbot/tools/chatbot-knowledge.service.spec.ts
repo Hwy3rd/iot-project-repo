@@ -1,3 +1,4 @@
+import { ChatbotEmbeddingService } from '../documents/chatbot-embedding.service';
 import { ConfigService } from '@nestjs/config';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,15 +8,21 @@ import { ChatbotKnowledgeService } from './chatbot-knowledge.service';
 describe('ChatbotKnowledgeService modes', () => {
   let dir: string;
   let embedContent: jest.Mock;
-  const create = (mode: string) =>
-    new ChatbotKnowledgeService(
-      { models: { embedContent } } as never,
-      new ConfigService({
-        CHATBOT_KNOWLEDGE_MODE: mode,
-        CHATBOT_DOCS_DIR: dir,
-        CHATBOT_RAG_INDEX_PATH: join(dir, 'index.json'),
-      }),
+  const create = (mode: string) => {
+    const config = new ConfigService({
+      CHATBOT_KNOWLEDGE_MODE: mode,
+      CHATBOT_DOCS_DIR: dir,
+      CHATBOT_RAG_INDEX_PATH: join(dir, 'index.json'),
+    });
+    return new ChatbotKnowledgeService(
+      new ChatbotEmbeddingService(
+        { models: { embedContent } } as never,
+        config,
+      ),
+      config,
+      { sources: jest.fn().mockResolvedValue([]) } as never,
     );
+  };
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'chatbot-knowledge-test-'));
     await writeFile(

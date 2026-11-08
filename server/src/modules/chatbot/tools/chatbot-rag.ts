@@ -23,8 +23,14 @@ export interface DocChunk {
   heading: string;
   text: string;
 }
+export interface AdditionalDocument {
+  file: string;
+  markdown: string;
+  vectors?: Record<string, number[]>;
+}
 export interface Corpus {
   fingerprint: string;
+  suppliedVectors: Record<string, number[]>;
   chunks: DocChunk[];
   missing: string[];
 }
@@ -104,7 +110,10 @@ export function chunkDocument(file: string, markdown: string): DocChunk[] {
   return chunks;
 }
 
-export async function loadCorpus(docsDir: string): Promise<Corpus> {
+export async function loadCorpus(
+  docsDir: string,
+  additional: AdditionalDocument[] = [],
+): Promise<Corpus> {
   const chunks: DocChunk[] = [];
   const missing: string[] = [];
   const sources: string[] = [];
@@ -129,10 +138,31 @@ export async function loadCorpus(docsDir: string): Promise<Corpus> {
     sources.push(`${file}\n${text}`);
     chunks.push(...chunkDocument(file, text));
   }
+  const suppliedVectors: Record<string, number[]> = {};
+  const seen = new Set<string>();
+  for (const document of additional) {
+    if (
+      !/^uploaded\/[0-9a-f-]{36}\.md$/i.test(document.file) ||
+      seen.has(document.file)
+    )
+      throw new Error('Invalid managed document id');
+    seen.add(document.file);
+    const text = document.markdown.replace(/\r\n?/g, '\n');
+    if (text.length > MAX_DOCUMENT_CHARS)
+      throw new Error('Document exceeds RAG size limit');
+    const parts = chunkDocument(document.file, text);
+    sources.push(`${document.file}\n${text}`);
+    chunks.push(...parts);
+    for (const chunk of parts) {
+      const vector = document.vectors?.[chunk.id];
+      if (vector) suppliedVectors[chunk.id] = normalizeVector(vector);
+    }
+  }
   if (chunks.length > MAX_CHUNKS)
     throw new Error('Corpus exceeds RAG chunk limit');
   return {
     chunks,
+    suppliedVectors,
     missing,
     fingerprint: hash(
       `${SCHEMA}\n${RAG_MODEL}\n${RAG_DIMENSIONS}\n${sources.join('\n')}`,
@@ -217,6 +247,7 @@ export class ChatbotRagIndex {
   constructor(
     private readonly options: {
       docsDir: string;
+      loadSources?: () => Promise<AdditionalDocument[]>;
       indexPath: string;
       embed: Embedder;
       topK?: number;
@@ -252,7 +283,10 @@ export class ChatbotRagIndex {
     missingDocuments: string[];
     fingerprint: string;
   }> {
-    const corpus = await loadCorpus(this.options.docsDir);
+    const corpus = await loadCorpus(
+      this.options.docsDir,
+      await this.options.loadSources?.(),
+    );
     if (!corpus.chunks.length) throw new Error('No public documents to index');
     await this.ensureIndex(corpus);
     return {
@@ -277,7 +311,10 @@ export class ChatbotRagIndex {
     query = query.trim().slice(0, 2000);
     if (!query)
       return { method: 'unavailable', matches: [], missingDocuments: [] };
-    const corpus = await abortable(loadCorpus(this.options.docsDir), signal);
+    const corpus = await abortable(
+      loadCorpus(this.options.docsDir, await this.options.loadSources?.()),
+      signal,
+    );
     if (!corpus.chunks.length)
       return {
         method: 'unavailable',
@@ -358,10 +395,20 @@ export class ChatbotRagIndex {
   }
 
   private async loadOrBuild(corpus: Corpus): Promise<VectorIndex> {
+    const reusable = new Map<string, number[]>();
     try {
       const saved = JSON.parse(
         await readFile(this.options.indexPath, 'utf8'),
       ) as VectorIndex;
+      if (
+        saved.schema === SCHEMA &&
+        saved.model === RAG_MODEL &&
+        saved.dimensions === RAG_DIMENSIONS &&
+        saved.ids.length === saved.vectors.length
+      ) {
+        const normalized = saved.vectors.map((v) => normalizeVector(v));
+        saved.ids.forEach((id, i) => reusable.set(id, normalized[i]));
+      }
       if (
         saved.schema === SCHEMA &&
         saved.model === RAG_MODEL &&
@@ -380,9 +427,11 @@ export class ChatbotRagIndex {
       /* Missing, malformed or outdated cache is rebuilt from allowed docs. */
     }
     const signal = AbortSignal.timeout(this.options.timeoutMs ?? 20_000);
-    const vectors: number[][] = [];
-    for (let offset = 0; offset < corpus.chunks.length; offset += 16) {
-      const batch = corpus.chunks.slice(offset, offset + 16);
+    for (const [id, vector] of Object.entries(corpus.suppliedVectors))
+      reusable.set(id, vector);
+    const missing = corpus.chunks.filter((chunk) => !reusable.has(chunk.id));
+    for (let offset = 0; offset < missing.length; offset += 16) {
+      const batch = missing.slice(offset, offset + 16);
       const values = await abortable(
         this.options.embed(
           batch.map(
@@ -395,8 +444,15 @@ export class ChatbotRagIndex {
       );
       if (values.length !== batch.length)
         throw new Error('Invalid document embedding count');
-      vectors.push(...values.map((v) => normalizeVector(v)));
+      batch.forEach((chunk, i) =>
+        reusable.set(chunk.id, normalizeVector(values[i])),
+      );
     }
+    const vectors = corpus.chunks.map((chunk) => {
+      const vector = reusable.get(chunk.id);
+      if (!vector) throw new Error('Missing embedding');
+      return vector;
+    });
     signal.throwIfAborted();
     const index: VectorIndex = {
       schema: SCHEMA,

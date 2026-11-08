@@ -249,4 +249,50 @@ describe('Chatbot RAG', () => {
     await index.search('quạt');
     expect(embed).toHaveBeenCalledTimes(2);
   });
+  it('uses ready uploaded vectors without re-embedding them and invalidates deleted sources', async () => {
+    const file = 'uploaded/cccccccc-cccc-4ccc-8ccc-cccccccccccc.md';
+    const markdown = '# Quy trình bổ sung\nQuạt nhận hướng dẫn mở rộng.';
+    const parts = chunkDocument(file, markdown);
+    const source = {
+      file,
+      markdown,
+      vectors: Object.fromEntries(parts.map((c) => [c.id, vector(0)])),
+    };
+    const sources = [source];
+    const index = create({ loadSources: () => Promise.resolve(sources) });
+    const first = await index.search('quạt');
+    expect(first.matches.some((m) => m.file === file)).toBe(true);
+    const docCalls = embed.mock.calls.filter(
+      (c) => c[1] === 'RETRIEVAL_DOCUMENT',
+    );
+    expect(docCalls[0][0].some((t) => t.includes('Quy trình bổ sung'))).toBe(
+      false,
+    );
+    sources.splice(0);
+    const second = await index.search('quạt');
+    expect(second.matches.some((m) => m.file === file)).toBe(false);
+    expect(
+      embed.mock.calls.filter((c) => c[1] === 'RETRIEVAL_DOCUMENT'),
+    ).toHaveLength(1);
+  });
+
+  it('only embeds new chunks after adding a managed source', async () => {
+    const sources: { file: string; markdown: string }[] = [];
+    const index = create({ loadSources: () => Promise.resolve(sources) });
+    await index.search('quạt');
+    sources.push({
+      file: 'uploaded/cccccccc-cccc-4ccc-8ccc-cccccccccccc.md',
+      markdown: '# Bổ sung\nQuạt nhận thêm hướng dẫn mới.',
+    });
+    await index.search('quạt');
+    const calls = embed.mock.calls.filter((c) => c[1] === 'RETRIEVAL_DOCUMENT');
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0]).toHaveLength(1);
+  });
+
+  it('rejects arbitrary disk paths as managed sources', async () => {
+    await expect(
+      loadCorpus(docsDir, [{ file: '../.env', markdown: 'secret' }]),
+    ).rejects.toThrow('Invalid managed document id');
+  });
 });

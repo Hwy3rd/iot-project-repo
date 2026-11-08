@@ -1,14 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenAI } from '@google/genai';
 import { join } from 'node:path';
-import { LLM_CLIENT } from '../../../libs/llm/llm.constant';
-import {
-  ChatbotRagIndex,
-  loadCorpus,
-  RAG_DIMENSIONS,
-  RAG_MODEL,
-} from './chatbot-rag';
+import { ChatbotDocumentsService } from '../documents/chatbot-documents.service';
+import { ChatbotEmbeddingService } from '../documents/chatbot-embedding.service';
+import { ChatbotRagIndex, loadCorpus } from './chatbot-rag';
 
 export type ChatbotKnowledgeMode = 'none' | 'prompt' | 'rag';
 
@@ -19,7 +14,11 @@ export class ChatbotKnowledgeService {
   private readonly docsDir: string;
   private readonly index: ChatbotRagIndex;
 
-  constructor(@Inject(LLM_CLIENT) client: GoogleGenAI, config: ConfigService) {
+  constructor(
+    embedding: ChatbotEmbeddingService,
+    config: ConfigService,
+    private readonly documents: ChatbotDocumentsService,
+  ) {
     const mode = config.get<string>('CHATBOT_KNOWLEDGE_MODE') || 'rag';
     if (!['none', 'prompt', 'rag'].includes(mode))
       throw new Error('Invalid CHATBOT_KNOWLEDGE_MODE');
@@ -29,6 +28,7 @@ export class ChatbotKnowledgeService {
       join(process.cwd(), '..', 'docs');
     this.index = new ChatbotRagIndex({
       docsDir: this.docsDir,
+      loadSources: () => this.documents.sources(),
       indexPath:
         config.get<string>('CHATBOT_RAG_INDEX_PATH') ||
         join(process.cwd(), '.cache', 'chatbot-rag', 'index.json'),
@@ -36,23 +36,7 @@ export class ChatbotKnowledgeService {
       minScore: Number(config.get('CHATBOT_RAG_MIN_SCORE') ?? 0.45),
       timeoutMs: Number(config.get('CHATBOT_RAG_TIMEOUT_MS') || 20_000),
       onWarning: (message) => this.logger.warn(message),
-      embed: async (texts, taskType, signal) => {
-        if (!config.get<string>('GEMINI_API_KEY'))
-          throw new Error('Embedding API not configured');
-        const response = await client.models.embedContent({
-          model: RAG_MODEL,
-          contents: texts,
-          config: {
-            taskType,
-            outputDimensionality: RAG_DIMENSIONS,
-            abortSignal: signal,
-            httpOptions: { timeout: 20_000, retryOptions: { attempts: 1 } },
-          },
-        });
-        return (response.embeddings ?? []).map(
-          (embedding) => embedding.values ?? [],
-        );
-      },
+      embed: embedding.embed,
     });
   }
 
@@ -60,7 +44,10 @@ export class ChatbotKnowledgeService {
     if (this.mode === 'none') return '';
     try {
       if (this.mode === 'prompt') {
-        const corpus = await loadCorpus(this.docsDir);
+        const corpus = await loadCorpus(
+          this.docsDir,
+          await this.documents.sources(),
+        );
         signal?.throwIfAborted();
         // Same reviewed corpus for both baselines; no duplicated static facts.
         const sections = corpus.chunks.map(
