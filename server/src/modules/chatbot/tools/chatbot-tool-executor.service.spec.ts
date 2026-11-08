@@ -166,6 +166,7 @@ describe('ChatbotToolExecutorService', () => {
 
     it('returns a warehouse the caller is assigned to, whatever their role', async () => {
       assignments = [{ warehouseId: 'w1' }];
+      activeShiftWarehouses = ['w1'];
 
       await expect(
         service.resolveWorkingWarehouse(caller(UserRole.STAFF), 'w1'),
@@ -183,10 +184,56 @@ describe('ChatbotToolExecutorService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
+    it('refuses Staff an assigned warehouse they are not on shift at', async () => {
+      assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
+      activeShiftWarehouses = ['w1'];
+
+      await expect(
+        service.resolveWorkingWarehouse(caller(UserRole.STAFF), 'w2'),
+      ).rejects.toThrow('kho đang trong ca trực');
+    });
+
     it('lets Admin pick any existing warehouse', async () => {
       await expect(
         service.resolveWorkingWarehouse(caller(UserRole.ADMIN), 'w3'),
       ).resolves.toMatchObject({ code: 'WH-DN-01' });
+    });
+  });
+
+  describe('describePermissions', () => {
+    it('lists only the on-shift warehouse for Staff', async () => {
+      assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
+      activeShiftWarehouses = ['w1'];
+
+      await expect(
+        service.describePermissions({ id: 'u1', role: UserRole.STAFF }),
+      ).resolves.toEqual({
+        roleLabel: 'Nhân viên',
+        warehouses: [expect.objectContaining({ code: 'WH-HCM-01' })],
+        offShift: false,
+        forbidden: [
+          'lịch sử trạng thái / log chi tiết của thiết bị',
+          'dữ liệu cảm biến chi tiết từng mẫu (telemetry raw)',
+        ],
+      });
+    });
+
+    it('flags Staff with no active shift', async () => {
+      assignments = [{ warehouseId: 'w1' }];
+
+      await expect(
+        service.describePermissions({ id: 'u1', role: UserRole.STAFF }),
+      ).resolves.toMatchObject({ warehouses: [], offShift: true });
+    });
+
+    it('gives Admin every warehouse', async () => {
+      await expect(
+        service.describePermissions({ id: 'u1', role: UserRole.ADMIN }),
+      ).resolves.toMatchObject({
+        warehouses: null,
+        offShift: false,
+        forbidden: [],
+      });
     });
   });
 
@@ -200,7 +247,9 @@ describe('ChatbotToolExecutorService', () => {
         UserRole.STAFF,
       );
 
-      expect(result.error).toBe('Bạn không có quyền sử dụng chức năng này.');
+      expect(result.error).toMatch(
+        /^\[VƯỢT QUYỀN\] Vai trò .* không được phép/,
+      );
     });
 
     it('refuses batches to a Technician (no stock operations)', async () => {
@@ -208,7 +257,9 @@ describe('ChatbotToolExecutorService', () => {
 
       const result = await run('get_batches', {}, UserRole.TECHNICIAN);
 
-      expect(result.error).toBe('Bạn không có quyền sử dụng chức năng này.');
+      expect(result.error).toMatch(
+        /^\[VƯỢT QUYỀN\] Vai trò .* không được phép/,
+      );
       expect(batchesRepo.findAndCount).not.toHaveBeenCalled();
     });
 
@@ -218,7 +269,22 @@ describe('ChatbotToolExecutorService', () => {
 
       const result = await run('get_devices', {}, UserRole.STAFF);
 
-      expect(result.error).toContain('cần đang trong ca trực');
+      expect(result.error).toContain('[VƯỢT QUYỀN]');
+      expect(result.error).toContain('không trong ca trực nào');
+    });
+
+    it('refuses Staff the data of an assigned warehouse they are not on shift at', async () => {
+      assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
+      activeShiftWarehouses = ['w1'];
+
+      const result = await run(
+        'get_alerts',
+        { warehouseId: 'w2' },
+        UserRole.STAFF,
+      );
+
+      expect(result.error).toContain('[VƯỢT QUYỀN]');
+      expect(alertsService.findAll).not.toHaveBeenCalled();
     });
 
     it('shows devices of the warehouse where Staff is checked in', async () => {
@@ -243,7 +309,7 @@ describe('ChatbotToolExecutorService', () => {
         UserRole.TECHNICIAN,
       );
 
-      expect(result.error).toContain('không có quyền truy cập tài nguyên này');
+      expect(result.error).toContain('[VƯỢT QUYỀN] Không tìm thấy');
     });
 
     it('shows a Manager every shift in their warehouses, and Staff only their own', async () => {
@@ -256,6 +322,7 @@ describe('ChatbotToolExecutorService', () => {
         }),
       );
 
+      activeShiftWarehouses = ['w1', 'w2'];
       await run('get_work_shifts', { staffId: 'someone' }, UserRole.STAFF);
       expect(workShiftsRepo.findAndCount).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -347,7 +414,7 @@ describe('ChatbotToolExecutorService', () => {
         UserRole.MANAGER,
       );
 
-      expect(result.error).toContain('không có quyền truy cập tài nguyên này');
+      expect(result.error).toContain('[VƯỢT QUYỀN] Không tìm thấy');
       expect(coldRoomStatus.findStatuses).not.toHaveBeenCalled();
     });
 

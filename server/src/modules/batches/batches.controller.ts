@@ -38,7 +38,6 @@ export class BatchesController {
   @Roles(...BATCH_ROLES)
   @WarehouseScope(WarehouseScopeSource.COLD_ROOM_BODY, {
     paramName: 'coldRoomId',
-    requireShift: true,
   })
   @Serialize(BatchResponseDto)
   @Audit({ action: 'batch.create', targetType: 'batch', entity: Batch })
@@ -67,7 +66,7 @@ export class BatchesController {
   }
 
   @Roles(...BATCH_ROLES)
-  @WarehouseScope(WarehouseScopeSource.BATCH_PARAM, { requireShift: true })
+  @WarehouseScope(WarehouseScopeSource.BATCH_PARAM)
   @Serialize(BatchResponseDto)
   @Audit({ action: 'batch.update', targetType: 'batch', entity: Batch })
   @Patch(':id')
@@ -76,7 +75,7 @@ export class BatchesController {
   }
 
   @Roles(...BATCH_ROLES)
-  @WarehouseScope(WarehouseScopeSource.BATCH_PARAM, { requireShift: true })
+  @WarehouseScope(WarehouseScopeSource.BATCH_PARAM)
   @Audit({ action: 'batch.remove', targetType: 'batch', entity: Batch })
   @Delete(':id')
   remove(@Param('id') id: string) {
@@ -86,7 +85,7 @@ export class BatchesController {
   // Bulk counterpart of DELETE /batches/:id: same roles, and the per-row
   // warehouse/shift check moves into the service (see bulkRemove there).
   @Roles(...BATCH_ROLES)
-  @WarehouseListScope({ requireShift: true })
+  @WarehouseListScope()
   @Audit({
     action: 'batch.remove',
     targetType: 'batch',

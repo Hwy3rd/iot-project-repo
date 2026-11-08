@@ -1,3 +1,4 @@
+import { UserRole } from '../../libs/constants/user.constant';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationsController } from './notifications.controller';
@@ -67,9 +68,13 @@ describe('NotificationsController', () => {
   it('delegates findAll to the service, scoped to the caller', async () => {
     const query = { unreadOnly: 'true' };
 
-    await controller.findAll('u1', query);
+    await controller.findAll('u1', UserRole.STAFF, query);
 
-    expect(notificationsService.findAll).toHaveBeenCalledWith('u1', query);
+    expect(notificationsService.findAll).toHaveBeenCalledWith(
+      'u1',
+      query,
+      UserRole.STAFF,
+    );
   });
 
   it('delegates markRead to the service, scoped to the caller', async () => {

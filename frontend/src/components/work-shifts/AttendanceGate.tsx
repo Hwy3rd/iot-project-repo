@@ -73,15 +73,26 @@ function StaffAttendance({ children }: { children: ReactNode }) {
   })
   const active = me.data?.active ?? null
 
-  // Staff may only act where their shift is: work there by default.
+  // Staff only see the warehouse they're on shift at (the API filters every
+  // read by it): work there.
+  const qc = useQueryClient()
   const { value: currentWarehouse, select: selectWarehouse, ready } = useCurrentWarehouse()
   const shiftWarehouse = active?.warehouseId
+  // Whatever was cached before (fetched off shift, or for another shift's
+  // warehouse) no longer matches what the API returns: refetch all of it.
+  const cachedFor = useRef(shiftWarehouse)
+  useEffect(() => {
+    if (cachedFor.current === shiftWarehouse) return
+    cachedFor.current = shiftWarehouse
+    void qc.invalidateQueries({
+      predicate: (q) =>
+        !(q.queryKey[0] === ATTENDANCE_KEY[0] && q.queryKey[1] === ATTENDANCE_KEY[1]),
+    })
+  }, [qc, shiftWarehouse])
   useEffect(() => {
     if (ready && shiftWarehouse && shiftWarehouse !== currentWarehouse) selectWarehouse(shiftWarehouse)
-    // Only when the shift starts, so switching away to read another
-    // assigned warehouse sticks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, shiftWarehouse])
+  }, [ready, shiftWarehouse, currentWarehouse])
 
   const ending = useRef(false)
   const endSession = useCallback(

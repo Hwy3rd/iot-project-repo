@@ -8,12 +8,14 @@ import { DataSource, IsNull, LessThanOrEqual } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
 import { AlertStatus } from '../../libs/constants/alert.constant';
 import { NotificationStatus } from '../../libs/constants/notification.constant';
-import { UserStatus } from '../../libs/constants/user.constant';
+import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import { WebPushService } from '../../libs/web-push/web-push.service';
 import { Alert } from '../alerts/entities/alert.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { User } from '../users/entities/user.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
+import { WorkShift } from '../work-shifts/entities/work-shift.entity';
+import { activeShiftWhere } from '../../common/rbac/warehouse-access.service';
 import { NotificationDelivery } from './entities/notification-delivery.entity';
 import { NotificationOutbox } from './entities/notification-outbox.entity';
 import { Notification } from './entities/notification.entity';
@@ -305,13 +307,13 @@ export class NotificationRecoveryService
   }
 
   private async canReceive(notification: Notification): Promise<boolean> {
-    if (
-      !(await this.db
-        .getRepository(User)
-        .existsBy({ id: notification.userId, status: UserStatus.ACTIVE }))
-    )
-      return false;
-    if (!notification.alertId) return true;
+    const user = await this.db
+      .getRepository(User)
+      .findOneBy({ id: notification.userId, status: UserStatus.ACTIVE });
+    if (!user) return false;
+    // Admins aren't assigned to warehouses: they receive every alert
+    // (NotificationsService.captureAlert), so no warehouse check for them.
+    if (!notification.alertId || user.role === UserRole.ADMIN) return true;
     const alert = await this.db
       .getRepository(Alert)
       .findOneBy({ id: notification.alertId });
@@ -320,13 +322,18 @@ export class NotificationRecoveryService
           .getRepository(ColdRoom)
           .findOneBy({ id: alert.coldRoomId })
       : null;
-    return (
-      !!room &&
-      this.db.getRepository(WarehouseStaff).existsBy({
-        userId: notification.userId,
-        warehouseId: room.warehouseId,
-      })
-    );
+    if (!room) return false;
+    const assigned = await this.db.getRepository(WarehouseStaff).existsBy({
+      userId: notification.userId,
+      warehouseId: room.warehouseId,
+    });
+    if (!assigned || user.role !== UserRole.STAFF) return assigned;
+    // Staff: still on shift there by the time the push goes out.
+    return this.db.getRepository(WorkShift).existsBy({
+      staffId: notification.userId,
+      warehouseId: room.warehouseId,
+      ...activeShiftWhere(),
+    });
   }
 
   async updateStatus(id: string): Promise<void> {

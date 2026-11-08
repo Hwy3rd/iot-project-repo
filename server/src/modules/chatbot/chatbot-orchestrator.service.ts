@@ -190,6 +190,7 @@ export class ChatbotOrchestratorService {
       new Date(),
       CHATBOT_TIMEZONE,
       workingWarehouse,
+      await this.toolExecutor.describePermissions(caller),
     );
 
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {

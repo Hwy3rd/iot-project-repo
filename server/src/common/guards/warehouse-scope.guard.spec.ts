@@ -21,7 +21,7 @@ describe('WarehouseScopeGuard', () => {
   const scope = (options: Record<string, unknown> = {}) => ({
     source: WarehouseScopeSource.WAREHOUSE_PARAM,
     paramName: 'id',
-    requireShift: false,
+    allowOffShift: false,
     ownStaffOnly: false,
     ...options,
   });
@@ -113,8 +113,8 @@ describe('WarehouseScopeGuard', () => {
       });
     });
 
-    it('requires an active shift for Staff', async () => {
-      metadata[WAREHOUSE_SCOPE_KEY] = scope({ requireShift: true });
+    it('requires an active shift for Staff by default', async () => {
+      metadata[WAREHOUSE_SCOPE_KEY] = scope();
       warehouseStaffRepo.existsBy.mockResolvedValue(true);
       workShiftRepo.find.mockResolvedValue([]);
 
@@ -123,8 +123,18 @@ describe('WarehouseScopeGuard', () => {
       );
     });
 
+    it('lets Staff through off shift on an allowOffShift route (attendance)', async () => {
+      metadata[WAREHOUSE_SCOPE_KEY] = scope({ allowOffShift: true });
+      warehouseStaffRepo.existsBy.mockResolvedValue(true);
+
+      await expect(run(UserRole.STAFF, { id: 'w1' })).resolves.toMatchObject({
+        allowed: true,
+      });
+      expect(workShiftRepo.find).not.toHaveBeenCalled();
+    });
+
     it('skips the shift check for roles other than Staff', async () => {
-      metadata[WAREHOUSE_SCOPE_KEY] = scope({ requireShift: true });
+      metadata[WAREHOUSE_SCOPE_KEY] = scope();
       warehouseStaffRepo.existsBy.mockResolvedValue(true);
 
       await expect(
@@ -226,7 +236,7 @@ describe('WarehouseScopeGuard', () => {
 
   describe('list routes (@WarehouseListScope)', () => {
     it('gives an admin unrestricted access', async () => {
-      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: false };
+      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { allowOffShift: false };
 
       const { request } = await run(UserRole.ADMIN);
 
@@ -234,7 +244,7 @@ describe('WarehouseScopeGuard', () => {
     });
 
     it('gives every assigned warehouse when the role is in @Roles', async () => {
-      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: false };
+      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { allowOffShift: false };
       metadata[ROLES_KEY] = [
         UserRole.ADMIN,
         UserRole.MANAGER,
@@ -257,7 +267,7 @@ describe('WarehouseScopeGuard', () => {
     });
 
     it('gives nothing, without a lookup, when the role is not in @Roles', async () => {
-      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: false };
+      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { allowOffShift: false };
       metadata[ROLES_KEY] = [UserRole.ADMIN, UserRole.MANAGER];
 
       const { allowed, request } = await run(UserRole.STAFF);
@@ -268,7 +278,7 @@ describe('WarehouseScopeGuard', () => {
     });
 
     it('marks every warehouse of a Staff caller as a Staff warehouse', async () => {
-      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: false };
+      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { allowOffShift: true };
       warehouseStaffRepo.find.mockResolvedValue([
         { warehouseId: 'w1' },
         { warehouseId: 'w2' },
@@ -279,8 +289,8 @@ describe('WarehouseScopeGuard', () => {
       expect(request.warehouseAccess?.staffWarehouseIds).toEqual(['w1', 'w2']);
     });
 
-    it('drops Staff warehouses without an active shift when requireShift is set', async () => {
-      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { requireShift: true };
+    it('drops Staff warehouses without an active shift by default', async () => {
+      metadata[WAREHOUSE_LIST_SCOPE_KEY] = { allowOffShift: false };
       warehouseStaffRepo.find.mockResolvedValue([
         { warehouseId: 'w1' },
         { warehouseId: 'w2' },

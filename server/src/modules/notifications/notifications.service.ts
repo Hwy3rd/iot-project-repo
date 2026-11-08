@@ -3,10 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import {
   FindOptionsWhere,
   EntityManager,
+  In,
   IsNull,
   QueryFailedError,
   Repository,
 } from 'typeorm';
+import { activeShiftWhere } from '../../common/rbac/warehouse-access.service';
 import {
   Paginated,
   resolvePagination,
@@ -14,8 +16,11 @@ import {
 import { createdBetween, withSearch } from '../../common/query/find-filters';
 import { AlertType } from '../../libs/constants/alert.constant';
 import { NotificationStatus } from '../../libs/constants/notification.constant';
+import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import { Alert } from '../alerts/entities/alert.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
+import { User } from '../users/entities/user.entity';
+import { WorkShift } from '../work-shifts/entities/work-shift.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
 import { QueryNotificationDto } from './dto/query-notification.dto';
@@ -34,6 +39,39 @@ const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   [AlertType.BATCH_EXPIRING_SOON]: 'Lô hàng sắp hết hạn',
 };
 
+// Admins aren't assigned to warehouses (they see every one), so they are
+// added to every alert's recipients on top of the warehouse's staff.
+const ACTIVE_ADMINS = {
+  where: { role: UserRole.ADMIN, status: UserStatus.ACTIVE },
+  select: { id: true },
+} as const;
+
+// Of the users assigned to `warehouseId`, those who may hear about it now:
+// Staff only while on shift there (docs/RBAC.md §3), everyone else always.
+async function reachableAssignees(
+  manager: EntityManager,
+  warehouseId: string,
+  userIds: string[],
+): Promise<string[]> {
+  if (userIds.length === 0) return [];
+  const staff = await manager.find(User, {
+    where: { id: In(userIds), role: UserRole.STAFF },
+    select: { id: true },
+  });
+  if (staff.length === 0) return userIds;
+  const onShift = await manager.find(WorkShift, {
+    where: {
+      staffId: In(staff.map((u) => u.id)),
+      warehouseId,
+      ...activeShiftWhere(),
+    },
+    select: { staffId: true },
+  });
+  const offShift = new Set(staff.map((u) => u.id));
+  for (const shift of onShift) offShift.delete(shift.staffId);
+  return userIds.filter((id) => !offShift.has(id));
+}
+
 const isMysqlDuplicateKeyError = (error: unknown): boolean =>
   error instanceof QueryFailedError &&
   (error as unknown as { code?: string }).code === 'ER_DUP_ENTRY';
@@ -51,18 +89,27 @@ export class NotificationsService {
   async captureAlert(manager: EntityManager, alert: Alert): Promise<void> {
     const room = await manager.findOne(ColdRoom, {
       where: { id: alert.coldRoomId },
+      relations: { warehouse: true },
     });
     const assignments = room
       ? await manager.find(WarehouseStaff, {
           where: { warehouseId: room.warehouseId },
         })
       : [];
+    const assignees = room
+      ? await reachableAssignees(
+          manager,
+          room.warehouseId,
+          assignments.map((assignment) => assignment.userId),
+        )
+      : [];
+    const admins = await manager.find(User, ACTIVE_ADMINS);
     await manager.insert(NotificationOutbox, {
       id: alert.id,
       recipients: [
-        ...new Set(assignments.map((assignment) => assignment.userId)),
+        ...new Set([...assignees, ...admins.map((admin) => admin.id)]),
       ],
-      ...this.composeMessage(alert),
+      ...this.composeMessage(alert, room),
       createdAt: alert.createdAt,
       processedAt: null,
     });
@@ -76,6 +123,8 @@ export class NotificationsService {
     private readonly coldRoomsRepository: Repository<ColdRoom>,
     @InjectRepository(WarehouseStaff)
     private readonly warehouseStaffRepository: Repository<WarehouseStaff>,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
   ) {}
 
   // Upserts on `endpoint`: re-subscribing from the same browser (reinstalled
@@ -129,11 +178,13 @@ export class NotificationsService {
   // Not exposed over HTTP — called by AlertNotificationProcessor for a
   // *newly opened* alert (see AlertsService.raise(), which only enqueues
   // the notification job on that path, never on a refresh of one already
-  // open). One row per user assigned to the alert's warehouse; the actual
+  // open). One row per user assigned to the alert's warehouse plus every
+  // active admin; the actual
   // push send happens after this, per Notification, in the worker.
   async notifyNewAlert(alert: Alert): Promise<Notification[]> {
     const coldRoom = await this.coldRoomsRepository.findOne({
       where: { id: alert.coldRoomId },
+      relations: { warehouse: true },
     });
     if (!coldRoom) {
       return [];
@@ -141,16 +192,25 @@ export class NotificationsService {
     const staff = await this.warehouseStaffRepository.find({
       where: { warehouseId: coldRoom.warehouseId },
     });
-    if (staff.length === 0) {
+    const assignees = await reachableAssignees(
+      this.usersRepository.manager,
+      coldRoom.warehouseId,
+      staff.map((assignment) => assignment.userId),
+    );
+    const admins = await this.usersRepository.find(ACTIVE_ADMINS);
+    const recipients = [
+      ...new Set([...assignees, ...admins.map((admin) => admin.id)]),
+    ];
+    if (recipients.length === 0) {
       return [];
     }
 
-    const { title, body } = this.composeMessage(alert);
-    const notifications = staff.map((assignment) =>
+    const { title, body } = this.composeMessage(alert, coldRoom);
+    const notifications = recipients.map((userId) =>
       this.notificationsRepository.create({
-        userId: assignment.userId,
+        userId,
         alertId: alert.id,
-        dedupeKey: `${alert.id}:${assignment.userId}`,
+        dedupeKey: `${alert.id}:${userId}`,
         createdAt: alert.createdAt,
         title,
         body,
@@ -168,9 +228,13 @@ export class NotificationsService {
     return this.notificationsRepository.find({ where: { alertId: alert.id } });
   }
 
+  // Staff only see the alerts of the warehouses they're on shift at right
+  // now (docs/RBAC.md §3) — notifications from an earlier shift elsewhere
+  // stay stored but hidden until they're back on shift there.
   async findAll(
     userId: string,
     query: QueryNotificationDto = {},
+    role?: UserRole,
   ): Promise<Paginated<Notification>> {
     const where: FindOptionsWhere<Notification> = { userId };
     if (query.unreadOnly === 'true') {
@@ -178,9 +242,34 @@ export class NotificationsService {
     }
     const createdAt = createdBetween(query.createdFrom, query.createdTo);
     if (createdAt) where.createdAt = createdAt;
+    let scoped: FindOptionsWhere<Notification>[] = [where];
+    if (role === UserRole.STAFF) {
+      const shifts = await this.usersRepository.manager.find(WorkShift, {
+        where: { staffId: userId, ...activeShiftWhere() },
+        select: { warehouseId: true },
+      });
+      const warehouseIds = [...new Set(shifts.map((s) => s.warehouseId))];
+      scoped = [
+        { ...where, alertId: IsNull() },
+        ...(warehouseIds.length
+          ? [
+              {
+                ...where,
+                alert: { coldRoom: { warehouseId: In(warehouseIds) } },
+              },
+            ]
+          : []),
+      ];
+    }
     const pagination = resolvePagination(query);
     const [items, total] = await this.notificationsRepository.findAndCount({
-      where: withSearch(where, query.search, ['title', 'body']),
+      where: (() => {
+        const wheres = scoped.flatMap((base) => {
+          const searched = withSearch(base, query.search, ['title', 'body']);
+          return Array.isArray(searched) ? searched : [searched];
+        });
+        return wheres.length === 1 ? wheres[0] : wheres;
+      })(),
       order: { createdAt: 'DESC', id: 'DESC' },
       skip: pagination.skip,
       take: pagination.take,
@@ -215,7 +304,23 @@ export class NotificationsService {
     return this.findOne(id);
   }
 
-  private composeMessage(alert: Alert): { title: string; body: string } {
+  // The body opens with where it happened ("Kho A › Phòng 1"): the title
+  // only says what, and a recipient may watch several warehouses.
+  private composeMessage(
+    alert: Alert,
+    room: ColdRoom | null,
+  ): { title: string; body: string } {
+    const { title, body } = this.composeDetail(alert);
+    const location = [
+      room?.warehouse?.name && `Kho ${room.warehouse.name}`,
+      room?.name,
+    ]
+      .filter(Boolean)
+      .join(' › ');
+    return { title, body: location ? `${location}\n${body}` : body };
+  }
+
+  private composeDetail(alert: Alert): { title: string; body: string } {
     const label = ALERT_TYPE_LABELS[alert.type];
     const title =
       alert.details?.replayed === true
@@ -234,6 +339,24 @@ export class NotificationsService {
       const what =
         FAN_FAULT_MESSAGES[fault.fault ?? ''] ?? 'Nguồn quạt bất thường';
       return { title, body: `${what}${voltage}.` };
+    }
+    // DOOR_OPEN_TOO_LONG: see TelemetryService.evaluateDoorAlert.
+    const door = alert.details as {
+      openSeconds?: number;
+      maxSeconds?: number;
+    } | null;
+    if (
+      alert.type === AlertType.DOOR_OPEN_TOO_LONG &&
+      typeof door?.openSeconds === 'number'
+    ) {
+      const limit =
+        typeof door.maxSeconds === 'number'
+          ? ` (cho phép ${door.maxSeconds} giây)`
+          : '';
+      return {
+        title,
+        body: `Cửa đã mở ${door.openSeconds} giây${limit}.`,
+      };
     }
     if (alert.triggerValue == null) {
       return { title, body: 'Xem chi tiết trong ứng dụng.' };

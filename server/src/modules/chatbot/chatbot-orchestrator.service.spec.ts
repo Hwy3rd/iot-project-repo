@@ -21,7 +21,11 @@ describe('ChatbotOrchestratorService', () => {
     appendToolMessage: jest.Mock;
   };
   let llmService: { generateContent: jest.Mock };
-  let toolExecutor: { execute: jest.Mock; resolveWorkingWarehouse: jest.Mock };
+  let toolExecutor: {
+    execute: jest.Mock;
+    resolveWorkingWarehouse: jest.Mock;
+    describePermissions: jest.Mock;
+  };
   let realtime: { emitToUser: jest.Mock };
   let redis: { set: jest.Mock; eval: jest.Mock };
   let orchestrator: ChatbotOrchestratorService;
@@ -50,6 +54,12 @@ describe('ChatbotOrchestratorService', () => {
         id: 'w3',
         code: 'WH-HN-03',
         name: 'Kho lạnh Bắc Thăng Long',
+      }),
+      describePermissions: jest.fn().mockResolvedValue({
+        roleLabel: 'Quản lý kho',
+        warehouses: [{ name: 'Kho lạnh Bắc Thăng Long', code: 'WH-HN-03' }],
+        offShift: false,
+        forbidden: [],
       }),
     };
     realtime = { emitToUser: jest.fn() };
@@ -180,6 +190,33 @@ describe('ChatbotOrchestratorService', () => {
     ];
     expect(params.config.systemInstruction).toContain('ngày 2026-09-25');
     expect(params.config.systemInstruction).toContain('+07:00');
+  });
+
+  it("tells the model the caller's permissions and to warn when exceeded", async () => {
+    toolExecutor.describePermissions.mockResolvedValue({
+      roleLabel: 'Nhân viên',
+      warehouses: [],
+      offShift: true,
+      forbidden: ['lịch sử trạng thái / log chi tiết của thiết bị'],
+    });
+    llmService.generateContent.mockResolvedValue(textResponse('ok'));
+
+    await orchestrator.sendMessage('c1', caller, 'Kho B có cảnh báo gì?');
+
+    expect(toolExecutor.describePermissions).toHaveBeenCalledWith(caller);
+    const [params] = llmService.generateContent.mock.calls[0] as [
+      { config: { systemInstruction: string } },
+    ];
+    const prompt = params.config.systemInstruction;
+    expect(prompt).toContain(
+      'Quyền của người dùng: vai trò Nhân viên; được xem dữ liệu của KHÔNG có kho nào',
+    );
+    expect(prompt).toContain('KHÔNG trong ca trực đã được duyệt');
+    expect(prompt).toContain(
+      'Vai trò này KHÔNG được xem: lịch sử trạng thái / log chi tiết của thiết bị',
+    );
+    expect(prompt).toContain('⚠️ Vượt quyền:');
+    expect(prompt).toContain('[VƯỢT QUYỀN]');
   });
 
   describe("the header's warehouse", () => {

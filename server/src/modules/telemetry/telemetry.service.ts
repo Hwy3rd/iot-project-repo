@@ -300,6 +300,13 @@ export class TelemetryService {
       coldRoom: device.coldRoom,
       ...state,
     });
+    await this.evaluateDoorAlert({
+      deviceId: device.id,
+      coldRoom: device.coldRoom,
+      ts: sample.ts,
+      doorOpen: sample.doorOpen,
+      wasOpen: newest?.doorOpen === true,
+    });
     await this.announceReading({
       warehouseId: device.coldRoom.warehouseId,
       coldRoomId: device.coldRoom.id,
@@ -361,6 +368,69 @@ export class TelemetryService {
         warehouseId: coldRoom.warehouseId,
       });
     }
+  }
+
+  // DOOR_OPEN_TOO_LONG: the board only reports doorOpen per sample (it times
+  // the door itself, but just for its local buzzer), so the open period is
+  // read back from the stored samples: it started at the first sample after
+  // the newest closed one. No extra state to lose on restart, and a device
+  // that drops off while the door is open keeps its original start time.
+  // Raised once open for the room's doorOpenMaxSeconds, refreshed with the
+  // duration while it stays open, cleared by the first closed sample.
+  // `wasOpen` is the previous sample's door: only an open→closed edge can
+  // close the alert, and a door that just opened needs no lookup.
+  private async evaluateDoorAlert(input: {
+    deviceId: string;
+    coldRoom: ColdRoom;
+    ts: Date;
+    doorOpen: boolean;
+    wasOpen: boolean;
+  }): Promise<void> {
+    const { deviceId, coldRoom, ts, doorOpen, wasOpen } = input;
+    const maxSeconds = coldRoom.doorOpenMaxSeconds;
+    if (!doorOpen) {
+      if (!wasOpen) return;
+      await this.alertsService.resolveAuto({
+        type: AlertType.DOOR_OPEN_TOO_LONG,
+        deviceId,
+        coldRoomId: coldRoom.id,
+        warehouseId: coldRoom.warehouseId,
+      });
+      return;
+    }
+    if (!wasOpen || !(maxSeconds > 0)) return;
+
+    const lastClosed = await this.rawModel
+      .findOne({ deviceId, doorOpen: false, ts: { $lt: ts } }, { ts: 1 })
+      .sort({ ts: -1 })
+      .lean()
+      .exec();
+    const firstOpen = await this.rawModel
+      .findOne(
+        {
+          deviceId,
+          ts: { ...(lastClosed ? { $gt: lastClosed.ts } : {}), $lte: ts },
+        },
+        { ts: 1 },
+      )
+      .sort({ ts: 1 })
+      .lean()
+      .exec();
+    const openSince = firstOpen?.ts ?? ts;
+    const openSeconds = Math.floor((ts.getTime() - openSince.getTime()) / 1000);
+    if (openSeconds < maxSeconds) return;
+
+    await this.alertsService.raise({
+      coldRoomId: coldRoom.id,
+      deviceId,
+      type: AlertType.DOOR_OPEN_TOO_LONG,
+      // Not triggerValue: every alert view formats that as a temperature.
+      details: {
+        openSince: openSince.toISOString(),
+        openSeconds,
+        maxSeconds,
+      },
+    });
   }
 
   // Reacts to a single valid reading: raises/refreshes the alert while out

@@ -7,19 +7,18 @@ import { WAREHOUSE_LIST_SCOPE_KEY } from '../../libs/constants/metadata.constant
 import type { WarehouseAccess } from '../rbac/warehouse-access';
 
 export interface WarehouseListScopeMeta {
-  // Staff only: a warehouse where the caller acts as Staff counts only
-  // while they're checked into an active shift there — mirror the
-  // matching per-resource route's @WarehouseScope({ requireShift }).
-  requireShift: boolean;
+  // Staff only: by default a warehouse counts only while they're checked
+  // into an active shift there; set to list off-shift too (attendance).
+  allowOffShift: boolean;
 }
 
 // Marks a list route as warehouse-scoped: WarehouseScopeGuard resolves the
 // caller's readable warehouses (see WarehouseAccess) and attaches them to
 // the request instead of rejecting — the service does the filtering.
 // Admin always gets unrestricted access. Read it with @ScopedWarehouses().
-export const WarehouseListScope = (options: { requireShift?: boolean } = {}) =>
+export const WarehouseListScope = (options: { allowOffShift?: boolean } = {}) =>
   SetMetadata<string, WarehouseListScopeMeta>(WAREHOUSE_LIST_SCOPE_KEY, {
-    requireShift: options.requireShift ?? false,
+    allowOffShift: options.allowOffShift ?? false,
   });
 
 export const ScopedWarehouses = createParamDecorator(
