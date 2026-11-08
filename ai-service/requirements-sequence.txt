@@ -1,0 +1,3 @@
+# Offline experiment only; runtime service dependencies are unchanged.
+-r requirements-dev.txt
+torch==2.5.1

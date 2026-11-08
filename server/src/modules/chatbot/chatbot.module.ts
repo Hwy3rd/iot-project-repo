@@ -19,6 +19,8 @@ import { Warehouse } from '../warehouses/entities/warehouse.entity';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
 import { WorkShift } from '../work-shifts/entities/work-shift.entity';
 import { ChatbotOrchestratorService } from './chatbot-orchestrator.service';
+import { ChatbotDocumentsModule } from './documents/chatbot-documents.module';
+import { ChatbotDocumentsController } from './documents/chatbot-documents.controller';
 import { ChatbotController } from './chatbot.controller';
 import { ChatbotGateway } from './chatbot.gateway';
 import { ChatbotService } from './chatbot.service';
@@ -26,6 +28,7 @@ import { Conversation } from './entities/conversation.entity';
 import { Message } from './entities/message.entity';
 import { ChatbotRateLimitGuard } from './guards/chatbot-rate-limit.guard';
 import { ChatbotRateLimiterService } from './guards/chatbot-rate-limiter.service';
+import { ChatbotKnowledgeService } from './tools/chatbot-knowledge.service';
 import { ChatbotToolExecutorService } from './tools/chatbot-tool-executor.service';
 
 @Module({
@@ -46,6 +49,7 @@ import { ChatbotToolExecutorService } from './tools/chatbot-tool-executor.servic
       Alert,
     ]),
     LlmModule,
+    ChatbotDocumentsModule,
     // WarehouseAccessService — same scope rules as the REST guards.
     RbacModule,
     AlertsModule,
@@ -56,12 +60,13 @@ import { ChatbotToolExecutorService } from './tools/chatbot-tool-executor.servic
     // emitToUser() — replies and progress are pushed over the socket.
     RealtimeModule,
   ],
-  controllers: [ChatbotController],
+  controllers: [ChatbotController, ChatbotDocumentsController],
   providers: [
     ChatbotService,
     ChatbotRateLimiterService,
     ChatbotRateLimitGuard,
     ChatbotGateway,
+    ChatbotKnowledgeService,
     ChatbotToolExecutorService,
     ChatbotOrchestratorService,
   ],

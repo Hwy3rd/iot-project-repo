@@ -47,7 +47,7 @@ export class AlertsController {
   }
 
   @Roles(...VIEW_ROLES)
-  @WarehouseScope(WarehouseScopeSource.ALERT_PARAM, { requireShift: true })
+  @WarehouseScope(WarehouseScopeSource.ALERT_PARAM)
   @Serialize(AlertResponseDto)
   @Post(':id/acknowledge')
   acknowledge(@Param('id') id: string, @GetUserId() userId: string) {

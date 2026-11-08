@@ -79,6 +79,7 @@ describe('ChatbotToolExecutorService', () => {
   };
   let coldRoomsRepo: { find: jest.Mock };
   let alertsService: { findAll: jest.Mock };
+  let telemetry: { findRaw: jest.Mock; findHourlySummary: jest.Mock };
   let coldRoomStatus: { findStatuses: jest.Mock };
   let alertsByType: { type: string; count: string }[];
   let service: ChatbotToolExecutorService;
@@ -140,9 +141,13 @@ describe('ChatbotToolExecutorService', () => {
     };
     const alertsRepo = { createQueryBuilder: jest.fn(() => queryBuilder) };
 
+    telemetry = {
+      findRaw: jest.fn().mockResolvedValue([]),
+      findHourlySummary: jest.fn().mockResolvedValue({ readings: [] }),
+    };
     service = new ChatbotToolExecutorService(
       alertsService as never,
-      {} as never,
+      telemetry as never,
       {} as never,
       devicesRepo as never,
       batchesRepo as never,
@@ -158,6 +163,13 @@ describe('ChatbotToolExecutorService', () => {
       ),
       coldRoomStatus as never,
       alertsRepo as never,
+      {
+        mode: 'rag',
+        context: jest.fn().mockResolvedValue(''),
+        search: jest
+          .fn()
+          .mockResolvedValue({ method: 'semantic', matches: [] }),
+      } as never,
     );
   });
 
@@ -166,6 +178,7 @@ describe('ChatbotToolExecutorService', () => {
 
     it('returns a warehouse the caller is assigned to, whatever their role', async () => {
       assignments = [{ warehouseId: 'w1' }];
+      activeShiftWarehouses = ['w1'];
 
       await expect(
         service.resolveWorkingWarehouse(caller(UserRole.STAFF), 'w1'),
@@ -183,10 +196,56 @@ describe('ChatbotToolExecutorService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
+    it('refuses Staff an assigned warehouse they are not on shift at', async () => {
+      assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
+      activeShiftWarehouses = ['w1'];
+
+      await expect(
+        service.resolveWorkingWarehouse(caller(UserRole.STAFF), 'w2'),
+      ).rejects.toThrow('kho đang trong ca trực');
+    });
+
     it('lets Admin pick any existing warehouse', async () => {
       await expect(
         service.resolveWorkingWarehouse(caller(UserRole.ADMIN), 'w3'),
       ).resolves.toMatchObject({ code: 'WH-DN-01' });
+    });
+  });
+
+  describe('describePermissions', () => {
+    it('lists only the on-shift warehouse for Staff', async () => {
+      assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
+      activeShiftWarehouses = ['w1'];
+
+      await expect(
+        service.describePermissions({ id: 'u1', role: UserRole.STAFF }),
+      ).resolves.toEqual({
+        roleLabel: 'Nhân viên',
+        warehouses: [expect.objectContaining({ code: 'WH-HCM-01' })],
+        offShift: false,
+        forbidden: [
+          'lịch sử trạng thái / log chi tiết của thiết bị',
+          'dữ liệu cảm biến chi tiết từng mẫu (telemetry raw)',
+        ],
+      });
+    });
+
+    it('flags Staff with no active shift', async () => {
+      assignments = [{ warehouseId: 'w1' }];
+
+      await expect(
+        service.describePermissions({ id: 'u1', role: UserRole.STAFF }),
+      ).resolves.toMatchObject({ warehouses: [], offShift: true });
+    });
+
+    it('gives Admin every warehouse', async () => {
+      await expect(
+        service.describePermissions({ id: 'u1', role: UserRole.ADMIN }),
+      ).resolves.toMatchObject({
+        warehouses: null,
+        offShift: false,
+        forbidden: [],
+      });
     });
   });
 
@@ -200,7 +259,9 @@ describe('ChatbotToolExecutorService', () => {
         UserRole.STAFF,
       );
 
-      expect(result.error).toBe('Bạn không có quyền sử dụng chức năng này.');
+      expect(result.error).toMatch(
+        /^\[VƯỢT QUYỀN\] Vai trò .* không được phép/,
+      );
     });
 
     it('refuses batches to a Technician (no stock operations)', async () => {
@@ -208,7 +269,9 @@ describe('ChatbotToolExecutorService', () => {
 
       const result = await run('get_batches', {}, UserRole.TECHNICIAN);
 
-      expect(result.error).toBe('Bạn không có quyền sử dụng chức năng này.');
+      expect(result.error).toMatch(
+        /^\[VƯỢT QUYỀN\] Vai trò .* không được phép/,
+      );
       expect(batchesRepo.findAndCount).not.toHaveBeenCalled();
     });
 
@@ -218,7 +281,22 @@ describe('ChatbotToolExecutorService', () => {
 
       const result = await run('get_devices', {}, UserRole.STAFF);
 
-      expect(result.error).toContain('cần đang trong ca trực');
+      expect(result.error).toContain('[VƯỢT QUYỀN]');
+      expect(result.error).toContain('không trong ca trực nào');
+    });
+
+    it('refuses Staff the data of an assigned warehouse they are not on shift at', async () => {
+      assignments = [{ warehouseId: 'w1' }, { warehouseId: 'w2' }];
+      activeShiftWarehouses = ['w1'];
+
+      const result = await run(
+        'get_alerts',
+        { warehouseId: 'w2' },
+        UserRole.STAFF,
+      );
+
+      expect(result.error).toContain('[VƯỢT QUYỀN]');
+      expect(alertsService.findAll).not.toHaveBeenCalled();
     });
 
     it('shows devices of the warehouse where Staff is checked in', async () => {
@@ -243,7 +321,7 @@ describe('ChatbotToolExecutorService', () => {
         UserRole.TECHNICIAN,
       );
 
-      expect(result.error).toContain('không có quyền truy cập tài nguyên này');
+      expect(result.error).toContain('[VƯỢT QUYỀN] Không tìm thấy');
     });
 
     it('shows a Manager every shift in their warehouses, and Staff only their own', async () => {
@@ -256,6 +334,7 @@ describe('ChatbotToolExecutorService', () => {
         }),
       );
 
+      activeShiftWarehouses = ['w1', 'w2'];
       await run('get_work_shifts', { staffId: 'someone' }, UserRole.STAFF);
       expect(workShiftsRepo.findAndCount).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -347,7 +426,7 @@ describe('ChatbotToolExecutorService', () => {
         UserRole.MANAGER,
       );
 
-      expect(result.error).toContain('không có quyền truy cập tài nguyên này');
+      expect(result.error).toContain('[VƯỢT QUYỀN] Không tìm thấy');
       expect(coldRoomStatus.findStatuses).not.toHaveBeenCalled();
     });
 
@@ -612,6 +691,105 @@ describe('ChatbotToolExecutorService', () => {
       expect(result.roomsNeedingAttention.items[0].reasons).toEqual([
         'mất tín hiệu 30 phút',
       ]);
+    });
+  });
+  describe('bounded telemetry', () => {
+    beforeEach(() => {
+      assignments = [{ warehouseId: 'w1' }];
+      devicesRepo.findOne.mockResolvedValue({
+        id: 'd1',
+        uniqueId: 'ESP1',
+        coldRoomId: 'cr1',
+      });
+    });
+
+    it('enforces the raw limit on the backend and reports partial coverage', async () => {
+      telemetry.findRaw.mockResolvedValue(
+        Array.from({ length: 501 }, (_, i) => ({
+          ts: new Date(i),
+          temperature: -18,
+        })),
+      );
+      const output = (
+        await run(
+          'get_telemetry_raw',
+          { deviceId: 'ESP1', limit: 20000 },
+          UserRole.MANAGER,
+        )
+      ).result as {
+        devices: { readings: unknown[]; hasMore: boolean; note: string }[];
+      };
+      expect(telemetry.findRaw).toHaveBeenCalledWith(
+        'd1',
+        expect.objectContaining({ limit: 501 }),
+      );
+      expect(output.devices[0].readings).toHaveLength(500);
+      expect(output.devices[0].hasMore).toBe(true);
+      expect(output.devices[0].note).toContain('một phần');
+    });
+
+    it('defaults to a capped raw query even when the model omits limit', async () => {
+      await run('get_telemetry_raw', { deviceId: 'ESP1' }, UserRole.MANAGER);
+      expect(telemetry.findRaw).toHaveBeenCalledWith(
+        'd1',
+        expect.objectContaining({ limit: 101 }),
+      );
+    });
+
+    it.each([0, -1, 1.5, '500', NaN, Infinity])(
+      'rejects invalid limit %s before querying telemetry',
+      async (limit) => {
+        const output = await run(
+          'get_telemetry_raw',
+          { deviceId: 'ESP1', limit },
+          UserRole.MANAGER,
+        );
+        expect(output.error).toContain('số nguyên dương');
+        expect(telemetry.findRaw).not.toHaveBeenCalled();
+      },
+    );
+
+    it('shares the point budget across devices and reports rooms with more than five devices', async () => {
+      devicesRepo.find.mockResolvedValue(
+        Array.from({ length: 6 }, (_, i) => ({
+          id: 'd' + i,
+          uniqueId: 'ESP' + i,
+          coldRoomId: 'cr1',
+        })),
+      );
+      const output = (
+        await run(
+          'get_telemetry_hourly',
+          { coldRoomId: 'cr1' },
+          UserRole.MANAGER,
+        )
+      ).result as { devices: unknown[]; note: string };
+      expect(output.devices).toHaveLength(5);
+      expect(output.note).toContain('một phần thiết bị');
+      expect(telemetry.findHourlySummary).toHaveBeenCalledTimes(5);
+      for (const args of telemetry.findHourlySummary.mock
+        .calls as unknown[][]) {
+        expect(args[2]).toBe(20);
+        expect(args[3]).toBe('Asia/Ho_Chi_Minh');
+      }
+    });
+
+    it('keeps cross-warehouse access blocked before calling the summary service', async () => {
+      devicesRepo.findOne.mockResolvedValue({
+        id: 'd2',
+        uniqueId: 'ESP2',
+        coldRoomId: 'cr3',
+      });
+      expect(
+        (
+          await run(
+            'get_telemetry_hourly',
+            { deviceId: 'ESP2' },
+            UserRole.MANAGER,
+          )
+        ).error,
+      ).toContain('không có quyền');
+      expect(telemetry.findHourlySummary).not.toHaveBeenCalled();
     });
   });
 });

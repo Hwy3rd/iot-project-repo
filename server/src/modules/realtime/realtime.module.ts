@@ -1,3 +1,5 @@
+import { WarehouseAccessService } from '../../common/rbac/warehouse-access.service';
+import { WorkShift } from '../work-shifts/entities/work-shift.entity';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
@@ -17,9 +19,11 @@ import { RealtimeGateway } from './realtime.gateway';
         secret: config.get<string>('JWT_SECRET'),
       }),
     }),
-    TypeOrmModule.forFeature([WarehouseStaff]),
+    TypeOrmModule.forFeature([WarehouseStaff, WorkShift]),
   ],
-  providers: [RealtimeGateway],
+  // Its own WarehouseAccessService (stateless): importing RbacModule here
+  // would drag its global guards along.
+  providers: [RealtimeGateway, WarehouseAccessService],
   exports: [RealtimeGateway],
 })
 export class RealtimeModule {}

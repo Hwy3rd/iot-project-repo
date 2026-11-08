@@ -76,7 +76,7 @@ export async function bulkDelete(
 /**
  * Per-row warehouse check for bulk routes on warehouse-owned resources —
  * the bulk counterpart of @WarehouseScope on the single DELETE. The route
- * carries @WarehouseListScope (same @Roles / requireShift) so the guard
+ * carries @WarehouseListScope (same @Roles; Staff need an active shift) so the guard
  * resolves `allowedWarehouseIds` once; `warehouseOf` maps each existing row
  * to its warehouse (null when it has none reachable, e.g. its cold room was
  * deleted — the single route's guard rejects those too).

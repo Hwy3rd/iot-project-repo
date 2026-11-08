@@ -17,17 +17,40 @@ Cần thư viện backend trong `server/node_modules` và AI service đã chạy
 # Từ thư mục gốc repo, sau khi bật Docker Desktop:
 docker compose up -d --build ai-service
 
-# Ngăn đông: bình thường, rồi dự báo sắp vượt ngưỡng:
+# Phòng mẫu -22..-18°C: bình thường, rồi dự báo sắp vượt ngưỡng:
 node scripts/demo_ai.js --api-only --profile freezer-normal
 node scripts/demo_ai.js --api-only --profile freezer-warning
 
-# Ngăn mát:
+# Phòng mẫu 0..4°C:
 node scripts/demo_ai.js --api-only --profile chill-normal
 node scripts/demo_ai.js --api-only --profile chill-warning
 ```
 
 Các lệnh này chỉ gọi API; không cần thiết bị, MQTT, MySQL hoặc MongoDB.
 Kết quả hiện ngay trong terminal, gồm nhiệt độ dự báo, ngưỡng và loại cảnh báo.
+
+## Chạy AI bằng Python trên Windows
+
+Có thể thử model thật trên máy local bằng môi trường `.venv-ai` đã cài đúng
+`ai-service/requirements-dev.txt`. Từ thư mục gốc repo, terminal thứ nhất:
+
+```powershell
+$env:OMP_NUM_THREADS = '4'
+.venv-ai/Scripts/python.exe -B -m uvicorn ai_service:app --app-dir ai-service --host 127.0.0.1 --port 8000
+```
+
+Terminal thứ hai, cũng từ thư mục gốc repo:
+
+```powershell
+$env:AI_SERVICE_URL = 'http://127.0.0.1:8000'
+node scripts/demo_ai.js --api-only --profile chill-normal
+node scripts/demo_ai.js --api-only --profile chill-warning
+```
+
+Với model 5–10 phút ngày 01/11, phòng mẫu có ngưỡng 0..4°C. Tình huống bình thường dùng nhiệt độ hiện tại 2°C và dự báo khoảng 2°C ở cả hai mốc. Tình huống cảnh báo dùng 3,5°C, dự báo +5 khoảng 4,04°C và +10 khoảng 4,76°C. Các cửa sổ dữ liệu này được chọn để trình diễn chức năng, không phải phép kiểm định độc lập về độ chính xác.
+
+Cách này không cần Docker, ESP32, broker hoặc database. Để trình diễn biểu đồ
+website và lưu cảnh báo, tiếp tục với phần chạy đầy đủ bên dưới.
 
 ## Demo trên biểu đồ của hệ thống
 
@@ -68,7 +91,7 @@ dùng cách này.
 
 Backend gọi AI tối đa một lần/phút cho mỗi thiết bị. Lịch sử của các lần demo
 trước được giữ lại; chạy hai tình huống trên hai thiết bị riêng giúp so sánh
-ngay mà không trộn lịch sử. Dự báo được giữ trong cache 15 phút; script mặc
+ngay mà không trộn lịch sử. Dự báo được giữ trong cache 5 phút; script mặc
 định tiếp tục gửi MQTT 120 giây để trình diễn dữ liệu trực tiếp.
 
 Script tự chọn bộ mẫu phù hợp với ngưỡng phòng. Các bộ mẫu hỗ trợ phòng mát
@@ -110,3 +133,6 @@ Fixture lưu tên file, SHA-256, các mốc thời gian gốc và phiên bản m
 Script tái tạo fixture là `ai-service/experiments/generate_ai_demo.py`.
 Các con số độ chính xác trong README AI vẫn là validation Bangkok;
 các kịch bản này dùng để trình diễn luồng chức năng.
+
+
+Bản local mới trả hai mục trong `forecasts`, có `horizon_minutes` là 5 và 10. Chart hiển thị hai điểm tương ứng; danh sách cảnh báo vẫn có xác nhận tiếp nhận. Xem [chi tiết cập nhật](AI_SHORT_HORIZON.md).

@@ -5,7 +5,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, LessThanOrEqual, Repository } from 'typeorm';
 import { AlertStatus } from '../../../libs/constants/alert.constant';
 import { BatchStatus } from '../../../libs/constants/batch.constant';
-import { CHATBOT_TIMEZONE } from '../../../libs/constants/chatbot.constant';
+import {
+  CHATBOT_TIMEZONE,
+  CHATBOT_TELEMETRY_RAW_DEFAULT_LIMIT,
+  CHATBOT_TELEMETRY_RAW_MAX_LIMIT,
+  CHATBOT_TELEMETRY_MAX_POINTS,
+} from '../../../libs/constants/chatbot.constant';
 import { DeviceStatus } from '../../../libs/constants/device.constant';
 import { UserRole } from '../../../libs/constants/user.constant';
 import type { QueryAlertDto } from '../../alerts/dto/query-alert.dto';
@@ -22,7 +27,7 @@ import { ProductType } from '../../product-types/entities/product-type.entity';
 import { TelemetryService } from '../../telemetry/telemetry.service';
 import { Warehouse } from '../../warehouses/entities/warehouse.entity';
 import { WorkShift } from '../../work-shifts/entities/work-shift.entity';
-import { searchChatbotDocs } from './chatbot-docs-search';
+import { ChatbotKnowledgeService } from './chatbot-knowledge.service';
 import {
   UNRESTRICTED_ACCESS,
   type WarehouseAccess,
@@ -35,8 +40,8 @@ export interface ChatbotToolCaller {
   role: UserRole;
   // Set by execute() for the running tool — resolved by the same
   // WarehouseAccessService the REST list routes use, from the tool's
-  // allowedRoles/requireShift, so a tool never sees more than its REST
-  // counterpart (docs/RBAC.md §3).
+  // allowedRoles (and, for Staff, their active shift), so a tool never sees
+  // more than its REST counterpart (docs/RBAC.md §3).
   access?: WarehouseAccess;
   // The warehouse picked in the app header (see resolveWorkingWarehouse):
   // breaks ties when a room name matches rooms in several warehouses. Not a
@@ -52,6 +57,28 @@ export interface ChatbotToolResult {
   result?: unknown;
   error?: string;
 }
+
+// Prefixes every refusal handed to the model, so the system prompt can tell
+// it apart from an ordinary failure and have it warn the user that the
+// request is beyond their permissions (CHATBOT_SYSTEM_PROMPT rule 3).
+export const PERMISSION_DENIED_TAG = '[VƯỢT QUYỀN]';
+
+// What each warehouse tool shows, in the user's words — listed in the
+// system prompt as off limits for a role that may not use it, so the model
+// warns instead of answering with other data.
+const TOOL_CAPABILITY_LABELS: Record<string, string> = {
+  get_device_status_history: 'lịch sử trạng thái / log chi tiết của thiết bị',
+  get_telemetry_raw: 'dữ liệu cảm biến chi tiết từng mẫu (telemetry raw)',
+  get_batches: 'lô hàng và tồn kho',
+  get_work_shifts: 'lịch ca trực, chấm công',
+};
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.ADMIN]: 'Quản trị viên',
+  [UserRole.MANAGER]: 'Quản lý kho',
+  [UserRole.TECHNICIAN]: 'Kỹ thuật viên',
+  [UserRole.STAFF]: 'Nhân viên',
+};
 
 // Thrown internally to short-circuit a handler with a message meant for the
 // LLM (via the tool result), not a stack trace — always caught by execute()
@@ -146,12 +173,22 @@ export class ChatbotToolExecutorService {
     private readonly coldRoomStatus: ColdRoomStatusService,
     @InjectRepository(Alert)
     private readonly alertsRepo: Repository<Alert>,
+    private readonly knowledge: ChatbotKnowledgeService,
   ) {}
+
+  get knowledgeMode() {
+    return this.knowledge.mode;
+  }
+
+  getKnowledgeContext(query: string, signal?: AbortSignal): Promise<string> {
+    return this.knowledge.context(query, signal);
+  }
 
   async execute(
     name: string,
     args: Record<string, unknown>,
     caller: ChatbotToolCaller,
+    signal?: AbortSignal,
   ): Promise<ChatbotToolResult> {
     const def = CHATBOT_TOOLS.find((tool) => tool.name === name);
     if (!def) {
@@ -163,11 +200,7 @@ export class ChatbotToolExecutorService {
       };
     }
 
-    const access = await this.warehouseAccess.resolve(
-      caller,
-      def.allowedRoles,
-      { requireShift: def.requireShift },
-    );
+    const access = await this.warehouseAccess.resolve(caller, def.allowedRoles);
     // Warehouse data tools: usable only if at least one warehouse is
     // reachable under the tool's roles/shift rule — the caller's global
     // role doesn't count, same as the REST routes. Only the two tools with
@@ -179,14 +212,21 @@ export class ChatbotToolExecutorService {
         : (access.warehouseIds?.length ?? 0) > 0);
     if (!usable) {
       return {
-        error: def.requireShift
-          ? 'Bạn không có quyền sử dụng chức năng này (nhân viên cần đang trong ca trực đã check-in tại kho).'
-          : 'Bạn không có quyền sử dụng chức năng này.',
+        error:
+          caller.role === UserRole.STAFF &&
+          def.allowedRoles.includes(UserRole.STAFF)
+            ? `${PERMISSION_DENIED_TAG} Bạn chỉ xem được dữ liệu của kho đang trong ca trực đã được duyệt — hiện bạn không trong ca trực nào.`
+            : `${PERMISSION_DENIED_TAG} Vai trò ${ROLE_LABELS[caller.role]} không được phép xem dữ liệu này.`,
       };
     }
 
     try {
-      const result = await this.dispatch(name, args, { ...caller, access });
+      const result = await this.dispatch(
+        name,
+        args,
+        { ...caller, access },
+        signal,
+      );
       return { result };
     } catch (error) {
       if (error instanceof ChatbotToolError) {
@@ -203,7 +243,7 @@ export class ChatbotToolExecutorService {
   }
 
   // The header's warehouse for a chat turn, if the caller may read it —
-  // checked against their assignments (any role), like GET /warehouses/:id.
+  // checked like GET /warehouses/:id: assigned, and for Staff on shift there.
   // Same 403 whether it doesn't exist or isn't theirs.
   async resolveWorkingWarehouse(
     caller: ChatbotToolCaller,
@@ -215,15 +255,55 @@ export class ChatbotToolExecutorService {
         ? await this.warehousesRepo.findOne({ where: { id: warehouseId } })
         : null;
     if (!warehouse) {
-      throw new ForbiddenException('Bạn không được phân công vào kho này.');
+      throw new ForbiddenException(
+        caller.role === UserRole.STAFF
+          ? 'Bạn chỉ dùng được trợ lý cho kho đang trong ca trực của mình.'
+          : 'Bạn không được phân công vào kho này.',
+      );
     }
     return warehouse;
+  }
+
+  // What the caller may reach right now, for the system prompt: lets the
+  // model refuse (and warn) up front instead of calling a tool it would be
+  // denied, and name the warehouses a vague question is about. The tools
+  // still enforce all of it on every call.
+  async describePermissions(caller: ChatbotToolCaller): Promise<{
+    roleLabel: string;
+    warehouses: { name: string; code: string }[] | null;
+    offShift: boolean;
+    forbidden: string[];
+  }> {
+    const access = await this.warehouseAccess.resolve(caller, undefined);
+    const warehouses =
+      access.warehouseIds === null
+        ? null
+        : access.warehouseIds.length === 0
+          ? []
+          : await this.warehousesRepo.find({
+              where: { id: In(access.warehouseIds) },
+              order: { code: 'ASC' },
+            });
+    return {
+      roleLabel: ROLE_LABELS[caller.role],
+      warehouses: warehouses?.map(({ name, code }) => ({ name, code })) ?? null,
+      offShift: caller.role === UserRole.STAFF && warehouses?.length === 0,
+      forbidden:
+        caller.role === UserRole.ADMIN
+          ? []
+          : CHATBOT_TOOLS.filter(
+              (tool) =>
+                TOOL_CAPABILITY_LABELS[tool.name] &&
+                !tool.allowedRoles.includes(caller.role),
+            ).map((tool) => TOOL_CAPABILITY_LABELS[tool.name]),
+    };
   }
 
   private dispatch(
     name: string,
     args: Record<string, unknown>,
     caller: ChatbotToolCaller,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     switch (name) {
       case 'get_alerts':
@@ -259,7 +339,7 @@ export class ChatbotToolExecutorService {
       case 'get_system_health_summary':
         return this.getSystemHealthSummary(args, caller);
       case 'search_docs':
-        return Promise.resolve(this.searchDocs(args));
+        return Promise.resolve(this.searchDocs(args, signal));
       default:
         throw new ChatbotToolError(`Tool "${name}" chưa có handler thực thi.`);
     }
@@ -271,8 +351,7 @@ export class ChatbotToolExecutorService {
 
   // null = unrestricted (Admin). Never null and empty at once — empty means
   // "no warehouse where this tool's data is reachable for you right now"
-  // (not assigned, wrong role, or — for Staff on requireShift tools —
-  // not checked in).
+  // (not assigned, wrong role, or — for Staff — not checked in there).
   private async getAssignedWarehouseIds(
     caller: ChatbotToolCaller,
   ): Promise<string[] | null> {
@@ -311,10 +390,11 @@ export class ChatbotToolExecutorService {
 
   // The same message whether the thing doesn't exist or is someone else's,
   // same reasoning as NotificationsService.markRead not telling "not found"
-  // from "belongs to someone else".
+  // from "belongs to someone else" — but tagged, so the model warns that it
+  // may be outside the caller's permissions rather than claim it's missing.
   private notFound(kind: string, ref: string): ChatbotToolError {
     return new ChatbotToolError(
-      `Không tìm thấy ${kind} "${ref}" hoặc bạn không có quyền truy cập tài nguyên này.`,
+      `${PERMISSION_DENIED_TAG} Không tìm thấy ${kind} "${ref}" trong phạm vi bạn được phép truy cập — có thể không tồn tại hoặc thuộc kho bạn không có quyền (Nhân viên chỉ xem được kho đang trong ca trực).`,
     );
   }
 
@@ -675,8 +755,8 @@ export class ChatbotToolExecutorService {
     const scope = await this.loadScope(caller);
     const deviceRef = this.optionalString(args, 'deviceId');
     const roomRef = this.optionalString(args, 'coldRoomId');
-
     let devices: Device[];
+    let moreDevices = false;
     if (deviceRef) {
       devices = [await this.resolveDevice(scope, deviceRef)];
     } else if (roomRef) {
@@ -684,33 +764,83 @@ export class ChatbotToolExecutorService {
       devices = await this.devicesRepo.find({
         where: { coldRoomId: room.id },
         order: { uniqueId: 'ASC' },
-        take: MAX_ROOM_TELEMETRY_DEVICES,
+        take: MAX_ROOM_TELEMETRY_DEVICES + 1,
       });
-      if (devices.length === 0) {
+      moreDevices = devices.length > MAX_ROOM_TELEMETRY_DEVICES;
+      devices = devices.slice(0, MAX_ROOM_TELEMETRY_DEVICES);
+      if (!devices.length)
         throw new ChatbotToolError(
-          `Phòng "${room.name}" chưa có thiết bị nào.`,
+          'Phòng "' + room.name + '" chưa có thiết bị nào.',
         );
-      }
     } else {
       throw new ChatbotToolError('Cần truyền coldRoomId hoặc deviceId.');
     }
-
     const range = {
       from: this.optionalString(args, 'from'),
       to: this.optionalString(args, 'to'),
     };
-    const limit = toInt(args.limit);
+    if (
+      args.limit !== undefined &&
+      (typeof args.limit !== 'number' ||
+        !Number.isInteger(args.limit) ||
+        args.limit < 1)
+    ) {
+      throw new ChatbotToolError('limit phải là số nguyên dương.');
+    }
+    const totalLimit =
+      kind === 'raw'
+        ? Math.min(
+            args.limit ?? CHATBOT_TELEMETRY_RAW_DEFAULT_LIMIT,
+            CHATBOT_TELEMETRY_RAW_MAX_LIMIT,
+          )
+        : CHATBOT_TELEMETRY_MAX_POINTS;
+    if (devices.length > totalLimit) {
+      moreDevices = true;
+      devices = devices.slice(0, totalLimit);
+    }
+    const perDeviceLimit = Math.floor(totalLimit / devices.length);
     const series = await Promise.all(
-      devices.map(async (device) => ({
-        device: device.uniqueId,
-        ...this.location(scope, device.coldRoomId),
-        readings: (kind === 'hourly'
-          ? await this.telemetryService.findHourly(device.id, range)
-          : await this.telemetryService.findRaw(device.id, { ...range, limit })
-        ).map(stripTelemetryKeys),
-      })),
+      devices.map(async (device) => {
+        const location = {
+          device: device.uniqueId,
+          ...this.location(scope, device.coldRoomId),
+        };
+        if (kind === 'hourly') {
+          const data = await this.telemetryService.findHourlySummary(
+            device.id,
+            range,
+            perDeviceLimit,
+            CHATBOT_TIMEZONE,
+          );
+          return { ...location, ...data };
+        }
+        // One extra row detects truncation without a full count query.
+        const rows = await this.telemetryService.findRaw(device.id, {
+          ...range,
+          limit: perDeviceLimit + 1,
+        });
+        const hasMore = rows.length > perDeviceLimit;
+        return {
+          ...location,
+          readings: rows.slice(0, perDeviceLimit).map(stripTelemetryKeys),
+          returned: Math.min(rows.length, perDeviceLimit),
+          hasMore,
+          ...(hasMore
+            ? {
+                note: 'Chỉ trả một phần mẫu, theo thứ tự cũ đến mới. Không dùng phần này để kết luận cho toàn khoảng thời gian; thu hẹp khoảng hoặc tra dữ liệu tổng hợp.',
+              }
+            : {}),
+        };
+      }),
     );
-    return series;
+    return {
+      devices: series,
+      ...(moreDevices
+        ? {
+            note: 'Chỉ tra cứu một phần thiết bị trong phòng do giới hạn dữ liệu. Hỏi theo từng mã thiết bị để xem phần còn lại.',
+          }
+        : {}),
+    };
   }
 
   private async getBatches(
@@ -876,7 +1006,11 @@ export class ChatbotToolExecutorService {
     if (channels.length === 0) return listResult([], 0);
     const channelsById = new Map(channels.map((c) => [c.id, c]));
     const [commands, total] = await this.commandsRepo.findAndCount({
-      where: { channelId: In([...channelsById.keys()]), status },
+      // Omitted, not undefined: TypeORM rejects an undefined where value.
+      where: {
+        channelId: In([...channelsById.keys()]),
+        ...(status ? { status } : {}),
+      },
       order: { createdAt: 'DESC' },
       take: this.limit(args, 20, 100),
     });
@@ -1069,9 +1203,9 @@ export class ChatbotToolExecutorService {
 
   // Not warehouse-scoped — the 3 whitelisted docs are business-wide
   // content, same for every role that can reach this tool.
-  private searchDocs(args: Record<string, unknown>) {
+  private searchDocs(args: Record<string, unknown>, signal?: AbortSignal) {
     const query = this.requireString(args, 'query');
-    return searchChatbotDocs(query);
+    return this.knowledge.search(query, signal);
   }
 }
 

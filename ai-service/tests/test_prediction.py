@@ -98,45 +98,73 @@ class ApiTests(unittest.TestCase):
     def tearDown(self):
         self.client.__exit__(None, None, None)
 
-    def test_real_model_health_and_absolute_prediction(self):
-        response = self.client.get("/health")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["feature_schema"], FEATURE_SCHEMA)
+    def mock_models(self, five, ten):
+        models = {}
+        for key, value in (("5", five), ("10", ten)):
+            models[key] = Mock()
+            models[key].predict.return_value = np.array([value])
+        return models
+
+    def test_real_models_health_and_absolute_predictions_at_both_horizons(self):
+        health = self.client.get("/health")
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(health.json()["horizons_minutes"], [5, 10])
+        self.assertEqual(health.json()["forecast_schema"], ai_service.FORECAST_SCHEMA)
         payload = request([-18 + 0.1 * i for i in range(13)])
-        expected = round(float(self.loaded["model"].predict(build_features(
-            [reading["temperature"] for reading in payload["temperature_history"]]
-        ))[0]) + payload["temperature"], 2)
+        features = build_features([row["temperature"] for row in payload["temperature_history"]])
+        expected = [float(self.loaded["models"][str(m)].predict(features)[0]) + payload["temperature"] for m in (5, 10)]
         response = self.client.post("/internal/ai/predict", json=payload)
         self.assertEqual(response.status_code, 200, response.text)
         result = response.json()
-        self.assertEqual(result["predicted_temp_15m"], expected)
-        self.assertEqual(result["metadata"]["as_of"], payload["temperature_history"][-1]["ts"])
-        self.assertTrue(set(["risk_level", "recommendation", "violation_type", "will_exceed_threshold"]).issubset(result))
+        self.assertEqual([point["horizon_minutes"] for point in result["forecasts"]], [5, 10])
+        self.assertEqual([point["predicted_temp"] for point in result["forecasts"]], expected)
+        self.assertEqual(result["as_of"].replace("Z", "+00:00"), payload["temperature_history"][-1]["ts"])
+        self.assertNotIn("predicted_temp_15m", result)
 
-    def test_change_is_added_back_and_room_thresholds_are_used(self):
-        model = Mock()
-        model.predict.return_value = np.array([0.4])
-        with patch.dict(ai_service.model_artifacts, model=model):
-            payload = request()
-            response = self.client.post("/internal/ai/predict", json=payload)
-            self.assertEqual(response.json()["predicted_temp_15m"], -17.6)
-            self.assertFalse(response.json()["will_exceed_threshold"])
-            for delta, violation in [(4, "OVERHEAT"), (-4, "FREEZING")]:
-                model.predict.return_value = np.array([delta])
-                response = self.client.post("/internal/ai/predict", json=payload)
-                self.assertEqual(response.json()["violation_type"], violation)
-                self.assertTrue(response.json()["will_exceed_threshold"])
+    def test_transient_breach_at_5_is_not_hidden_by_recovery_at_10(self):
+        with patch.dict(ai_service.model_artifacts, models=self.mock_models(4, 0)):
+            result = self.client.post("/internal/ai/predict", json=request()).json()
+        self.assertEqual(result["forecasts"][0]["predicted_temp"], -14)
+        self.assertEqual(result["forecasts"][1]["predicted_temp"], -18)
+        self.assertTrue(result["will_exceed_threshold"])
+        self.assertEqual(result["first_violation_minutes"], 5)
+        self.assertEqual(result["violation_type"], "OVERHEAT")
+        self.assertEqual(result["risk_level"], "WARNING")
 
-    def test_bundled_demo_profiles_work_without_sensor_history(self):
+    def test_breach_only_at_10_and_both_directions(self):
+        for delta, kind in ((4, "OVERHEAT"), (-4, "FREEZING")):
+            with patch.dict(ai_service.model_artifacts, models=self.mock_models(0, delta)):
+                result = self.client.post("/internal/ai/predict", json=request()).json()
+            self.assertEqual(result["first_violation_minutes"], 10)
+            self.assertEqual(result["violation_type"], kind)
+            self.assertFalse(result["forecasts"][0]["will_exceed_threshold"])
+            self.assertTrue(result["forecasts"][1]["will_exceed_threshold"])
+
+    def test_exact_threshold_is_safe_but_sub_centidegree_breach_is_preserved(self):
+        for delta, expected in ((3, False), (3.00001, True)):
+            with patch.dict(ai_service.model_artifacts, models=self.mock_models(delta, 0)):
+                result = self.client.post("/internal/ai/predict", json=request()).json()
+            self.assertEqual(result["will_exceed_threshold"], expected)
+
+    def test_earliest_breach_is_used_when_directions_differ(self):
+        with patch.dict(ai_service.model_artifacts, models=self.mock_models(-4, 4)):
+            result = self.client.post("/internal/ai/predict", json=request()).json()
+        self.assertEqual(result["violation_type"], "FREEZING")
+        self.assertEqual(result["first_violation_minutes"], 5)
+        self.assertEqual(result["forecasts"][1]["violation_type"], "OVERHEAT")
+
+    def test_bundled_demo_profiles_match_real_model_and_scenarios(self):
         repo = Path(ai_service.__file__).resolve().parent.parent
         fixture = json.loads((repo / "scripts/fixtures/ai-demo-bangkok.json").read_text(encoding="utf-8"))
+        self.assertEqual(fixture["forecast_schema"], ai_service.FORECAST_SCHEMA)
         for name, profile in fixture["profiles"].items():
             payload = request(profile["temperatures"][-13:])
             payload.update(temp_min=profile["temp_min"], temp_max=profile["temp_max"])
             response = self.client.post("/internal/ai/predict", json=payload)
             self.assertEqual(response.status_code, 200, f"{name}: {response.text}")
             result = response.json()
-            self.assertEqual(result["predicted_temp_15m"], profile["predicted_temp_15m_at_export"], name)
+            for point in result["forecasts"]:
+                self.assertAlmostEqual(point["predicted_temp"], profile["forecasts_at_export"][str(point["horizon_minutes"])], places=12, msg=name)
             self.assertEqual(result["will_exceed_threshold"], profile["scenario"] == "warning", name)
 
     def test_old_or_incomplete_requests_return_422(self):
@@ -145,22 +173,22 @@ class ApiTests(unittest.TestCase):
         payload["temperature_history"].pop(0)
         self.assertEqual(self.client.post("/internal/ai/predict", json=payload).status_code, 422)
 
-    def test_missing_model_and_incompatible_artifact_fail_safely(self):
-        with patch.dict(ai_service.model_artifacts, model=None):
+    def test_missing_models_and_old_or_incomplete_artifacts_fail_safely(self):
+        with patch.dict(ai_service.model_artifacts, models=None):
             self.assertEqual(self.client.get("/health").status_code, 503)
             self.assertEqual(self.client.post("/internal/ai/predict", json=request()).status_code, 503)
-        bad = dict(self.loaded, prediction_mode="absolute_temperature")
-        with self.assertRaises(ValueError):
-            ai_service.validate_artifact(bad)
-        legacy = joblib.load(Path(ai_service.__file__).with_name("temperature_model_hgb.pkl"))
+        for bad in (dict(self.loaded, horizons_minutes=[15]), dict(self.loaded, models={"5": self.loaded["models"]["5"]}),
+                    dict(self.loaded, prediction_mode="absolute_temperature")):
+            with self.assertRaises(ValueError):
+                ai_service.validate_artifact(bad)
+        legacy = joblib.load(Path(ai_service.__file__).with_name("temperature_model_history.pkl"))
         with self.assertRaises(ValueError):
             ai_service.validate_artifact(legacy)
 
-    def test_non_finite_output_is_not_returned_as_a_forecast(self):
-        model = Mock()
-        model.predict.return_value = np.array([np.nan])
-        with patch.dict(ai_service.model_artifacts, model=model):
-            self.assertEqual(self.client.post("/internal/ai/predict", json=request()).status_code, 500)
+    def test_either_nonfinite_output_rejects_the_entire_forecast(self):
+        for five, ten in ((np.nan, 0), (0, np.inf)):
+            with patch.dict(ai_service.model_artifacts, models=self.mock_models(five, ten)):
+                self.assertEqual(self.client.post("/internal/ai/predict", json=request()).status_code, 500)
 
 
 if __name__ == "__main__":

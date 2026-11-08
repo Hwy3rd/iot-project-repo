@@ -37,7 +37,7 @@ describe('TelemetryService', () => {
     findOne: jest.Mock;
     updateOne: jest.Mock;
   };
-  let hourlyModel: { find: jest.Mock };
+  let hourlyModel: { find: jest.Mock; aggregate: jest.Mock };
   let devicesRepository: { findOne: jest.Mock; existsBy: jest.Mock };
   let alertsService: {
     raise: jest.Mock;
@@ -105,7 +105,7 @@ describe('TelemetryService', () => {
         },
         {
           provide: getModelToken(TelemetryHourly.name),
-          useValue: { find: jest.fn() },
+          useValue: { find: jest.fn(), aggregate: jest.fn() },
         },
         {
           provide: getRepositoryToken(Device),
@@ -699,6 +699,137 @@ describe('TelemetryService', () => {
     });
   });
 
+  describe('door open alert wiring', () => {
+    // Room allows the door open for 15 s.
+    const doorRoomDevice = {
+      ...activeDevice,
+      coldRoom: { ...activeDevice.coldRoom, doorOpenMaxSeconds: 15 },
+    };
+    const at = (seconds: number) =>
+      new Date(sample.ts.getTime() - seconds * 1000);
+    // findOne calls in order: newest sample (ingest), then — only while the
+    // door stays open — the newest closed sample and the first open one.
+    const mockFindOne = (...results: unknown[]) => {
+      for (const result of results)
+        rawModel.findOne.mockReturnValueOnce(createQueryChainOne(result));
+    };
+    const createQueryChainOne = (result: unknown) => ({
+      sort: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockReturnThis(),
+      exec: jest.fn().mockResolvedValue(result),
+    });
+    type AlertInput = { type: AlertType; details?: Record<string, unknown> };
+    const doorCalls = (mock: jest.Mock): AlertInput[] =>
+      (mock.mock.calls as [AlertInput][])
+        .map(([input]) => input)
+        .filter((input) => input.type === AlertType.DOOR_OPEN_TOO_LONG);
+
+    beforeEach(() =>
+      devicesRepository.findOne.mockResolvedValue(doorRoomDevice),
+    );
+
+    it('does nothing the moment the door opens', async () => {
+      mockFindOne({ ts: at(5), doorOpen: false });
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(doorCalls(alertsService.raise)).toHaveLength(0);
+      expect(doorCalls(alertsService.resolveAuto)).toHaveLength(0);
+    });
+
+    it('stays quiet while the door has been open for less than the limit', async () => {
+      mockFindOne(
+        { ts: at(5), doorOpen: true },
+        { ts: at(20) },
+        { ts: at(10) },
+      );
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(doorCalls(alertsService.raise)).toHaveLength(0);
+    });
+
+    it('raises once open for the limit, timed from the first open sample', async () => {
+      mockFindOne(
+        { ts: at(5), doorOpen: true },
+        { ts: at(25) },
+        { ts: at(20) },
+      );
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(alertsService.raise).toHaveBeenCalledWith({
+        coldRoomId: 'c1',
+        deviceId: 'd1',
+        type: AlertType.DOOR_OPEN_TOO_LONG,
+        details: {
+          openSince: at(20).toISOString(),
+          openSeconds: 20,
+          maxSeconds: 15,
+        },
+      });
+      // The open period ends at the newest closed sample before this one.
+      expect(rawModel.findOne).toHaveBeenNthCalledWith(
+        2,
+        { deviceId: 'd1', doorOpen: false, ts: { $lt: sample.ts } },
+        { ts: 1 },
+      );
+      expect(rawModel.findOne).toHaveBeenNthCalledWith(
+        3,
+        { deviceId: 'd1', ts: { $gt: at(25), $lte: sample.ts } },
+        { ts: 1 },
+      );
+    });
+
+    it('counts from the oldest sample when the door was never seen closed', async () => {
+      mockFindOne({ ts: at(5), doorOpen: true }, null, { ts: at(60) });
+
+      await service.ingest('d1', { ...sample, doorOpen: true });
+
+      expect(rawModel.findOne).toHaveBeenNthCalledWith(
+        3,
+        { deviceId: 'd1', ts: { $lte: sample.ts } },
+        { ts: 1 },
+      );
+      expect(doorCalls(alertsService.raise)[0].details).toMatchObject({
+        openSeconds: 60,
+      });
+    });
+
+    it('auto-resolves on the open-to-closed edge only', async () => {
+      mockFindOne({ ts: at(5), doorOpen: true });
+      await service.ingest('d1', { ...sample, doorOpen: false });
+
+      expect(alertsService.resolveAuto).toHaveBeenCalledWith({
+        type: AlertType.DOOR_OPEN_TOO_LONG,
+        deviceId: 'd1',
+        coldRoomId: 'c1',
+        warehouseId: 'w1',
+      });
+
+      alertsService.resolveAuto.mockClear();
+      mockFindOne({ ts: at(5), doorOpen: false });
+      await service.ingest('d1', {
+        ...sample,
+        ts: new Date(sample.ts.getTime() + 5000),
+        doorOpen: false,
+      });
+      expect(doorCalls(alertsService.resolveAuto)).toHaveLength(0);
+    });
+
+    it('ignores replayed samples', async () => {
+      mockFindOne({ ts: at(5), doorOpen: true });
+
+      await service.ingest('d1', {
+        ...sample,
+        doorOpen: true,
+        replayed: true,
+      });
+
+      expect(doorCalls(alertsService.raise)).toHaveLength(0);
+    });
+  });
+
   describe('AI prediction wiring', () => {
     // The shared model now supports both chilled and frozen rooms.
     const chillDevice = {
@@ -713,15 +844,37 @@ describe('TelemetryService', () => {
     };
     const chillSample = { ...sample, temperature: 3 };
     const breach = {
-      predicted_temp_15m: 4.6,
+      forecast_schema: 'temperature-warning-5-10-v1',
+      as_of: chillSample.ts.toISOString(),
+      forecasts: [
+        {
+          horizon_minutes: 5,
+          predicted_temp: 4.6,
+          will_exceed_threshold: true,
+          violation_type: 'OVERHEAT',
+        },
+        {
+          horizon_minutes: 10,
+          predicted_temp: 3,
+          will_exceed_threshold: false,
+          violation_type: 'NONE',
+        },
+      ],
+      first_violation_minutes: 5,
       will_exceed_threshold: true,
       violation_type: 'OVERHEAT',
-      risk_level: 'CRITICAL',
+      risk_level: 'WARNING',
       recommendation: 'Check the door',
     };
     const safe = (predicted: number) => ({
       ...breach,
-      predicted_temp_15m: predicted,
+      forecasts: [5, 10].map((horizon_minutes) => ({
+        horizon_minutes,
+        predicted_temp: predicted,
+        will_exceed_threshold: false,
+        violation_type: 'NONE',
+      })),
+      first_violation_minutes: null,
       will_exceed_threshold: false,
       violation_type: 'NONE',
       risk_level: 'NORMAL',
@@ -907,12 +1060,60 @@ describe('TelemetryService', () => {
         triggerValue: 4.6,
         threshold: 4,
         details: {
-          predictedTemp15m: 4.6,
+          forecastSchema: breach.forecast_schema,
+          asOf: breach.as_of,
+          forecasts: breach.forecasts,
+          firstViolationMinutes: 5,
           violationType: 'OVERHEAT',
-          riskLevel: 'CRITICAL',
+          riskLevel: 'WARNING',
           recommendation: 'Check the door',
         },
       });
+    });
+
+    it('uses the +10m breach when +5m is safe', async () => {
+      const later = {
+        ...breach,
+        first_violation_minutes: 10,
+        forecasts: [
+          {
+            horizon_minutes: 5,
+            predicted_temp: 3,
+            will_exceed_threshold: false,
+            violation_type: 'NONE',
+          },
+          {
+            horizon_minutes: 10,
+            predicted_temp: 4.8,
+            will_exceed_threshold: true,
+            violation_type: 'OVERHEAT',
+          },
+        ],
+      };
+      aiPrediction.predict.mockResolvedValue(later);
+      await service.ingest('d1', chillSample);
+      await flush();
+      expect(alertsService.raise).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: AlertType.TEMPERATURE_PREDICTED,
+          triggerValue: 4.8,
+          details: expect.objectContaining({
+            firstViolationMinutes: 10,
+            forecasts: later.forecasts,
+          }),
+        }),
+      );
+    });
+
+    it('requires both safe forecasts to clear the hysteresis band', async () => {
+      const mixed = safe(3.5);
+      mixed.forecasts[0].predicted_temp = 3.8;
+      aiPrediction.predict.mockResolvedValue(mixed);
+      await service.ingest('d1', chillSample);
+      await flush();
+      expect(alertsService.resolveAuto).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: AlertType.TEMPERATURE_PREDICTED }),
+      );
     });
 
     it('keeps the forecast alert open while the forecast is safe but inside the hysteresis gap', async () => {
@@ -1133,6 +1334,127 @@ describe('TelemetryService', () => {
       await service.findRaw('d1', { ...range, limit: 50 });
 
       expect(chain.limit).toHaveBeenCalledWith(50);
+    });
+  });
+  describe('bounded reads and summaries', () => {
+    beforeEach(() => {
+      devicesRepository.existsBy.mockResolvedValue(true);
+    });
+
+    it.each([0, -1, 1.5, NaN, Infinity])(
+      'rejects unsafe raw limit %s for direct service callers',
+      async (limit) => {
+        await expect(service.findRaw('d1', { limit })).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(rawModel.find).not.toHaveBeenCalled();
+      },
+    );
+
+    it('caps large raw limits even when HTTP validation is bypassed', async () => {
+      const chain = createQueryChain();
+      rawModel.find.mockReturnValue(chain);
+      await service.findRaw('d1', { limit: 20000 });
+      expect(chain.limit).toHaveBeenCalledWith(5000);
+    });
+
+    it.each([{ from: 'invalid' }, { to: 'invalid' }])(
+      'rejects invalid dates before querying MongoDB',
+      async (range) => {
+        await expect(service.findHourly('d1', range)).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.findRaw('d1', range)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(rawModel.find).not.toHaveBeenCalled();
+        expect(hourlyModel.find).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z', 'hour'],
+      ['2026-01-01T00:00:00Z', '2026-01-10T00:00:00Z', 'day'],
+      ['2025-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'month'],
+    ])('chooses bounded buckets for %s to %s', async (from, to, unit) => {
+      hourlyModel.aggregate.mockReturnValue({
+        exec: jest
+          .fn()
+          .mockResolvedValue([
+            { summary: [{ sampleCount: 400, avgTemp: -18 }], readings: [] },
+          ]),
+      });
+      const output = await service.findHourlySummary(
+        'd1',
+        { from, to },
+        100,
+        'Asia/Ho_Chi_Minh',
+      );
+      expect(output.bucketUnit).toBe(unit);
+      const [pipeline] = hourlyModel.aggregate.mock.calls[0] as [
+        {
+          $facet: {
+            readings: { $group: { _id: { $dateTrunc: unknown } } }[];
+            summary: {
+              $limit?: number;
+              $group: { weightedTemp: { $sum: { $multiply: unknown[] } } };
+            }[];
+          };
+        }[],
+      ];
+      expect(pipeline[1].$facet.readings[0].$group._id.$dateTrunc).toEqual({
+        date: '$hourBucket',
+        unit,
+        timezone: 'Asia/Ho_Chi_Minh',
+      });
+      expect(pipeline[1].$facet.summary.some((stage) => stage.$limit)).toBe(
+        false,
+      );
+      // Weight by sample count: a sparse hour must not count like a full hour.
+      expect(
+        pipeline[1].$facet.summary[0].$group.weightedTemp.$sum.$multiply,
+      ).toContain('$sampleCount');
+      expect(output.summary).toEqual({ sampleCount: 400, avgTemp: -18 });
+    });
+
+    it('keeps whole-range statistics when the detailed series is clipped', async () => {
+      hourlyModel.aggregate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([
+          {
+            summary: [{ sampleCount: 9000, minTemp: -24, maxTemp: -10 }],
+            readings: Array.from({ length: 101 }, (_, i) => ({
+              hourBucket: new Date(i),
+            })),
+          },
+        ]),
+      });
+      const output = await service.findHourlySummary(
+        'd1',
+        {},
+        100,
+        'Asia/Ho_Chi_Minh',
+      );
+      expect(output.readings).toHaveLength(100);
+      expect(output.summary).toEqual({
+        sampleCount: 9000,
+        minTemp: -24,
+        maxTemp: -10,
+      });
+      expect(output.note).toContain('toàn khoảng');
+    });
+
+    it('returns empty coverage rather than inventing statistics when no buckets exist', async () => {
+      hourlyModel.aggregate.mockReturnValue({
+        exec: jest.fn().mockResolvedValue([{ summary: [], readings: [] }]),
+      });
+      const output = await service.findHourlySummary(
+        'd1',
+        {},
+        100,
+        'Asia/Ho_Chi_Minh',
+      );
+      expect(output.summary).toBeNull();
+      expect(output.readings).toEqual([]);
     });
   });
 });

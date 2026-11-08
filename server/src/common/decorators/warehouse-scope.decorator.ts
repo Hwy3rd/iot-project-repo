@@ -5,9 +5,11 @@ import { WarehouseScopeSource } from '../../libs/constants/warehouse-scope.const
 export interface WarehouseScopeMeta {
   source: WarehouseScopeSource;
   paramName: string;
-  // Staff only: also requires an active WorkShift (approved, in progress) for
-  // the caller in the resolved warehouse. Ignored for other roles.
-  requireShift: boolean;
+  // Staff always need an active WorkShift (approved, in progress) in the
+  // resolved warehouse (docs/RBAC.md §3) — except on routes that set this,
+  // i.e. the attendance flow itself (check in/out, own shift). Ignored for
+  // other roles.
+  allowOffShift: boolean;
   // Staff only, WORK_SHIFT_PARAM sources: also requires the target WorkShift's
   // staffId to equal the caller (e.g. check out of your own shift).
   ownStaffOnly: boolean;
@@ -16,7 +18,7 @@ export interface WarehouseScopeMeta {
 export interface WarehouseScopeOptions {
   // Route param or body field name to read the id from. Defaults to 'id'.
   paramName?: string;
-  requireShift?: boolean;
+  allowOffShift?: boolean;
   ownStaffOnly?: boolean;
 }
 
@@ -30,6 +32,6 @@ export const WarehouseScope = (
   SetMetadata<string, WarehouseScopeMeta>(WAREHOUSE_SCOPE_KEY, {
     source,
     paramName: options.paramName ?? 'id',
-    requireShift: options.requireShift ?? false,
+    allowOffShift: options.allowOffShift ?? false,
     ownStaffOnly: options.ownStaffOnly ?? false,
   });

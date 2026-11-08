@@ -29,6 +29,7 @@ import {
   TELEMETRY_RAW_DEFAULT_LIMIT,
   TELEMETRY_RAW_DEFAULT_RANGE_MS,
   TELEMETRY_RAW_MAX_RANGE_MS,
+  TELEMETRY_RAW_MAX_LIMIT,
 } from '../../libs/constants/telemetry.constant';
 import { AlertsService } from '../alerts/alerts.service';
 import { AiPredictionService } from '../ai-prediction/ai-prediction.service';
@@ -300,6 +301,13 @@ export class TelemetryService {
       coldRoom: device.coldRoom,
       ...state,
     });
+    await this.evaluateDoorAlert({
+      deviceId: device.id,
+      coldRoom: device.coldRoom,
+      ts: sample.ts,
+      doorOpen: sample.doorOpen,
+      wasOpen: newest?.doorOpen === true,
+    });
     await this.announceReading({
       warehouseId: device.coldRoom.warehouseId,
       coldRoomId: device.coldRoom.id,
@@ -361,6 +369,69 @@ export class TelemetryService {
         warehouseId: coldRoom.warehouseId,
       });
     }
+  }
+
+  // DOOR_OPEN_TOO_LONG: the board only reports doorOpen per sample (it times
+  // the door itself, but just for its local buzzer), so the open period is
+  // read back from the stored samples: it started at the first sample after
+  // the newest closed one. No extra state to lose on restart, and a device
+  // that drops off while the door is open keeps its original start time.
+  // Raised once open for the room's doorOpenMaxSeconds, refreshed with the
+  // duration while it stays open, cleared by the first closed sample.
+  // `wasOpen` is the previous sample's door: only an open→closed edge can
+  // close the alert, and a door that just opened needs no lookup.
+  private async evaluateDoorAlert(input: {
+    deviceId: string;
+    coldRoom: ColdRoom;
+    ts: Date;
+    doorOpen: boolean;
+    wasOpen: boolean;
+  }): Promise<void> {
+    const { deviceId, coldRoom, ts, doorOpen, wasOpen } = input;
+    const maxSeconds = coldRoom.doorOpenMaxSeconds;
+    if (!doorOpen) {
+      if (!wasOpen) return;
+      await this.alertsService.resolveAuto({
+        type: AlertType.DOOR_OPEN_TOO_LONG,
+        deviceId,
+        coldRoomId: coldRoom.id,
+        warehouseId: coldRoom.warehouseId,
+      });
+      return;
+    }
+    if (!wasOpen || !(maxSeconds > 0)) return;
+
+    const lastClosed = await this.rawModel
+      .findOne({ deviceId, doorOpen: false, ts: { $lt: ts } }, { ts: 1 })
+      .sort({ ts: -1 })
+      .lean()
+      .exec();
+    const firstOpen = await this.rawModel
+      .findOne(
+        {
+          deviceId,
+          ts: { ...(lastClosed ? { $gt: lastClosed.ts } : {}), $lte: ts },
+        },
+        { ts: 1 },
+      )
+      .sort({ ts: 1 })
+      .lean()
+      .exec();
+    const openSince = firstOpen?.ts ?? ts;
+    const openSeconds = Math.floor((ts.getTime() - openSince.getTime()) / 1000);
+    if (openSeconds < maxSeconds) return;
+
+    await this.alertsService.raise({
+      coldRoomId: coldRoom.id,
+      deviceId,
+      type: AlertType.DOOR_OPEN_TOO_LONG,
+      // Not triggerValue: every alert view formats that as a temperature.
+      details: {
+        openSince: openSince.toISOString(),
+        openSeconds,
+        maxSeconds,
+      },
+    });
   }
 
   // Reacts to a single valid reading: raises/refreshes the alert while out
@@ -477,15 +548,22 @@ export class TelemetryService {
       );
 
       if (prediction.will_exceed_threshold) {
+        const firstBreach = prediction.forecasts.find(
+          (point) => point.will_exceed_threshold,
+        );
+        if (!firstBreach) return;
         await this.alertsService.raise({
           coldRoomId: coldRoom.id,
           deviceId,
           type: AlertType.TEMPERATURE_PREDICTED,
-          triggerValue: prediction.predicted_temp_15m,
+          triggerValue: firstBreach.predicted_temp,
           threshold:
             prediction.violation_type === 'OVERHEAT' ? tempMax : tempMin,
           details: {
-            predictedTemp15m: prediction.predicted_temp_15m,
+            forecastSchema: prediction.forecast_schema,
+            asOf: prediction.as_of,
+            forecasts: prediction.forecasts,
+            firstViolationMinutes: prediction.first_violation_minutes,
             violationType: prediction.violation_type,
             riskLevel: prediction.risk_level,
             recommendation: prediction.recommendation,
@@ -494,9 +572,12 @@ export class TelemetryService {
         return;
       }
 
-      const predicted = prediction.predicted_temp_15m;
-      const recovered =
-        predicted <= tempMax - hysteresis && predicted >= tempMin + hysteresis;
+      // Both checkpoints must recover; a safe +10m forecast cannot hide +5m risk.
+      const recovered = prediction.forecasts.every(
+        (point) =>
+          point.predicted_temp <= tempMax - hysteresis &&
+          point.predicted_temp >= tempMin + hysteresis,
+      );
       if (recovered) {
         await this.alertsService.resolveAuto({
           type: AlertType.TEMPERATURE_PREDICTED,
@@ -593,8 +674,117 @@ export class TelemetryService {
       .exec();
   }
 
-  // Oldest-first and capped at `limit`: if the window holds more samples than
-  // that, the newest ones are cut off — page forward by moving `from`.
+  // Whole-range statistics plus an adaptive, bounded time series.
+  async findHourlySummary(
+    deviceId: string,
+    query: QueryTelemetryDto,
+    maxPoints: number,
+    timeZone: string,
+  ) {
+    await this.assertDeviceExists(deviceId);
+    const range = this.resolveRange(
+      query,
+      TELEMETRY_HOURLY_DEFAULT_RANGE_MS,
+      TELEMETRY_HOURLY_MAX_RANGE_MS,
+    );
+    const from = floorToHour(range.from),
+      to = range.to;
+    if (!Number.isInteger(maxPoints) || maxPoints < 1 || maxPoints > 100) {
+      throw new BadRequestException('maxPoints must be between 1 and 100');
+    }
+    const hours = Math.ceil((to.getTime() - from.getTime()) / 3_600_000);
+    const unit =
+      hours <= maxPoints
+        ? 'hour'
+        : Math.ceil(hours / 24) + 1 <= maxPoints
+          ? 'day'
+          : 'month';
+    const groupStats = {
+      sampleCount: { $sum: '$sampleCount' },
+      weightedTemp: {
+        $sum: { $multiply: [{ $ifNull: ['$avgTemp', 0] }, '$sampleCount'] },
+      },
+      minTemp: { $min: '$minTemp' },
+      maxTemp: { $max: '$maxTemp' },
+      outOfRangeCount: { $sum: '$outOfRangeCount' },
+      sensorErrorCount: { $sum: '$sensorErrorCount' },
+      doorOpenCount: { $sum: '$doorOpenCount' },
+      doorKnownBuckets: {
+        $sum: { $cond: [{ $isNumber: '$doorOpenCount' }, 1, 0] },
+      },
+      sourceBuckets: { $sum: 1 },
+    };
+    const stats = {
+      _id: 0,
+      sampleCount: 1,
+      minTemp: 1,
+      maxTemp: 1,
+      outOfRangeCount: 1,
+      sensorErrorCount: 1,
+      sourceBuckets: 1,
+      doorOpenCount: {
+        $cond: [{ $gt: ['$doorKnownBuckets', 0] }, '$doorOpenCount', null],
+      },
+      avgTemp: {
+        $cond: [
+          { $gt: ['$sampleCount', 0] },
+          { $divide: ['$weightedTemp', '$sampleCount'] },
+          null,
+        ],
+      },
+    };
+    // The summary facet covers every matching hour, before any series limit.
+    const [result] = await this.hourlyModel
+      .aggregate<{
+        summary: Record<string, unknown>[];
+        readings: Record<string, unknown>[];
+      }>([
+        { $match: { deviceId, hourBucket: { $gte: from, $lt: to } } },
+        {
+          $facet: {
+            summary: [
+              { $group: { _id: null, ...groupStats } },
+              { $project: stats },
+            ],
+            readings: [
+              {
+                $group: {
+                  _id: {
+                    $dateTrunc: {
+                      date: '$hourBucket',
+                      unit,
+                      timezone: timeZone,
+                    },
+                  },
+                  ...groupStats,
+                },
+              },
+              { $project: { ...stats, hourBucket: '$_id' } },
+              { $sort: { hourBucket: 1 } },
+              { $limit: maxPoints + 1 },
+            ],
+          },
+        },
+      ])
+      .exec();
+    const rows = result?.readings ?? [];
+    const hasMore = rows.length > maxPoints;
+    return {
+      from,
+      to,
+      bucketUnit: unit,
+      timeZone,
+      summary: result?.summary[0] ?? null,
+      readings: rows.slice(0, maxPoints),
+      ...(hasMore
+        ? {
+            note: 'Chuỗi thời gian chỉ có một phần điểm; summary vẫn tính trên toàn khoảng thời gian được truy vấn.',
+          }
+        : {}),
+    };
+  }
+
+  // Oldest-first and capped: page forward by moving from when more samples exist.
   async findRaw(deviceId: string, query: QueryRawTelemetryDto) {
     await this.assertDeviceExists(deviceId);
     const { from, to } = this.resolveRange(
@@ -603,10 +793,14 @@ export class TelemetryService {
       TELEMETRY_RAW_MAX_RANGE_MS,
     );
 
+    const requestedLimit = query.limit ?? TELEMETRY_RAW_DEFAULT_LIMIT;
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1) {
+      throw new BadRequestException('limit must be a positive integer');
+    }
     return this.rawModel
       .find({ deviceId, ts: { $gte: from, $lt: to } })
       .sort({ ts: 1 })
-      .limit(query.limit ?? TELEMETRY_RAW_DEFAULT_LIMIT)
+      .limit(Math.min(requestedLimit, TELEMETRY_RAW_MAX_LIMIT))
       .lean()
       .exec();
   }
@@ -637,6 +831,9 @@ export class TelemetryService {
       ? new Date(query.from)
       : new Date(to.getTime() - defaultRangeMs);
 
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) {
+      throw new BadRequestException('from and to must be valid dates');
+    }
     if (from >= to) {
       throw new BadRequestException('from must be before to');
     }

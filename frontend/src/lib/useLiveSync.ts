@@ -78,6 +78,9 @@ export function useLiveSync(enabled: boolean) {
     const onAlertsChanged = () => {
       void qc.invalidateQueries({ queryKey: STATUS_KEY })
       void qc.invalidateQueries({ queryKey: ['alerts'] })
+      // A device going offline (heartbeat timeout) or back only shows up
+      // as an alert change; refetch devices so their status badge follows.
+      void qc.invalidateQueries({ queryKey: ['devices'] })
       clearTimeout(notificationsTimer)
       notificationsTimer = setTimeout(
         () => void qc.invalidateQueries({ queryKey: ['notifications'] }),

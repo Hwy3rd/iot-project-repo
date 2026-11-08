@@ -1,0 +1,22 @@
+{
+  "purpose": "Integration parity, not model accuracy (final artifact trains on all 123 refrigerators)",
+  "created_at": "2026-10-17T10:55:11.981649+00:00",
+  "refrigerators": 25,
+  "cases": 150,
+  "compartments": {
+    "T_MS": 75,
+    "T_FC": 75
+  },
+  "path": "simulated 5s readings -> actual TypeScript sampler -> real FastAPI HTTP -> final model",
+  "exact_forecast_matches": 150,
+  "threshold_checks": 150,
+  "incomplete_history_status": 422,
+  "http_timeout_ms": 1500,
+  "http_latency_ms": {
+    "max": 126.33199999982025,
+    "median": 17.950999999811756,
+    "p95": 20.4584550004256
+  },
+  "feature_schema": "temperature-history-v1",
+  "omp_num_threads": 4
+}

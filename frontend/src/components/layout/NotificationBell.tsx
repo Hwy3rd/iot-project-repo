@@ -88,7 +88,7 @@ export function NotificationBell() {
                         {n.title}
                         {!n.readAt && <span className="sr-only"> (chưa đọc)</span>}
                       </span>
-                      <span className="mt-0.5 line-clamp-2 text-muted-foreground">{n.body}</span>
+                      <span className="mt-0.5 line-clamp-2 whitespace-pre-line text-muted-foreground">{n.body}</span>
                       <time
                         dateTime={n.createdAt}
                         title={formatDateTime(n.createdAt)}

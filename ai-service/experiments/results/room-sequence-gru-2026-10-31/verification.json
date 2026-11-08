@@ -1,0 +1,41 @@
+{
+  "protected_runtime_unchanged": true,
+  "source_manifest_verified": true,
+  "source_split_disjoint": true,
+  "source": {
+    "samples": 72700,
+    "hgb_predictions_exact": true,
+    "gru_seeds_replayed": [
+      20261031,
+      20261101,
+      20261102
+    ],
+    "max_gru_replay_absolute_difference": 0.0,
+    "metrics_recomputed_exact": true,
+    "hgb_multi_warning_vs_hgb_15m": {
+      "passed": true,
+      "checks": {
+        "recall_gain_at_least_2_points": true,
+        "macro_fpr_increase_at_most_half_point": true,
+        "each_room_fpr_increase_at_most_1_point": true
+      }
+    }
+  },
+  "temporal": {
+    "samples": 72324,
+    "hgb_predictions_exact": true,
+    "gru_seeds_replayed": [
+      20261031
+    ],
+    "max_gru_replay_absolute_difference": 0.0,
+    "metrics_recomputed_exact": true,
+    "hgb_multi_warning_vs_hgb_15m": {
+      "passed": false,
+      "checks": {
+        "recall_gain_at_least_2_points": true,
+        "macro_fpr_increase_at_most_half_point": false,
+        "each_room_fpr_increase_at_most_1_point": false
+      }
+    }
+  }
+}

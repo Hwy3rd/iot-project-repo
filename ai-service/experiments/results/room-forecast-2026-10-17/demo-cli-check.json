@@ -1,0 +1,22 @@
+{
+  "purpose": "Real Node demo CLI over local HTTP; functional checks, not accuracy evaluation",
+  "created_at": "2026-10-17T10:59:23.603956+00:00",
+  "model_sha256": "737b6b8b776ac20fb158771be0615fd9b768ffbfddc588a9bed4d2942cec1d0e",
+  "passed": true,
+  "checks": [
+    {
+      "profile": "chill-normal",
+      "current_temperature": 2.1,
+      "predicted_temp_15m": 2,
+      "will_exceed_threshold": false,
+      "passed": true
+    },
+    {
+      "profile": "chill-warning",
+      "current_temperature": 3.7,
+      "predicted_temp_15m": 4.75,
+      "will_exceed_threshold": true,
+      "passed": true
+    }
+  ]
+}

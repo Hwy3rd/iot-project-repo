@@ -18,4 +18,5 @@ export const AI_PREDICTION_SAMPLE_MAX_AGE_MS = 60_000;
 // 5s cadence this is 733 rows; the cap also covers one reading per second.
 export const AI_PREDICTION_HISTORY_MAX_ROWS = 5000;
 export const AI_PREDICTION_MIN_INTERVAL_MS = 60_000;
-export const AI_PREDICTION_TTL_SECONDS = 15 * 60;
+// Refresh every minute; discard an old set before its first (+5m) target.
+export const AI_PREDICTION_TTL_SECONDS = 5 * 60;

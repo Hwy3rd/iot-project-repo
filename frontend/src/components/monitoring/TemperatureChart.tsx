@@ -1,4 +1,8 @@
 import type { ColdRoomSeries } from '@/api/types'
+import {
+  toForecastPoints as toPoints,
+  type ForecastChartPoint as Point,
+} from '@/lib/forecast-series'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -24,7 +28,10 @@ import {
   YAxis,
   type TooltipContentProps,
 } from 'recharts'
-import type { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent'
+import type {
+  NameType,
+  ValueType,
+} from 'recharts/types/component/DefaultTooltipContent'
 
 // One source for every mark's look: the chart draws with these and the
 // legend renders its swatches from them, so the two can't drift apart.
@@ -38,90 +45,10 @@ const STYLE = {
   forecastRisk: '#f97316',
 } as const
 
-const FORECAST_MINUTES = 15
-
-type Point = ColdRoomSeries['points'][number] & {
-  ts: number
-  band: [number, number] | null
-  forecast?: number | null
-  isPredictionPoint?: boolean
-  predictionMeta?: ColdRoomSeries['prediction']
-}
-
-function toPoints(series: ColdRoomSeries): Point[] {
-  const bucketMs = series.bucketMinutes * 60_000
-  const out: Point[] = []
-  for (const p of series.points) {
-    const ts = new Date(p.t).getTime()
-    const prev = out.at(-1)
-    if (prev && ts - prev.ts > bucketMs * 1.5) {
-      out.push({
-        t: new Date(prev.ts + bucketMs).toISOString(),
-        ts: prev.ts + bucketMs,
-        avg: null,
-        min: null,
-        max: null,
-        samples: 0,
-        outOfRange: 0,
-        doorOpen: 0,
-        sensorFault: 0,
-        humidity: null,
-        fanPowerFault: 0,
-        band: null,
-        forecast: null,
-      })
-    }
-    out.push({
-      ...p,
-      ts,
-      band: p.min !== null && p.max !== null ? [p.min, p.max] : null,
-      forecast: null,
-    })
-  }
-
-  // If AI prediction is available and we have historical points, anchor the forecast
-  if (series.prediction && out.length > 0) {
-    let lastValidIdx = -1
-    for (let i = out.length - 1; i >= 0; i--) {
-      if (out[i].avg !== null) {
-        lastValidIdx = i
-        break
-      }
-    }
-    // From when the forecast was made, not from the last bucket's start —
-    // with 15-minute buckets those can be most of a bucket apart.
-    const predTs = new Date(series.prediction.predictedAt).getTime() + FORECAST_MINUTES * 60_000
-    // Always true while the server keeps a forecast (15 min TTL); guards
-    // against clock skew drawing the line backwards.
-    if (lastValidIdx !== -1 && predTs > out[out.length - 1].ts) {
-      const lastPoint = out[lastValidIdx]
-      // Anchor forecast at last known measured reading so dashed line starts smoothly
-      lastPoint.forecast = lastPoint.avg
-
-      out.push({
-        t: new Date(predTs).toISOString(),
-        ts: predTs,
-        avg: null,
-        min: null,
-        max: null,
-        samples: 1,
-        outOfRange: series.prediction.willExceedThreshold ? 1 : 0,
-        doorOpen: 0,
-        sensorFault: 0,
-        humidity: null,
-        fanPowerFault: 0,
-        band: null,
-        forecast: series.prediction.predictedTemp15m,
-        isPredictionPoint: true,
-        predictionMeta: series.prediction,
-      })
-    }
-  }
-
-  return out
-}
-
-function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameType>) {
+function ChartTooltip({
+  active,
+  payload,
+}: TooltipContentProps<ValueType, NameType>) {
   const p = active ? (payload?.[0]?.payload as Point | undefined) : undefined
   if (!p) return null
 
@@ -131,18 +58,22 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
       <div className="rounded-lg border border-purple-500/40 bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg backdrop-blur-sm">
         <div className="flex items-center gap-1.5 font-semibold text-purple-600 dark:text-purple-400">
           <Sparkles className="h-4 w-4" />
-          <span>Dự báo AI (+{FORECAST_MINUTES} phút)</span>
+          <span>Dự báo AI (+{p.forecastPoint?.horizonMinutes} phút)</span>
         </div>
         <p className="font-medium tabular-nums text-muted-foreground">
           Cho lúc {dayjs(p.ts).format('DD/MM HH:mm')} · dự báo lúc{' '}
           {dayjs(meta.predictedAt).format('HH:mm')}
         </p>
         <p className="mt-1 text-base font-bold tabular-nums">
-          Dự báo: <span className="text-purple-600 dark:text-purple-400">{formatTemp(p.forecast)}</span>
+          Dự báo:{' '}
+          <span className="text-purple-600 dark:text-purple-400">
+            {formatTemp(p.forecast)}
+          </span>
         </p>
-        {meta.willExceedThreshold ? (
+        {p.forecastPoint?.willExceedThreshold ? (
           <p className="mt-1 text-xs font-semibold text-destructive">
-            ⚠️ {AI_VIOLATION_LABEL[meta.violationType]} (Mức rủi ro: {AI_RISK_LEVEL_LABEL[meta.riskLevel]})
+            ⚠️ {AI_VIOLATION_LABEL[p.forecastPoint.violationType]} (Mức rủi ro:{' '}
+            {AI_RISK_LEVEL_LABEL[meta.riskLevel]})
           </p>
         ) : (
           <p className="mt-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
@@ -162,7 +93,9 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
 
   return (
     <div className="rounded-lg border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md">
-      <p className="font-medium tabular-nums">{dayjs(p.ts).format('DD/MM HH:mm')}</p>
+      <p className="font-medium tabular-nums">
+        {dayjs(p.ts).format('DD/MM HH:mm')}
+      </p>
       {p.avg === null ? (
         <p className="text-destructive">Không có số đo hợp lệ (lỗi cảm biến)</p>
       ) : (
@@ -174,21 +107,34 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
           </span>
         </p>
       )}
-      <p className="text-muted-foreground tabular-nums">{formatNumber(p.samples)} mẫu</p>
+      <p className="text-muted-foreground tabular-nums">
+        {formatNumber(p.samples)} mẫu
+      </p>
       {p.humidity != null && (
         <p className="tabular-nums">
-          Độ ẩm <span className="font-semibold">{formatHumidity(p.humidity)}</span>
+          Độ ẩm{' '}
+          <span className="font-semibold">{formatHumidity(p.humidity)}</span>
         </p>
       )}
       {p.outOfRange > 0 && (
-        <p className="text-destructive">{formatNumber(p.outOfRange)} mẫu vượt ngưỡng</p>
+        <p className="text-destructive">
+          {formatNumber(p.outOfRange)} mẫu vượt ngưỡng
+        </p>
       )}
-      {p.doorOpen > 0 && <p className="text-warning">Cửa mở trong {formatNumber(p.doorOpen)} mẫu</p>}
+      {p.doorOpen > 0 && (
+        <p className="text-warning">
+          Cửa mở trong {formatNumber(p.doorOpen)} mẫu
+        </p>
+      )}
       {p.sensorFault > 0 && (
-        <p className="text-destructive">{formatNumber(p.sensorFault)} mẫu lỗi cảm biến</p>
+        <p className="text-destructive">
+          {formatNumber(p.sensorFault)} mẫu lỗi cảm biến
+        </p>
       )}
       {(p.fanPowerFault ?? 0) > 0 && (
-        <p className="text-destructive">{formatNumber(p.fanPowerFault)} mẫu mất nguồn quạt</p>
+        <p className="text-destructive">
+          {formatNumber(p.fanPowerFault)} mẫu mất nguồn quạt
+        </p>
       )}
     </div>
   )
@@ -196,16 +142,32 @@ function ChartTooltip({ active, payload }: TooltipContentProps<ValueType, NameTy
 
 function OutOfRangeDot(props: { cx?: number; cy?: number; payload?: Point }) {
   const { cx, cy, payload } = props
-  if (cx === undefined || cy === undefined || !payload || !isOutOfRangeDot(payload)) return null
+  if (
+    cx === undefined ||
+    cy === undefined ||
+    !payload ||
+    !isOutOfRangeDot(payload)
+  )
+    return null
   return (
-    <circle cx={cx} cy={cy} r={4.5} fill={STYLE.limit} stroke="var(--card)" strokeWidth={2} />
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4.5}
+      fill={STYLE.limit}
+      stroke="var(--card)"
+      strokeWidth={2}
+    />
   )
 }
 
 function PredictionDot(props: { cx?: number; cy?: number; payload?: Point }) {
   const { cx, cy, payload } = props
-  if (cx === undefined || cy === undefined || !payload?.isPredictionPoint) return null
-  const color = forecastColor(payload.predictionMeta)
+  if (cx === undefined || cy === undefined || !payload?.isPredictionPoint)
+    return null
+  const color = payload.forecastPoint?.willExceedThreshold
+    ? STYLE.forecastRisk
+    : STYLE.forecastSafe
   return (
     <g>
       <circle cx={cx} cy={cy} r={7} fill={color} fillOpacity={0.3} />
@@ -222,7 +184,9 @@ function PredictionDot(props: { cx?: number; cy?: number; payload?: Point }) {
 }
 
 function forecastColor(prediction: ColdRoomSeries['prediction'] | undefined) {
-  return prediction?.willExceedThreshold ? STYLE.forecastRisk : STYLE.forecastSafe
+  return prediction?.willExceedThreshold
+    ? STYLE.forecastRisk
+    : STYLE.forecastSafe
 }
 
 function isOutOfRangeDot(p: Point) {
@@ -232,12 +196,26 @@ function isOutOfRangeDot(p: Point) {
 function LineSwatch({ color, dash }: { color: string; dash?: string }) {
   return (
     <svg width="22" height="10" aria-hidden className="shrink-0">
-      <line x1="1" y1="5" x2="21" y2="5" stroke={color} strokeWidth={2} strokeDasharray={dash} />
+      <line
+        x1="1"
+        y1="5"
+        x2="21"
+        y2="5"
+        stroke={color}
+        strokeWidth={2}
+        strokeDasharray={dash}
+      />
     </svg>
   )
 }
 
-function LegendItem({ swatch, children }: { swatch: React.ReactNode; children: React.ReactNode }) {
+function LegendItem({
+  swatch,
+  children,
+}: {
+  swatch: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <li className="flex items-center gap-1.5">
       {swatch}
@@ -257,17 +235,29 @@ function ChartLegend({
 }) {
   return (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
-      <LegendItem swatch={<LineSwatch color={STYLE.temp} />}>Nhiệt độ trung bình</LegendItem>
+      <LegendItem swatch={<LineSwatch color={STYLE.temp} />}>
+        Nhiệt độ trung bình
+      </LegendItem>
       <LegendItem
         swatch={
           <svg width="22" height="10" aria-hidden className="shrink-0">
-            <rect x="1" y="1" width="20" height="8" rx="1.5" fill={STYLE.temp} fillOpacity={STYLE.bandOpacity * 2} />
+            <rect
+              x="1"
+              y="1"
+              width="20"
+              height="8"
+              rx="1.5"
+              fill={STYLE.temp}
+              fillOpacity={STYLE.bandOpacity * 2}
+            />
           </svg>
         }
       >
         Dải thấp nhất – cao nhất
       </LegendItem>
-      <LegendItem swatch={<LineSwatch color={STYLE.limit} dash={STYLE.limitDash} />}>
+      <LegendItem
+        swatch={<LineSwatch color={STYLE.limit} dash={STYLE.limitDash} />}
+      >
         Ngưỡng cho phép (sàn / trần)
       </LegendItem>
       {hasOutOfRange && (
@@ -282,10 +272,22 @@ function ChartLegend({
         </LegendItem>
       )}
       {prediction && (
-        <LegendItem swatch={<LineSwatch color={forecastColor(prediction)} dash={STYLE.forecastDash} />}>
-          <span style={{ color: forecastColor(prediction) }} className="font-medium">
-            Dự báo AI +{FORECAST_MINUTES} phút
-            {prediction.willExceedThreshold ? ' (nguy cơ vượt ngưỡng)' : ' (trong ngưỡng)'}
+        <LegendItem
+          swatch={
+            <LineSwatch
+              color={forecastColor(prediction)}
+              dash={STYLE.forecastDash}
+            />
+          }
+        >
+          <span
+            style={{ color: forecastColor(prediction) }}
+            className="font-medium"
+          >
+            Dự báo AI +5 / +10 phút
+            {prediction.willExceedThreshold
+              ? ' (nguy cơ vượt ngưỡng)'
+              : ' (trong ngưỡng)'}
           </span>
         </LegendItem>
       )}
@@ -313,7 +315,8 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
 
   const from = new Date(series.from).getTime()
   const to = new Date(series.to).getTime()
-  const maxTs = points.length > 0 ? Math.max(to, ...points.map((p) => p.ts)) : to
+  const maxTs =
+    points.length > 0 ? Math.max(to, ...points.map((p) => p.ts)) : to
   const spansDays = maxTs - from > 12 * 60 * 60_000
 
   return (
@@ -331,7 +334,9 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
         <ChartLegend
           // Only when the forecast point was actually placed (toPoints skips it
           // without a usable predictedAt).
-          prediction={points.some((p) => p.isPredictionPoint) ? series.prediction : null}
+          prediction={
+            points.some((p) => p.isPredictionPoint) ? series.prediction : null
+          }
           hasOutOfRange={points.some(isOutOfRangeDot)}
         />
       )}
@@ -352,57 +357,92 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[...points].filter((p) => p.samples > 0).reverse().map((p) => (
-                <TableRow key={p.t} className={p.isPredictionPoint ? 'bg-purple-50/50 dark:bg-purple-950/20 font-medium' : undefined}>
-                  <TableCell className="pl-3 tabular-nums">
-                    {dayjs(p.ts).format('DD/MM HH:mm')}
-                    {p.isPredictionPoint && <span className="ml-1.5 text-xs text-purple-600 dark:text-purple-400">(Dự báo AI)</span>}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {p.isPredictionPoint ? (
-                      <span className="text-purple-600 dark:text-purple-400 font-semibold">{formatTemp(p.forecast)}</span>
-                    ) : (
-                      formatTemp(p.avg)
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {p.isPredictionPoint ? '—' : `${formatTemp(p.min)} – ${formatTemp(p.max)}`}
-                  </TableCell>
-                  <TableCell className="pr-3 text-right text-muted-foreground">
-                    {p.isPredictionPoint ? (
-                      p.predictionMeta?.willExceedThreshold ? (
-                        <span className="text-destructive font-medium">⚠️ Nguy cơ vượt ngưỡng</span>
+              {[...points]
+                .filter((p) => p.samples > 0 || p.isPredictionPoint)
+                .reverse()
+                .map((p) => (
+                  <TableRow
+                    key={p.t}
+                    className={
+                      p.isPredictionPoint
+                        ? 'bg-purple-50/50 dark:bg-purple-950/20 font-medium'
+                        : undefined
+                    }
+                  >
+                    <TableCell className="pl-3 tabular-nums">
+                      {dayjs(p.ts).format('DD/MM HH:mm')}
+                      {p.isPredictionPoint && (
+                        <span className="ml-1.5 text-xs text-purple-600 dark:text-purple-400">
+                          (AI +{p.forecastPoint?.horizonMinutes} phút)
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {p.isPredictionPoint ? (
+                        <span className="text-purple-600 dark:text-purple-400 font-semibold">
+                          {formatTemp(p.forecast)}
+                        </span>
                       ) : (
-                        <span className="text-emerald-600 dark:text-emerald-400">✓ An toàn</span>
-                      )
-                    ) : (
-                      [
-                        p.outOfRange > 0 && 'vượt ngưỡng',
-                        p.doorOpen > 0 && 'cửa mở',
-                        p.sensorFault > 0 && 'lỗi cảm biến',
-                        (p.fanPowerFault ?? 0) > 0 && 'mất nguồn quạt',
-                      ]
-                        .filter(Boolean)
-                        .join(', ') || '—'
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+                        formatTemp(p.avg)
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {p.isPredictionPoint
+                        ? '—'
+                        : `${formatTemp(p.min)} – ${formatTemp(p.max)}`}
+                    </TableCell>
+                    <TableCell className="pr-3 text-right text-muted-foreground">
+                      {p.isPredictionPoint ? (
+                        p.forecastPoint?.willExceedThreshold ? (
+                          <span className="text-destructive font-medium">
+                            ⚠️ Nguy cơ vượt ngưỡng
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            ✓ An toàn
+                          </span>
+                        )
+                      ) : (
+                        [
+                          p.outOfRange > 0 && 'vượt ngưỡng',
+                          p.doorOpen > 0 && 'cửa mở',
+                          p.sensorFault > 0 && 'lỗi cảm biến',
+                          (p.fanPowerFault ?? 0) > 0 && 'mất nguồn quạt',
+                        ]
+                          .filter(Boolean)
+                          .join(', ') || '—'
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </div>
       ) : (
-        <div className="h-72 w-full" role="img" aria-label="Biểu đồ nhiệt độ phòng lạnh theo thời gian">
+        <div
+          className="h-72 w-full"
+          role="img"
+          aria-label="Biểu đồ nhiệt độ phòng lạnh theo thời gian"
+        >
           <ResponsiveContainer width="100%" height="100%">
             {/* Right margin fits the threshold labels, e.g. "Trần -18 °C". */}
-            <ComposedChart data={points} margin={{ top: 16, right: 76, bottom: 0, left: 0 }}>
-              <CartesianGrid stroke="var(--border)" strokeDasharray="0" vertical={false} />
+            <ComposedChart
+              data={points}
+              margin={{ top: 16, right: 76, bottom: 0, left: 0 }}
+            >
+              <CartesianGrid
+                stroke="var(--border)"
+                strokeDasharray="0"
+                vertical={false}
+              />
               <XAxis
                 dataKey="ts"
                 type="number"
                 scale="time"
                 domain={[from, maxTs]}
-                tickFormatter={(v: number) => dayjs(v).format(spansDays ? 'DD/MM HH:mm' : 'HH:mm')}
+                tickFormatter={(v: number) =>
+                  dayjs(v).format(spansDays ? 'DD/MM HH:mm' : 'HH:mm')
+                }
                 tick={{ fill: 'var(--muted-foreground)', fontSize: 12 }}
                 tickLine={false}
                 axisLine={{ stroke: 'var(--border)' }}
@@ -418,21 +458,35 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
               />
               <Tooltip
                 content={ChartTooltip}
-                cursor={{ stroke: 'var(--muted-foreground)', strokeWidth: 1, strokeDasharray: '4 4' }}
+                cursor={{
+                  stroke: 'var(--muted-foreground)',
+                  strokeWidth: 1,
+                  strokeDasharray: '4 4',
+                }}
               />
               <ReferenceLine
                 y={tempMax}
                 stroke={STYLE.limit}
                 strokeDasharray={STYLE.limitDash}
                 strokeWidth={1.5}
-                label={{ value: `Trần ${formatTemp(tempMax)}`, position: 'right', fill: 'var(--muted-foreground)', fontSize: 12 }}
+                label={{
+                  value: `Trần ${formatTemp(tempMax)}`,
+                  position: 'right',
+                  fill: 'var(--muted-foreground)',
+                  fontSize: 12,
+                }}
               />
               <ReferenceLine
                 y={tempMin}
                 stroke={STYLE.limit}
                 strokeDasharray={STYLE.limitDash}
                 strokeWidth={1.5}
-                label={{ value: `Sàn ${formatTemp(tempMin)}`, position: 'right', fill: 'var(--muted-foreground)', fontSize: 12 }}
+                label={{
+                  value: `Sàn ${formatTemp(tempMin)}`,
+                  position: 'right',
+                  fill: 'var(--muted-foreground)',
+                  fontSize: 12,
+                }}
               />
               <Area
                 dataKey="band"
@@ -448,7 +502,12 @@ export function TemperatureChart({ series }: { series: ColdRoomSeries }) {
                 stroke={STYLE.temp}
                 strokeWidth={2}
                 dot={OutOfRangeDot}
-                activeDot={{ r: 5, stroke: 'var(--card)', strokeWidth: 2, fill: STYLE.temp }}
+                activeDot={{
+                  r: 5,
+                  stroke: 'var(--card)',
+                  strokeWidth: 2,
+                  fill: STYLE.temp,
+                }}
                 isAnimationActive={false}
                 connectNulls={false}
               />

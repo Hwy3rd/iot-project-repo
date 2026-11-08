@@ -89,7 +89,7 @@ export class WarehouseScopeGuard implements CanActivate {
       request.warehouseAccess = await this.warehouseAccess.resolve(
         user,
         requiredRoles,
-        { requireShift: listMeta.requireShift },
+        { allowOffShift: listMeta.allowOffShift },
       );
       return true;
     }
@@ -124,7 +124,7 @@ export class WarehouseScopeGuard implements CanActivate {
       }
     }
 
-    if (meta.requireShift && actsAsStaff) {
+    if (actsAsStaff && !meta.allowOffShift) {
       const activeIds = await this.warehouseAccess.warehousesWithActiveShift(
         user.id,
         [warehouseId],

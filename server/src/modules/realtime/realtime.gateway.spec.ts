@@ -5,6 +5,7 @@ import { WsException } from '@nestjs/websockets';
 import { Repository } from 'typeorm';
 import { UserRole, UserStatus } from '../../libs/constants/user.constant';
 import { WarehouseStaff } from '../warehouses/entities/warehouse-staff.entity';
+import { WarehouseAccessService } from '../../common/rbac/warehouse-access.service';
 import { REDIS_CLIENT } from '../../libs/redis/redis.constant';
 import { RealtimeGateway } from './realtime.gateway';
 
@@ -26,6 +27,7 @@ describe('RealtimeGateway', () => {
   let gateway: RealtimeGateway;
   let jwtService: { verifyAsync: jest.Mock };
   let warehouseStaffRepository: MockRepository<WarehouseStaff>;
+  let warehouseAccess: { warehousesWithActiveShift: jest.Mock };
   let redis: { exists: jest.Mock };
 
   const payload = {
@@ -38,6 +40,9 @@ describe('RealtimeGateway', () => {
 
   beforeEach(async () => {
     redis = { exists: jest.fn().mockResolvedValue(0) };
+    warehouseAccess = {
+      warehousesWithActiveShift: jest.fn().mockResolvedValue(['w1']),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RealtimeGateway,
@@ -47,6 +52,7 @@ describe('RealtimeGateway', () => {
           useValue: { existsBy: jest.fn() },
         },
         { provide: REDIS_CLIENT, useValue: redis },
+        { provide: WarehouseAccessService, useValue: warehouseAccess },
       ],
     }).compile();
 
@@ -197,7 +203,32 @@ describe('RealtimeGateway', () => {
       expect(result).toEqual({ warehouseId: 'w1' });
     });
 
-    it('lets a non-admin join a warehouse they are assigned to', async () => {
+    it('rejects Staff joining an assigned warehouse they are not on shift at', async () => {
+      const client = createSocket({
+        data: { user: { id: 'u1', username: 'u1', role: UserRole.STAFF } },
+      });
+      warehouseStaffRepository.existsBy!.mockResolvedValue(true);
+      warehouseAccess.warehousesWithActiveShift.mockResolvedValue([]);
+
+      await expect(
+        gateway.handleJoinWarehouse(client as never, { warehouseId: 'w1' }),
+      ).rejects.toThrow('Not on shift at warehouse w1');
+      expect(client.join).not.toHaveBeenCalled();
+    });
+
+    it('lets a Manager join an assigned warehouse without a shift', async () => {
+      const client = createSocket({
+        data: { user: { id: 'u1', username: 'u1', role: UserRole.MANAGER } },
+      });
+      warehouseStaffRepository.existsBy!.mockResolvedValue(true);
+
+      await gateway.handleJoinWarehouse(client as never, { warehouseId: 'w1' });
+
+      expect(warehouseAccess.warehousesWithActiveShift).not.toHaveBeenCalled();
+      expect(client.join).toHaveBeenCalledWith('warehouse:w1');
+    });
+
+    it('lets Staff join a warehouse they are assigned to and on shift at', async () => {
       const client = createSocket({
         data: { user: { id: 'u1', username: 'u1', role: UserRole.STAFF } },
       });

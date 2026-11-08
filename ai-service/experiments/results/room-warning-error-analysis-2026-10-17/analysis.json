@@ -1,0 +1,5686 @@
+{
+  "created_at": "2026-10-17T14:18:36.012715+00:00",
+  "reference_run": "D:\\Study\\ky 1 nam 4\\IoT\\iot-ai-room-forecast\\ai-service\\experiments\\results\\room-warning-2026-10-17",
+  "runtime_sha256": "737b6b8b776ac20fb158771be0615fd9b768ffbfddc588a9bed4d2942cec1d0e",
+  "classifier_thresholds": {
+    "room_0_4": 0.49999678343137144,
+    "room_2_6": 0.5415903088711711,
+    "room_minus22_minus18": 0.6400993632523043,
+    "room_minus28_minus22": 0.7088644607729087
+  },
+  "rooms": {
+    "room_0_4": {
+      "samples": 21705,
+      "sources": 22,
+      "positives": 2326,
+      "models": {
+        "point": {
+          "samples": 21705,
+          "positives": 2326,
+          "precision": 0.7072630646589902,
+          "recall": 0.6865864144453998,
+          "false_negative_rate": 0.3134135855546002,
+          "false_positive_rate": 0.03410908715620001,
+          "f1": 0.6967713787085514,
+          "confusion_matrix": {
+            "tp": 1597,
+            "fn": 729,
+            "fp": 661,
+            "tn": 18718
+          }
+        },
+        "classifier": {
+          "samples": 21705,
+          "positives": 2326,
+          "precision": 0.7146866230121609,
+          "recall": 0.6569217540842648,
+          "false_negative_rate": 0.34307824591573516,
+          "false_positive_rate": 0.031477372413437225,
+          "f1": 0.6845878136200717,
+          "confusion_matrix": {
+            "tp": 1528,
+            "fn": 798,
+            "fp": 610,
+            "tn": 18769
+          }
+        }
+      }
+    },
+    "room_2_6": {
+      "samples": 18675,
+      "sources": 23,
+      "positives": 1738,
+      "models": {
+        "point": {
+          "samples": 18675,
+          "positives": 1738,
+          "precision": 0.7703180212014135,
+          "recall": 0.5017261219792866,
+          "false_negative_rate": 0.4982738780207135,
+          "false_positive_rate": 0.015351006671783669,
+          "f1": 0.6076655052264809,
+          "confusion_matrix": {
+            "tp": 872,
+            "fn": 866,
+            "fp": 260,
+            "tn": 16677
+          }
+        },
+        "classifier": {
+          "samples": 18675,
+          "positives": 1738,
+          "precision": 0.7608906098741529,
+          "recall": 0.4522439585730725,
+          "false_negative_rate": 0.5477560414269275,
+          "false_positive_rate": 0.014583456338194486,
+          "f1": 0.567304222302418,
+          "confusion_matrix": {
+            "tp": 786,
+            "fn": 952,
+            "fp": 247,
+            "tn": 16690
+          }
+        }
+      }
+    },
+    "room_minus22_minus18": {
+      "samples": 2280,
+      "sources": 9,
+      "positives": 999,
+      "models": {
+        "point": {
+          "samples": 2280,
+          "positives": 999,
+          "precision": 0.8288633461047255,
+          "recall": 0.6496496496496497,
+          "false_negative_rate": 0.35035035035035034,
+          "false_positive_rate": 0.10460577673692428,
+          "f1": 0.7283950617283951,
+          "confusion_matrix": {
+            "tp": 649,
+            "fn": 350,
+            "fp": 134,
+            "tn": 1147
+          }
+        },
+        "classifier": {
+          "samples": 2280,
+          "positives": 999,
+          "precision": 0.9343696027633851,
+          "recall": 0.5415415415415415,
+          "false_negative_rate": 0.45845845845845845,
+          "false_positive_rate": 0.02966432474629196,
+          "f1": 0.6856780735107731,
+          "confusion_matrix": {
+            "tp": 541,
+            "fn": 458,
+            "fp": 38,
+            "tn": 1243
+          }
+        }
+      }
+    },
+    "room_minus28_minus22": {
+      "samples": 1973,
+      "sources": 3,
+      "positives": 253,
+      "models": {
+        "point": {
+          "samples": 1973,
+          "positives": 253,
+          "precision": 0.9202898550724637,
+          "recall": 0.5019762845849802,
+          "false_negative_rate": 0.4980237154150198,
+          "false_positive_rate": 0.006395348837209302,
+          "f1": 0.649616368286445,
+          "confusion_matrix": {
+            "tp": 127,
+            "fn": 126,
+            "fp": 11,
+            "tn": 1709
+          }
+        },
+        "classifier": {
+          "samples": 1973,
+          "positives": 253,
+          "precision": 0.926829268292683,
+          "recall": 0.30039525691699603,
+          "false_negative_rate": 0.6996047430830039,
+          "false_positive_rate": 0.0034883720930232558,
+          "f1": 0.4537313432835821,
+          "confusion_matrix": {
+            "tp": 76,
+            "fn": 177,
+            "fp": 6,
+            "tn": 1714
+          }
+        }
+      }
+    }
+  },
+  "macro": {
+    "point": {
+      "recall": 0.584984617664829,
+      "precision": 0.8066835717593983,
+      "f1": 0.6706120784874681,
+      "false_positive_rate": 0.04011530485052931,
+      "false_negative_rate": 0.41501538233517093,
+      "average_precision": 0.7032535064408327
+    },
+    "classifier": {
+      "recall": 0.48777562777896877,
+      "precision": 0.8341940259855954,
+      "f1": 0.5978253631792112,
+      "false_positive_rate": 0.019803381397736734,
+      "false_negative_rate": 0.5122243722210312,
+      "average_precision": 0.7448059668771074
+    }
+  },
+  "pooled": {
+    "samples": 44633,
+    "sources": 23,
+    "positives": 5316,
+    "models": {
+      "point": {
+        "samples": 44633,
+        "positives": 5316,
+        "precision": 0.7527255857109719,
+        "recall": 0.6104213694507148,
+        "false_negative_rate": 0.38957863054928515,
+        "false_positive_rate": 0.02711295368415698,
+        "f1": 0.6741456320764516,
+        "confusion_matrix": {
+          "tp": 3245,
+          "fn": 2071,
+          "fp": 1066,
+          "tn": 38251
+        }
+      },
+      "classifier": {
+        "samples": 44633,
+        "positives": 5316,
+        "precision": 0.764874739039666,
+        "recall": 0.551354401805869,
+        "false_negative_rate": 0.4486455981941309,
+        "false_positive_rate": 0.022916295749930055,
+        "f1": 0.6407958023611718,
+        "confusion_matrix": {
+          "tp": 2931,
+          "fn": 2385,
+          "fp": 901,
+          "tn": 38416
+        }
+      }
+    }
+  },
+  "positive_groups": {
+    "severity": {
+      "0..0.2 C": {
+        "samples": 1285,
+        "sources": 22,
+        "positives": 1285,
+        "models": {
+          "point": {
+            "samples": 1285,
+            "positives": 1285,
+            "precision": 1.0,
+            "recall": 0.3151750972762646,
+            "false_negative_rate": 0.6848249027237354,
+            "false_positive_rate": null,
+            "f1": 0.47928994082840237,
+            "confusion_matrix": {
+              "tp": 405,
+              "fn": 880,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1285,
+            "positives": 1285,
+            "precision": 1.0,
+            "recall": 0.21478599221789882,
+            "false_negative_rate": 0.7852140077821012,
+            "false_positive_rate": null,
+            "f1": 0.35361947469570787,
+            "confusion_matrix": {
+              "tp": 276,
+              "fn": 1009,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "0.2..0.5 C": {
+        "samples": 1087,
+        "sources": 22,
+        "positives": 1087,
+        "models": {
+          "point": {
+            "samples": 1087,
+            "positives": 1087,
+            "precision": 1.0,
+            "recall": 0.5068997240110396,
+            "false_negative_rate": 0.49310027598896045,
+            "false_positive_rate": null,
+            "f1": 0.6727716727716728,
+            "confusion_matrix": {
+              "tp": 551,
+              "fn": 536,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1087,
+            "positives": 1087,
+            "precision": 1.0,
+            "recall": 0.42410303587856485,
+            "false_negative_rate": 0.5758969641214351,
+            "false_positive_rate": null,
+            "f1": 0.5956072351421189,
+            "confusion_matrix": {
+              "tp": 461,
+              "fn": 626,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "0.5..1 C": {
+        "samples": 1199,
+        "sources": 20,
+        "positives": 1199,
+        "models": {
+          "point": {
+            "samples": 1199,
+            "positives": 1199,
+            "precision": 1.0,
+            "recall": 0.7172643869891576,
+            "false_negative_rate": 0.2827356130108424,
+            "false_positive_rate": null,
+            "f1": 0.8353569694026226,
+            "confusion_matrix": {
+              "tp": 860,
+              "fn": 339,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1199,
+            "positives": 1199,
+            "precision": 1.0,
+            "recall": 0.6814011676396997,
+            "false_negative_rate": 0.31859883236030023,
+            "false_positive_rate": null,
+            "f1": 0.810515873015873,
+            "confusion_matrix": {
+              "tp": 817,
+              "fn": 382,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "1..2 C": {
+        "samples": 702,
+        "sources": 19,
+        "positives": 702,
+        "models": {
+          "point": {
+            "samples": 702,
+            "positives": 702,
+            "precision": 1.0,
+            "recall": 0.7407407407407407,
+            "false_negative_rate": 0.25925925925925924,
+            "false_positive_rate": null,
+            "f1": 0.851063829787234,
+            "confusion_matrix": {
+              "tp": 520,
+              "fn": 182,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 702,
+            "positives": 702,
+            "precision": 1.0,
+            "recall": 0.6752136752136753,
+            "false_negative_rate": 0.3247863247863248,
+            "false_positive_rate": null,
+            "f1": 0.8061224489795918,
+            "confusion_matrix": {
+              "tp": 474,
+              "fn": 228,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      ">2 C": {
+        "samples": 1043,
+        "sources": 14,
+        "positives": 1043,
+        "models": {
+          "point": {
+            "samples": 1043,
+            "positives": 1043,
+            "precision": 1.0,
+            "recall": 0.8715244487056567,
+            "false_negative_rate": 0.12847555129434324,
+            "false_positive_rate": null,
+            "f1": 0.9313524590163934,
+            "confusion_matrix": {
+              "tp": 909,
+              "fn": 134,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1043,
+            "positives": 1043,
+            "precision": 1.0,
+            "recall": 0.8657718120805369,
+            "false_negative_rate": 0.1342281879194631,
+            "false_positive_rate": null,
+            "f1": 0.9280575539568345,
+            "confusion_matrix": {
+              "tp": 903,
+              "fn": 140,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      }
+    },
+    "direction": {
+      "above_only": {
+        "samples": 2500,
+        "sources": 22,
+        "positives": 2500,
+        "models": {
+          "point": {
+            "samples": 2500,
+            "positives": 2500,
+            "precision": 1.0,
+            "recall": 0.5424,
+            "false_negative_rate": 0.4576,
+            "false_positive_rate": null,
+            "f1": 0.7033195020746889,
+            "confusion_matrix": {
+              "tp": 1356,
+              "fn": 1144,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 2500,
+            "positives": 2500,
+            "precision": 1.0,
+            "recall": 0.4616,
+            "false_negative_rate": 0.5384,
+            "false_positive_rate": null,
+            "f1": 0.6316365626710454,
+            "confusion_matrix": {
+              "tp": 1154,
+              "fn": 1346,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "below_only": {
+        "samples": 2806,
+        "sources": 19,
+        "positives": 2806,
+        "models": {
+          "point": {
+            "samples": 2806,
+            "positives": 2806,
+            "precision": 1.0,
+            "recall": 0.6696364932287955,
+            "false_negative_rate": 0.3303635067712046,
+            "false_positive_rate": null,
+            "f1": 0.8021344717182497,
+            "confusion_matrix": {
+              "tp": 1879,
+              "fn": 927,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 2806,
+            "positives": 2806,
+            "precision": 1.0,
+            "recall": 0.6297220242337848,
+            "false_negative_rate": 0.37027797576621524,
+            "false_positive_rate": null,
+            "f1": 0.7727968510824405,
+            "confusion_matrix": {
+              "tp": 1767,
+              "fn": 1039,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "both": {
+        "samples": 10,
+        "sources": 1,
+        "positives": 10,
+        "models": {
+          "point": {
+            "samples": 10,
+            "positives": 10,
+            "precision": 1.0,
+            "recall": 1.0,
+            "false_negative_rate": 0.0,
+            "false_positive_rate": null,
+            "f1": 1.0,
+            "confusion_matrix": {
+              "tp": 10,
+              "fn": 0,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 10,
+            "positives": 10,
+            "precision": 1.0,
+            "recall": 1.0,
+            "false_negative_rate": 0.0,
+            "false_positive_rate": null,
+            "f1": 1.0,
+            "confusion_matrix": {
+              "tp": 10,
+              "fn": 0,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      }
+    },
+    "future_outside_count": {
+      "1": {
+        "samples": 1722,
+        "sources": 23,
+        "positives": 1722,
+        "models": {
+          "point": {
+            "samples": 1722,
+            "positives": 1722,
+            "precision": 1.0,
+            "recall": 0.3344947735191638,
+            "false_negative_rate": 0.6655052264808362,
+            "false_positive_rate": null,
+            "f1": 0.5013054830287206,
+            "confusion_matrix": {
+              "tp": 576,
+              "fn": 1146,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1722,
+            "positives": 1722,
+            "precision": 1.0,
+            "recall": 0.2613240418118467,
+            "false_negative_rate": 0.7386759581881533,
+            "false_positive_rate": null,
+            "f1": 0.4143646408839779,
+            "confusion_matrix": {
+              "tp": 450,
+              "fn": 1272,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "2": {
+        "samples": 1802,
+        "sources": 23,
+        "positives": 1802,
+        "models": {
+          "point": {
+            "samples": 1802,
+            "positives": 1802,
+            "precision": 1.0,
+            "recall": 0.6359600443951166,
+            "false_negative_rate": 0.36403995560488345,
+            "false_positive_rate": null,
+            "f1": 0.7774762550881954,
+            "confusion_matrix": {
+              "tp": 1146,
+              "fn": 656,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1802,
+            "positives": 1802,
+            "precision": 1.0,
+            "recall": 0.5477247502774695,
+            "false_negative_rate": 0.4522752497225305,
+            "false_positive_rate": null,
+            "f1": 0.7077805665112944,
+            "confusion_matrix": {
+              "tp": 987,
+              "fn": 815,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "3": {
+        "samples": 1792,
+        "sources": 23,
+        "positives": 1792,
+        "models": {
+          "point": {
+            "samples": 1792,
+            "positives": 1792,
+            "precision": 1.0,
+            "recall": 0.8498883928571429,
+            "false_negative_rate": 0.15011160714285715,
+            "false_positive_rate": null,
+            "f1": 0.9188536953242835,
+            "confusion_matrix": {
+              "tp": 1523,
+              "fn": 269,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1792,
+            "positives": 1792,
+            "precision": 1.0,
+            "recall": 0.8337053571428571,
+            "false_negative_rate": 0.16629464285714285,
+            "false_positive_rate": null,
+            "f1": 0.9093122337188071,
+            "confusion_matrix": {
+              "tp": 1494,
+              "fn": 298,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      }
+    },
+    "window_pattern": {
+      "100": {
+        "samples": 79,
+        "sources": 18,
+        "positives": 79,
+        "models": {
+          "point": {
+            "samples": 79,
+            "positives": 79,
+            "precision": 1.0,
+            "recall": 0.4050632911392405,
+            "false_negative_rate": 0.5949367088607594,
+            "false_positive_rate": null,
+            "f1": 0.5765765765765766,
+            "confusion_matrix": {
+              "tp": 32,
+              "fn": 47,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 79,
+            "positives": 79,
+            "precision": 1.0,
+            "recall": 0.5949367088607594,
+            "false_negative_rate": 0.4050632911392405,
+            "false_positive_rate": null,
+            "f1": 0.746031746031746,
+            "confusion_matrix": {
+              "tp": 47,
+              "fn": 32,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "010": {
+        "samples": 82,
+        "sources": 18,
+        "positives": 82,
+        "models": {
+          "point": {
+            "samples": 82,
+            "positives": 82,
+            "precision": 1.0,
+            "recall": 0.36585365853658536,
+            "false_negative_rate": 0.6341463414634146,
+            "false_positive_rate": null,
+            "f1": 0.5357142857142857,
+            "confusion_matrix": {
+              "tp": 30,
+              "fn": 52,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 82,
+            "positives": 82,
+            "precision": 1.0,
+            "recall": 0.32926829268292684,
+            "false_negative_rate": 0.6707317073170732,
+            "false_positive_rate": null,
+            "f1": 0.4954128440366973,
+            "confusion_matrix": {
+              "tp": 27,
+              "fn": 55,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "110": {
+        "samples": 90,
+        "sources": 18,
+        "positives": 90,
+        "models": {
+          "point": {
+            "samples": 90,
+            "positives": 90,
+            "precision": 1.0,
+            "recall": 0.5444444444444444,
+            "false_negative_rate": 0.45555555555555555,
+            "false_positive_rate": null,
+            "f1": 0.7050359712230215,
+            "confusion_matrix": {
+              "tp": 49,
+              "fn": 41,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 90,
+            "positives": 90,
+            "precision": 1.0,
+            "recall": 0.6111111111111112,
+            "false_negative_rate": 0.3888888888888889,
+            "false_positive_rate": null,
+            "f1": 0.7586206896551724,
+            "confusion_matrix": {
+              "tp": 55,
+              "fn": 35,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "001": {
+        "samples": 1561,
+        "sources": 23,
+        "positives": 1561,
+        "models": {
+          "point": {
+            "samples": 1561,
+            "positives": 1561,
+            "precision": 1.0,
+            "recall": 0.3292761050608584,
+            "false_negative_rate": 0.6707238949391415,
+            "false_positive_rate": null,
+            "f1": 0.49542168674698794,
+            "confusion_matrix": {
+              "tp": 514,
+              "fn": 1047,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1561,
+            "positives": 1561,
+            "precision": 1.0,
+            "recall": 0.24087123638693145,
+            "false_negative_rate": 0.7591287636130686,
+            "false_positive_rate": null,
+            "f1": 0.38822922044398556,
+            "confusion_matrix": {
+              "tp": 376,
+              "fn": 1185,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "011": {
+        "samples": 1699,
+        "sources": 23,
+        "positives": 1699,
+        "models": {
+          "point": {
+            "samples": 1699,
+            "positives": 1699,
+            "precision": 1.0,
+            "recall": 0.6403766921718658,
+            "false_negative_rate": 0.3596233078281342,
+            "false_positive_rate": null,
+            "f1": 0.780767850735558,
+            "confusion_matrix": {
+              "tp": 1088,
+              "fn": 611,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1699,
+            "positives": 1699,
+            "precision": 1.0,
+            "recall": 0.5432607416127133,
+            "false_negative_rate": 0.45673925838728663,
+            "false_positive_rate": null,
+            "f1": 0.704042715484363,
+            "confusion_matrix": {
+              "tp": 923,
+              "fn": 776,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "101": {
+        "samples": 13,
+        "sources": 5,
+        "positives": 13,
+        "models": {
+          "point": {
+            "samples": 13,
+            "positives": 13,
+            "precision": 1.0,
+            "recall": 0.6923076923076923,
+            "false_negative_rate": 0.3076923076923077,
+            "false_positive_rate": null,
+            "f1": 0.8181818181818182,
+            "confusion_matrix": {
+              "tp": 9,
+              "fn": 4,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 13,
+            "positives": 13,
+            "precision": 1.0,
+            "recall": 0.6923076923076923,
+            "false_negative_rate": 0.3076923076923077,
+            "false_positive_rate": null,
+            "f1": 0.8181818181818182,
+            "confusion_matrix": {
+              "tp": 9,
+              "fn": 4,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "111": {
+        "samples": 1792,
+        "sources": 23,
+        "positives": 1792,
+        "models": {
+          "point": {
+            "samples": 1792,
+            "positives": 1792,
+            "precision": 1.0,
+            "recall": 0.8498883928571429,
+            "false_negative_rate": 0.15011160714285715,
+            "false_positive_rate": null,
+            "f1": 0.9188536953242835,
+            "confusion_matrix": {
+              "tp": 1523,
+              "fn": 269,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1792,
+            "positives": 1792,
+            "precision": 1.0,
+            "recall": 0.8337053571428571,
+            "false_negative_rate": 0.16629464285714285,
+            "false_positive_rate": null,
+            "f1": 0.9093122337188071,
+            "confusion_matrix": {
+              "tp": 1494,
+              "fn": 298,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      }
+    },
+    "recent_history": {
+      "stable_recently": {
+        "samples": 806,
+        "sources": 20,
+        "positives": 806,
+        "models": {
+          "point": {
+            "samples": 806,
+            "positives": 806,
+            "precision": 1.0,
+            "recall": 0.3560794044665012,
+            "false_negative_rate": 0.6439205955334988,
+            "false_positive_rate": null,
+            "f1": 0.52516010978957,
+            "confusion_matrix": {
+              "tp": 287,
+              "fn": 519,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 806,
+            "positives": 806,
+            "precision": 1.0,
+            "recall": 0.228287841191067,
+            "false_negative_rate": 0.771712158808933,
+            "false_positive_rate": null,
+            "f1": 0.3717171717171717,
+            "confusion_matrix": {
+              "tp": 184,
+              "fn": 622,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "already_changing": {
+        "samples": 4510,
+        "sources": 23,
+        "positives": 4510,
+        "models": {
+          "point": {
+            "samples": 4510,
+            "positives": 4510,
+            "precision": 1.0,
+            "recall": 0.6558758314855876,
+            "false_negative_rate": 0.3441241685144124,
+            "false_positive_rate": null,
+            "f1": 0.7921799678628816,
+            "confusion_matrix": {
+              "tp": 2958,
+              "fn": 1552,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 4510,
+            "positives": 4510,
+            "precision": 1.0,
+            "recall": 0.6090909090909091,
+            "false_negative_rate": 0.39090909090909093,
+            "false_positive_rate": null,
+            "f1": 0.7570621468926554,
+            "confusion_matrix": {
+              "tp": 2747,
+              "fn": 1763,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      }
+    },
+    "first_breach_lead_minutes": {
+      "5": {
+        "samples": 1974,
+        "sources": 23,
+        "positives": 1974,
+        "models": {
+          "point": {
+            "samples": 1974,
+            "positives": 1974,
+            "precision": 1.0,
+            "recall": 0.8171225937183384,
+            "false_negative_rate": 0.1828774062816616,
+            "false_positive_rate": null,
+            "f1": 0.8993587956509618,
+            "confusion_matrix": {
+              "tp": 1613,
+              "fn": 361,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1974,
+            "positives": 1974,
+            "precision": 1.0,
+            "recall": 0.8130699088145896,
+            "false_negative_rate": 0.18693009118541035,
+            "false_positive_rate": null,
+            "f1": 0.8968985750209556,
+            "confusion_matrix": {
+              "tp": 1605,
+              "fn": 369,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "10": {
+        "samples": 1781,
+        "sources": 23,
+        "positives": 1781,
+        "models": {
+          "point": {
+            "samples": 1781,
+            "positives": 1781,
+            "precision": 1.0,
+            "recall": 0.6277372262773723,
+            "false_negative_rate": 0.3722627737226277,
+            "false_positive_rate": null,
+            "f1": 0.7713004484304933,
+            "confusion_matrix": {
+              "tp": 1118,
+              "fn": 663,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1781,
+            "positives": 1781,
+            "precision": 1.0,
+            "recall": 0.5334081976417743,
+            "false_negative_rate": 0.4665918023582257,
+            "false_positive_rate": null,
+            "f1": 0.6957158549981691,
+            "confusion_matrix": {
+              "tp": 950,
+              "fn": 831,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "15": {
+        "samples": 1561,
+        "sources": 23,
+        "positives": 1561,
+        "models": {
+          "point": {
+            "samples": 1561,
+            "positives": 1561,
+            "precision": 1.0,
+            "recall": 0.3292761050608584,
+            "false_negative_rate": 0.6707238949391415,
+            "false_positive_rate": null,
+            "f1": 0.49542168674698794,
+            "confusion_matrix": {
+              "tp": 514,
+              "fn": 1047,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 1561,
+            "positives": 1561,
+            "precision": 1.0,
+            "recall": 0.24087123638693145,
+            "false_negative_rate": 0.7591287636130686,
+            "false_positive_rate": null,
+            "f1": 0.38822922044398556,
+            "confusion_matrix": {
+              "tp": 376,
+              "fn": 1185,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      }
+    },
+    "recovery": {
+      "back_in_range_at_15m": {
+        "samples": 251,
+        "sources": 20,
+        "positives": 251,
+        "models": {
+          "point": {
+            "samples": 251,
+            "positives": 251,
+            "precision": 1.0,
+            "recall": 0.44223107569721115,
+            "false_negative_rate": 0.5577689243027888,
+            "false_positive_rate": null,
+            "f1": 0.6132596685082873,
+            "confusion_matrix": {
+              "tp": 111,
+              "fn": 140,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 251,
+            "positives": 251,
+            "precision": 1.0,
+            "recall": 0.5139442231075697,
+            "false_negative_rate": 0.4860557768924303,
+            "false_positive_rate": null,
+            "f1": 0.6789473684210526,
+            "confusion_matrix": {
+              "tp": 129,
+              "fn": 122,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      },
+      "outside_at_15m": {
+        "samples": 5065,
+        "sources": 23,
+        "positives": 5065,
+        "models": {
+          "point": {
+            "samples": 5065,
+            "positives": 5065,
+            "precision": 1.0,
+            "recall": 0.618756169792695,
+            "false_negative_rate": 0.381243830207305,
+            "false_positive_rate": null,
+            "f1": 0.7644834735943408,
+            "confusion_matrix": {
+              "tp": 3134,
+              "fn": 1931,
+              "fp": 0,
+              "tn": 0
+            }
+          },
+          "classifier": {
+            "samples": 5065,
+            "positives": 5065,
+            "precision": 1.0,
+            "recall": 0.553208292201382,
+            "false_negative_rate": 0.446791707798618,
+            "false_positive_rate": null,
+            "f1": 0.7123426973433329,
+            "confusion_matrix": {
+              "tp": 2802,
+              "fn": 2263,
+              "fp": 0,
+              "tn": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "positive_groups_by_room": {
+    "room_0_4": {
+      "severity": {
+        "0..0.2 C": {
+          "samples": 478,
+          "sources": 17,
+          "positives": 478,
+          "models": {
+            "point": {
+              "samples": 478,
+              "positives": 478,
+              "precision": 1.0,
+              "recall": 0.3117154811715481,
+              "false_negative_rate": 0.6882845188284519,
+              "false_positive_rate": null,
+              "f1": 0.47527910685805425,
+              "confusion_matrix": {
+                "tp": 149,
+                "fn": 329,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 478,
+              "positives": 478,
+              "precision": 1.0,
+              "recall": 0.2196652719665272,
+              "false_negative_rate": 0.7803347280334728,
+              "false_positive_rate": null,
+              "f1": 0.3602058319039451,
+              "confusion_matrix": {
+                "tp": 105,
+                "fn": 373,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.2..0.5 C": {
+          "samples": 425,
+          "sources": 18,
+          "positives": 425,
+          "models": {
+            "point": {
+              "samples": 425,
+              "positives": 425,
+              "precision": 1.0,
+              "recall": 0.5247058823529411,
+              "false_negative_rate": 0.4752941176470588,
+              "false_positive_rate": null,
+              "f1": 0.6882716049382716,
+              "confusion_matrix": {
+                "tp": 223,
+                "fn": 202,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 425,
+              "positives": 425,
+              "precision": 1.0,
+              "recall": 0.48470588235294115,
+              "false_negative_rate": 0.5152941176470588,
+              "false_positive_rate": null,
+              "f1": 0.652931854199683,
+              "confusion_matrix": {
+                "tp": 206,
+                "fn": 219,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.5..1 C": {
+          "samples": 498,
+          "sources": 12,
+          "positives": 498,
+          "models": {
+            "point": {
+              "samples": 498,
+              "positives": 498,
+              "precision": 1.0,
+              "recall": 0.7228915662650602,
+              "false_negative_rate": 0.27710843373493976,
+              "false_positive_rate": null,
+              "f1": 0.8391608391608392,
+              "confusion_matrix": {
+                "tp": 360,
+                "fn": 138,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 498,
+              "positives": 498,
+              "precision": 1.0,
+              "recall": 0.7329317269076305,
+              "false_negative_rate": 0.26706827309236947,
+              "false_positive_rate": null,
+              "f1": 0.8458864426419467,
+              "confusion_matrix": {
+                "tp": 365,
+                "fn": 133,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "1..2 C": {
+          "samples": 240,
+          "sources": 10,
+          "positives": 240,
+          "models": {
+            "point": {
+              "samples": 240,
+              "positives": 240,
+              "precision": 1.0,
+              "recall": 0.8708333333333333,
+              "false_negative_rate": 0.12916666666666668,
+              "false_positive_rate": null,
+              "f1": 0.9309576837416481,
+              "confusion_matrix": {
+                "tp": 209,
+                "fn": 31,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 240,
+              "positives": 240,
+              "precision": 1.0,
+              "recall": 0.8125,
+              "false_negative_rate": 0.1875,
+              "false_positive_rate": null,
+              "f1": 0.896551724137931,
+              "confusion_matrix": {
+                "tp": 195,
+                "fn": 45,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        ">2 C": {
+          "samples": 685,
+          "sources": 12,
+          "positives": 685,
+          "models": {
+            "point": {
+              "samples": 685,
+              "positives": 685,
+              "precision": 1.0,
+              "recall": 0.9576642335766423,
+              "false_negative_rate": 0.042335766423357665,
+              "false_positive_rate": null,
+              "f1": 0.9783743475018642,
+              "confusion_matrix": {
+                "tp": 656,
+                "fn": 29,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 685,
+              "positives": 685,
+              "precision": 1.0,
+              "recall": 0.9591240875912409,
+              "false_negative_rate": 0.040875912408759124,
+              "false_positive_rate": null,
+              "f1": 0.9791356184798807,
+              "confusion_matrix": {
+                "tp": 657,
+                "fn": 28,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "direction": {
+        "above_only": {
+          "samples": 1125,
+          "sources": 18,
+          "positives": 1125,
+          "models": {
+            "point": {
+              "samples": 1125,
+              "positives": 1125,
+              "precision": 1.0,
+              "recall": 0.5342222222222223,
+              "false_negative_rate": 0.4657777777777778,
+              "false_positive_rate": null,
+              "f1": 0.6964078794901506,
+              "confusion_matrix": {
+                "tp": 601,
+                "fn": 524,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 1125,
+              "positives": 1125,
+              "precision": 1.0,
+              "recall": 0.49777777777777776,
+              "false_negative_rate": 0.5022222222222222,
+              "false_positive_rate": null,
+              "f1": 0.6646884272997032,
+              "confusion_matrix": {
+                "tp": 560,
+                "fn": 565,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "below_only": {
+          "samples": 1191,
+          "sources": 11,
+          "positives": 1191,
+          "models": {
+            "point": {
+              "samples": 1191,
+              "positives": 1191,
+              "precision": 1.0,
+              "recall": 0.8278757346767422,
+              "false_negative_rate": 0.17212426532325778,
+              "false_positive_rate": null,
+              "f1": 0.9058337161231051,
+              "confusion_matrix": {
+                "tp": 986,
+                "fn": 205,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 1191,
+              "positives": 1191,
+              "precision": 1.0,
+              "recall": 0.8043660789252729,
+              "false_negative_rate": 0.19563392107472713,
+              "false_positive_rate": null,
+              "f1": 0.8915774778966962,
+              "confusion_matrix": {
+                "tp": 958,
+                "fn": 233,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "both": {
+          "samples": 10,
+          "sources": 1,
+          "positives": 10,
+          "models": {
+            "point": {
+              "samples": 10,
+              "positives": 10,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 10,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 10,
+              "positives": 10,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 10,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "future_outside_count": {
+        "1": {
+          "samples": 745,
+          "sources": 20,
+          "positives": 745,
+          "models": {
+            "point": {
+              "samples": 745,
+              "positives": 745,
+              "precision": 1.0,
+              "recall": 0.425503355704698,
+              "false_negative_rate": 0.574496644295302,
+              "false_positive_rate": null,
+              "f1": 0.5969868173258004,
+              "confusion_matrix": {
+                "tp": 317,
+                "fn": 428,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 745,
+              "positives": 745,
+              "precision": 1.0,
+              "recall": 0.3651006711409396,
+              "false_negative_rate": 0.6348993288590604,
+              "false_positive_rate": null,
+              "f1": 0.5349065880039331,
+              "confusion_matrix": {
+                "tp": 272,
+                "fn": 473,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "2": {
+          "samples": 802,
+          "sources": 20,
+          "positives": 802,
+          "models": {
+            "point": {
+              "samples": 802,
+              "positives": 802,
+              "precision": 1.0,
+              "recall": 0.7394014962593516,
+              "false_negative_rate": 0.26059850374064836,
+              "false_positive_rate": null,
+              "f1": 0.850179211469534,
+              "confusion_matrix": {
+                "tp": 593,
+                "fn": 209,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 802,
+              "positives": 802,
+              "precision": 1.0,
+              "recall": 0.6970074812967582,
+              "false_negative_rate": 0.3029925187032419,
+              "false_positive_rate": null,
+              "f1": 0.8214548126377663,
+              "confusion_matrix": {
+                "tp": 559,
+                "fn": 243,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "3": {
+          "samples": 779,
+          "sources": 20,
+          "positives": 779,
+          "models": {
+            "point": {
+              "samples": 779,
+              "positives": 779,
+              "precision": 1.0,
+              "recall": 0.8818998716302953,
+              "false_negative_rate": 0.11810012836970475,
+              "false_positive_rate": null,
+              "f1": 0.937244201909959,
+              "confusion_matrix": {
+                "tp": 687,
+                "fn": 92,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 779,
+              "positives": 779,
+              "precision": 1.0,
+              "recall": 0.8947368421052632,
+              "false_negative_rate": 0.10526315789473684,
+              "false_positive_rate": null,
+              "f1": 0.9444444444444444,
+              "confusion_matrix": {
+                "tp": 697,
+                "fn": 82,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "window_pattern": {
+        "100": {
+          "samples": 31,
+          "sources": 12,
+          "positives": 31,
+          "models": {
+            "point": {
+              "samples": 31,
+              "positives": 31,
+              "precision": 1.0,
+              "recall": 0.2903225806451613,
+              "false_negative_rate": 0.7096774193548387,
+              "false_positive_rate": null,
+              "f1": 0.45,
+              "confusion_matrix": {
+                "tp": 9,
+                "fn": 22,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 31,
+              "positives": 31,
+              "precision": 1.0,
+              "recall": 0.5161290322580645,
+              "false_negative_rate": 0.4838709677419355,
+              "false_positive_rate": null,
+              "f1": 0.6808510638297872,
+              "confusion_matrix": {
+                "tp": 16,
+                "fn": 15,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "010": {
+          "samples": 32,
+          "sources": 12,
+          "positives": 32,
+          "models": {
+            "point": {
+              "samples": 32,
+              "positives": 32,
+              "precision": 1.0,
+              "recall": 0.3125,
+              "false_negative_rate": 0.6875,
+              "false_positive_rate": null,
+              "f1": 0.47619047619047616,
+              "confusion_matrix": {
+                "tp": 10,
+                "fn": 22,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 32,
+              "positives": 32,
+              "precision": 1.0,
+              "recall": 0.25,
+              "false_negative_rate": 0.75,
+              "false_positive_rate": null,
+              "f1": 0.4,
+              "confusion_matrix": {
+                "tp": 8,
+                "fn": 24,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "110": {
+          "samples": 34,
+          "sources": 9,
+          "positives": 34,
+          "models": {
+            "point": {
+              "samples": 34,
+              "positives": 34,
+              "precision": 1.0,
+              "recall": 0.3235294117647059,
+              "false_negative_rate": 0.6764705882352942,
+              "false_positive_rate": null,
+              "f1": 0.4888888888888889,
+              "confusion_matrix": {
+                "tp": 11,
+                "fn": 23,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 34,
+              "positives": 34,
+              "precision": 1.0,
+              "recall": 0.6176470588235294,
+              "false_negative_rate": 0.38235294117647056,
+              "false_positive_rate": null,
+              "f1": 0.7636363636363637,
+              "confusion_matrix": {
+                "tp": 21,
+                "fn": 13,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "001": {
+          "samples": 682,
+          "sources": 20,
+          "positives": 682,
+          "models": {
+            "point": {
+              "samples": 682,
+              "positives": 682,
+              "precision": 1.0,
+              "recall": 0.436950146627566,
+              "false_negative_rate": 0.5630498533724341,
+              "false_positive_rate": null,
+              "f1": 0.6081632653061224,
+              "confusion_matrix": {
+                "tp": 298,
+                "fn": 384,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 682,
+              "positives": 682,
+              "precision": 1.0,
+              "recall": 0.36363636363636365,
+              "false_negative_rate": 0.6363636363636364,
+              "false_positive_rate": null,
+              "f1": 0.5333333333333333,
+              "confusion_matrix": {
+                "tp": 248,
+                "fn": 434,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "011": {
+          "samples": 759,
+          "sources": 20,
+          "positives": 759,
+          "models": {
+            "point": {
+              "samples": 759,
+              "positives": 759,
+              "precision": 1.0,
+              "recall": 0.7562582345191041,
+              "false_negative_rate": 0.2437417654808959,
+              "false_positive_rate": null,
+              "f1": 0.8612153038259565,
+              "confusion_matrix": {
+                "tp": 574,
+                "fn": 185,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 759,
+              "positives": 759,
+              "precision": 1.0,
+              "recall": 0.696969696969697,
+              "false_negative_rate": 0.30303030303030304,
+              "false_positive_rate": null,
+              "f1": 0.8214285714285714,
+              "confusion_matrix": {
+                "tp": 529,
+                "fn": 230,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "101": {
+          "samples": 9,
+          "sources": 2,
+          "positives": 9,
+          "models": {
+            "point": {
+              "samples": 9,
+              "positives": 9,
+              "precision": 1.0,
+              "recall": 0.8888888888888888,
+              "false_negative_rate": 0.1111111111111111,
+              "false_positive_rate": null,
+              "f1": 0.9411764705882353,
+              "confusion_matrix": {
+                "tp": 8,
+                "fn": 1,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 9,
+              "positives": 9,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 9,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "111": {
+          "samples": 779,
+          "sources": 20,
+          "positives": 779,
+          "models": {
+            "point": {
+              "samples": 779,
+              "positives": 779,
+              "precision": 1.0,
+              "recall": 0.8818998716302953,
+              "false_negative_rate": 0.11810012836970475,
+              "false_positive_rate": null,
+              "f1": 0.937244201909959,
+              "confusion_matrix": {
+                "tp": 687,
+                "fn": 92,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 779,
+              "positives": 779,
+              "precision": 1.0,
+              "recall": 0.8947368421052632,
+              "false_negative_rate": 0.10526315789473684,
+              "false_positive_rate": null,
+              "f1": 0.9444444444444444,
+              "confusion_matrix": {
+                "tp": 697,
+                "fn": 82,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recent_history": {
+        "stable_recently": {
+          "samples": 293,
+          "sources": 14,
+          "positives": 293,
+          "models": {
+            "point": {
+              "samples": 293,
+              "positives": 293,
+              "precision": 1.0,
+              "recall": 0.32081911262798635,
+              "false_negative_rate": 0.6791808873720137,
+              "false_positive_rate": null,
+              "f1": 0.48578811369509045,
+              "confusion_matrix": {
+                "tp": 94,
+                "fn": 199,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 293,
+              "positives": 293,
+              "precision": 1.0,
+              "recall": 0.19795221843003413,
+              "false_negative_rate": 0.8020477815699659,
+              "false_positive_rate": null,
+              "f1": 0.33048433048433046,
+              "confusion_matrix": {
+                "tp": 58,
+                "fn": 235,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "already_changing": {
+          "samples": 2033,
+          "sources": 18,
+          "positives": 2033,
+          "models": {
+            "point": {
+              "samples": 2033,
+              "positives": 2033,
+              "precision": 1.0,
+              "recall": 0.7393015248401378,
+              "false_negative_rate": 0.2606984751598623,
+              "false_positive_rate": null,
+              "f1": 0.8501131221719457,
+              "confusion_matrix": {
+                "tp": 1503,
+                "fn": 530,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 2033,
+              "positives": 2033,
+              "precision": 1.0,
+              "recall": 0.7230693556320709,
+              "false_negative_rate": 0.2769306443679292,
+              "false_positive_rate": null,
+              "f1": 0.8392806166143306,
+              "confusion_matrix": {
+                "tp": 1470,
+                "fn": 563,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "first_breach_lead_minutes": {
+        "5": {
+          "samples": 853,
+          "sources": 21,
+          "positives": 853,
+          "models": {
+            "point": {
+              "samples": 853,
+              "positives": 853,
+              "precision": 1.0,
+              "recall": 0.8382180539273154,
+              "false_negative_rate": 0.16178194607268465,
+              "false_positive_rate": null,
+              "f1": 0.9119897959183674,
+              "confusion_matrix": {
+                "tp": 715,
+                "fn": 138,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 853,
+              "positives": 853,
+              "precision": 1.0,
+              "recall": 0.8710433763188745,
+              "false_negative_rate": 0.12895662368112543,
+              "false_positive_rate": null,
+              "f1": 0.931077694235589,
+              "confusion_matrix": {
+                "tp": 743,
+                "fn": 110,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "10": {
+          "samples": 791,
+          "sources": 21,
+          "positives": 791,
+          "models": {
+            "point": {
+              "samples": 791,
+              "positives": 791,
+              "precision": 1.0,
+              "recall": 0.7383059418457648,
+              "false_negative_rate": 0.26169405815423513,
+              "false_positive_rate": null,
+              "f1": 0.8494545454545455,
+              "confusion_matrix": {
+                "tp": 584,
+                "fn": 207,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 791,
+              "positives": 791,
+              "precision": 1.0,
+              "recall": 0.6788874841972187,
+              "false_negative_rate": 0.3211125158027813,
+              "false_positive_rate": null,
+              "f1": 0.8087349397590361,
+              "confusion_matrix": {
+                "tp": 537,
+                "fn": 254,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "15": {
+          "samples": 682,
+          "sources": 20,
+          "positives": 682,
+          "models": {
+            "point": {
+              "samples": 682,
+              "positives": 682,
+              "precision": 1.0,
+              "recall": 0.436950146627566,
+              "false_negative_rate": 0.5630498533724341,
+              "false_positive_rate": null,
+              "f1": 0.6081632653061224,
+              "confusion_matrix": {
+                "tp": 298,
+                "fn": 384,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 682,
+              "positives": 682,
+              "precision": 1.0,
+              "recall": 0.36363636363636365,
+              "false_negative_rate": 0.6363636363636364,
+              "false_positive_rate": null,
+              "f1": 0.5333333333333333,
+              "confusion_matrix": {
+                "tp": 248,
+                "fn": 434,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recovery": {
+        "back_in_range_at_15m": {
+          "samples": 97,
+          "sources": 14,
+          "positives": 97,
+          "models": {
+            "point": {
+              "samples": 97,
+              "positives": 97,
+              "precision": 1.0,
+              "recall": 0.30927835051546393,
+              "false_negative_rate": 0.6907216494845361,
+              "false_positive_rate": null,
+              "f1": 0.47244094488188976,
+              "confusion_matrix": {
+                "tp": 30,
+                "fn": 67,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 97,
+              "positives": 97,
+              "precision": 1.0,
+              "recall": 0.4639175257731959,
+              "false_negative_rate": 0.5360824742268041,
+              "false_positive_rate": null,
+              "f1": 0.6338028169014085,
+              "confusion_matrix": {
+                "tp": 45,
+                "fn": 52,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "outside_at_15m": {
+          "samples": 2229,
+          "sources": 21,
+          "positives": 2229,
+          "models": {
+            "point": {
+              "samples": 2229,
+              "positives": 2229,
+              "precision": 1.0,
+              "recall": 0.7030058322117542,
+              "false_negative_rate": 0.29699416778824583,
+              "false_positive_rate": null,
+              "f1": 0.8256059009483667,
+              "confusion_matrix": {
+                "tp": 1567,
+                "fn": 662,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 2229,
+              "positives": 2229,
+              "precision": 1.0,
+              "recall": 0.6653207716464783,
+              "false_negative_rate": 0.33467922835352176,
+              "false_positive_rate": null,
+              "f1": 0.7990301724137931,
+              "confusion_matrix": {
+                "tp": 1483,
+                "fn": 746,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "room_2_6": {
+      "severity": {
+        "0..0.2 C": {
+          "samples": 660,
+          "sources": 19,
+          "positives": 660,
+          "models": {
+            "point": {
+              "samples": 660,
+              "positives": 660,
+              "precision": 1.0,
+              "recall": 0.30757575757575756,
+              "false_negative_rate": 0.6924242424242424,
+              "false_positive_rate": null,
+              "f1": 0.4704519119351101,
+              "confusion_matrix": {
+                "tp": 203,
+                "fn": 457,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 660,
+              "positives": 660,
+              "precision": 1.0,
+              "recall": 0.2106060606060606,
+              "false_negative_rate": 0.7893939393939394,
+              "false_positive_rate": null,
+              "f1": 0.3479349186483104,
+              "confusion_matrix": {
+                "tp": 139,
+                "fn": 521,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.2..0.5 C": {
+          "samples": 446,
+          "sources": 18,
+          "positives": 446,
+          "models": {
+            "point": {
+              "samples": 446,
+              "positives": 446,
+              "precision": 1.0,
+              "recall": 0.484304932735426,
+              "false_negative_rate": 0.515695067264574,
+              "false_positive_rate": null,
+              "f1": 0.6525679758308157,
+              "confusion_matrix": {
+                "tp": 216,
+                "fn": 230,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 446,
+              "positives": 446,
+              "precision": 1.0,
+              "recall": 0.4125560538116592,
+              "false_negative_rate": 0.5874439461883408,
+              "false_positive_rate": null,
+              "f1": 0.5841269841269842,
+              "confusion_matrix": {
+                "tp": 184,
+                "fn": 262,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.5..1 C": {
+          "samples": 350,
+          "sources": 15,
+          "positives": 350,
+          "models": {
+            "point": {
+              "samples": 350,
+              "positives": 350,
+              "precision": 1.0,
+              "recall": 0.7142857142857143,
+              "false_negative_rate": 0.2857142857142857,
+              "false_positive_rate": null,
+              "f1": 0.8333333333333334,
+              "confusion_matrix": {
+                "tp": 250,
+                "fn": 100,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 350,
+              "positives": 350,
+              "precision": 1.0,
+              "recall": 0.6971428571428572,
+              "false_negative_rate": 0.3028571428571429,
+              "false_positive_rate": null,
+              "f1": 0.8215488215488216,
+              "confusion_matrix": {
+                "tp": 244,
+                "fn": 106,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "1..2 C": {
+          "samples": 142,
+          "sources": 13,
+          "positives": 142,
+          "models": {
+            "point": {
+              "samples": 142,
+              "positives": 142,
+              "precision": 1.0,
+              "recall": 0.6549295774647887,
+              "false_negative_rate": 0.34507042253521125,
+              "false_positive_rate": null,
+              "f1": 0.7914893617021277,
+              "confusion_matrix": {
+                "tp": 93,
+                "fn": 49,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 142,
+              "positives": 142,
+              "precision": 1.0,
+              "recall": 0.7746478873239436,
+              "false_negative_rate": 0.22535211267605634,
+              "false_positive_rate": null,
+              "f1": 0.873015873015873,
+              "confusion_matrix": {
+                "tp": 110,
+                "fn": 32,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        ">2 C": {
+          "samples": 140,
+          "sources": 8,
+          "positives": 140,
+          "models": {
+            "point": {
+              "samples": 140,
+              "positives": 140,
+              "precision": 1.0,
+              "recall": 0.7857142857142857,
+              "false_negative_rate": 0.21428571428571427,
+              "false_positive_rate": null,
+              "f1": 0.88,
+              "confusion_matrix": {
+                "tp": 110,
+                "fn": 30,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 140,
+              "positives": 140,
+              "precision": 1.0,
+              "recall": 0.7785714285714286,
+              "false_negative_rate": 0.22142857142857142,
+              "false_positive_rate": null,
+              "f1": 0.8755020080321285,
+              "confusion_matrix": {
+                "tp": 109,
+                "fn": 31,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "direction": {
+        "above_only": {
+          "samples": 364,
+          "sources": 10,
+          "positives": 364,
+          "models": {
+            "point": {
+              "samples": 364,
+              "positives": 364,
+              "precision": 1.0,
+              "recall": 0.4340659340659341,
+              "false_negative_rate": 0.5659340659340659,
+              "false_positive_rate": null,
+              "f1": 0.6053639846743295,
+              "confusion_matrix": {
+                "tp": 158,
+                "fn": 206,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 364,
+              "positives": 364,
+              "precision": 1.0,
+              "recall": 0.29395604395604397,
+              "false_negative_rate": 0.7060439560439561,
+              "false_positive_rate": null,
+              "f1": 0.4543524416135881,
+              "confusion_matrix": {
+                "tp": 107,
+                "fn": 257,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "below_only": {
+          "samples": 1374,
+          "sources": 18,
+          "positives": 1374,
+          "models": {
+            "point": {
+              "samples": 1374,
+              "positives": 1374,
+              "precision": 1.0,
+              "recall": 0.519650655021834,
+              "false_negative_rate": 0.48034934497816595,
+              "false_positive_rate": null,
+              "f1": 0.6839080459770115,
+              "confusion_matrix": {
+                "tp": 714,
+                "fn": 660,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 1374,
+              "positives": 1374,
+              "precision": 1.0,
+              "recall": 0.49417758369723436,
+              "false_negative_rate": 0.5058224163027657,
+              "false_positive_rate": null,
+              "f1": 0.6614710180224063,
+              "confusion_matrix": {
+                "tp": 679,
+                "fn": 695,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "both": {
+          "samples": 0,
+          "sources": 0,
+          "positives": 0,
+          "models": {
+            "point": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "future_outside_count": {
+        "1": {
+          "samples": 584,
+          "sources": 21,
+          "positives": 584,
+          "models": {
+            "point": {
+              "samples": 584,
+              "positives": 584,
+              "precision": 1.0,
+              "recall": 0.22945205479452055,
+              "false_negative_rate": 0.7705479452054794,
+              "false_positive_rate": null,
+              "f1": 0.3732590529247911,
+              "confusion_matrix": {
+                "tp": 134,
+                "fn": 450,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 584,
+              "positives": 584,
+              "precision": 1.0,
+              "recall": 0.1952054794520548,
+              "false_negative_rate": 0.8047945205479452,
+              "false_positive_rate": null,
+              "f1": 0.32664756446991405,
+              "confusion_matrix": {
+                "tp": 114,
+                "fn": 470,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "2": {
+          "samples": 573,
+          "sources": 22,
+          "positives": 573,
+          "models": {
+            "point": {
+              "samples": 573,
+              "positives": 573,
+              "precision": 1.0,
+              "recall": 0.5043630017452007,
+              "false_negative_rate": 0.4956369982547993,
+              "false_positive_rate": null,
+              "f1": 0.6705336426914154,
+              "confusion_matrix": {
+                "tp": 289,
+                "fn": 284,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 573,
+              "positives": 573,
+              "precision": 1.0,
+              "recall": 0.44153577661431065,
+              "false_negative_rate": 0.5584642233856894,
+              "false_positive_rate": null,
+              "f1": 0.612590799031477,
+              "confusion_matrix": {
+                "tp": 253,
+                "fn": 320,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "3": {
+          "samples": 581,
+          "sources": 22,
+          "positives": 581,
+          "models": {
+            "point": {
+              "samples": 581,
+              "positives": 581,
+              "precision": 1.0,
+              "recall": 0.7728055077452668,
+              "false_negative_rate": 0.22719449225473323,
+              "false_positive_rate": null,
+              "f1": 0.8718446601941747,
+              "confusion_matrix": {
+                "tp": 449,
+                "fn": 132,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 581,
+              "positives": 581,
+              "precision": 1.0,
+              "recall": 0.7211703958691911,
+              "false_negative_rate": 0.27882960413080893,
+              "false_positive_rate": null,
+              "f1": 0.838,
+              "confusion_matrix": {
+                "tp": 419,
+                "fn": 162,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "window_pattern": {
+        "100": {
+          "samples": 35,
+          "sources": 10,
+          "positives": 35,
+          "models": {
+            "point": {
+              "samples": 35,
+              "positives": 35,
+              "precision": 1.0,
+              "recall": 0.2857142857142857,
+              "false_negative_rate": 0.7142857142857143,
+              "false_positive_rate": null,
+              "f1": 0.4444444444444444,
+              "confusion_matrix": {
+                "tp": 10,
+                "fn": 25,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 35,
+              "positives": 35,
+              "precision": 1.0,
+              "recall": 0.5428571428571428,
+              "false_negative_rate": 0.45714285714285713,
+              "false_positive_rate": null,
+              "f1": 0.7037037037037037,
+              "confusion_matrix": {
+                "tp": 19,
+                "fn": 16,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "010": {
+          "samples": 37,
+          "sources": 10,
+          "positives": 37,
+          "models": {
+            "point": {
+              "samples": 37,
+              "positives": 37,
+              "precision": 1.0,
+              "recall": 0.2702702702702703,
+              "false_negative_rate": 0.7297297297297297,
+              "false_positive_rate": null,
+              "f1": 0.425531914893617,
+              "confusion_matrix": {
+                "tp": 10,
+                "fn": 27,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 37,
+              "positives": 37,
+              "precision": 1.0,
+              "recall": 0.2702702702702703,
+              "false_negative_rate": 0.7297297297297297,
+              "false_positive_rate": null,
+              "f1": 0.425531914893617,
+              "confusion_matrix": {
+                "tp": 10,
+                "fn": 27,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "110": {
+          "samples": 31,
+          "sources": 10,
+          "positives": 31,
+          "models": {
+            "point": {
+              "samples": 31,
+              "positives": 31,
+              "precision": 1.0,
+              "recall": 0.5161290322580645,
+              "false_negative_rate": 0.4838709677419355,
+              "false_positive_rate": null,
+              "f1": 0.6808510638297872,
+              "confusion_matrix": {
+                "tp": 16,
+                "fn": 15,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 31,
+              "positives": 31,
+              "precision": 1.0,
+              "recall": 0.4838709677419355,
+              "false_negative_rate": 0.5161290322580645,
+              "false_positive_rate": null,
+              "f1": 0.6521739130434783,
+              "confusion_matrix": {
+                "tp": 15,
+                "fn": 16,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "001": {
+          "samples": 512,
+          "sources": 21,
+          "positives": 512,
+          "models": {
+            "point": {
+              "samples": 512,
+              "positives": 512,
+              "precision": 1.0,
+              "recall": 0.22265625,
+              "false_negative_rate": 0.77734375,
+              "false_positive_rate": null,
+              "f1": 0.36421725239616615,
+              "confusion_matrix": {
+                "tp": 114,
+                "fn": 398,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 512,
+              "positives": 512,
+              "precision": 1.0,
+              "recall": 0.166015625,
+              "false_negative_rate": 0.833984375,
+              "false_positive_rate": null,
+              "f1": 0.2847571189279732,
+              "confusion_matrix": {
+                "tp": 85,
+                "fn": 427,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "011": {
+          "samples": 538,
+          "sources": 22,
+          "positives": 538,
+          "models": {
+            "point": {
+              "samples": 538,
+              "positives": 538,
+              "precision": 1.0,
+              "recall": 0.5055762081784386,
+              "false_negative_rate": 0.4944237918215613,
+              "false_positive_rate": null,
+              "f1": 0.671604938271605,
+              "confusion_matrix": {
+                "tp": 272,
+                "fn": 266,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 538,
+              "positives": 538,
+              "precision": 1.0,
+              "recall": 0.4423791821561338,
+              "false_negative_rate": 0.5576208178438662,
+              "false_positive_rate": null,
+              "f1": 0.6134020618556701,
+              "confusion_matrix": {
+                "tp": 238,
+                "fn": 300,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "101": {
+          "samples": 4,
+          "sources": 3,
+          "positives": 4,
+          "models": {
+            "point": {
+              "samples": 4,
+              "positives": 4,
+              "precision": 1.0,
+              "recall": 0.25,
+              "false_negative_rate": 0.75,
+              "false_positive_rate": null,
+              "f1": 0.4,
+              "confusion_matrix": {
+                "tp": 1,
+                "fn": 3,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 4,
+              "positives": 4,
+              "precision": null,
+              "recall": 0.0,
+              "false_negative_rate": 1.0,
+              "false_positive_rate": null,
+              "f1": 0.0,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 4,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "111": {
+          "samples": 581,
+          "sources": 22,
+          "positives": 581,
+          "models": {
+            "point": {
+              "samples": 581,
+              "positives": 581,
+              "precision": 1.0,
+              "recall": 0.7728055077452668,
+              "false_negative_rate": 0.22719449225473323,
+              "false_positive_rate": null,
+              "f1": 0.8718446601941747,
+              "confusion_matrix": {
+                "tp": 449,
+                "fn": 132,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 581,
+              "positives": 581,
+              "precision": 1.0,
+              "recall": 0.7211703958691911,
+              "false_negative_rate": 0.27882960413080893,
+              "false_positive_rate": null,
+              "f1": 0.838,
+              "confusion_matrix": {
+                "tp": 419,
+                "fn": 162,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recent_history": {
+        "stable_recently": {
+          "samples": 404,
+          "sources": 18,
+          "positives": 404,
+          "models": {
+            "point": {
+              "samples": 404,
+              "positives": 404,
+              "precision": 1.0,
+              "recall": 0.43316831683168316,
+              "false_negative_rate": 0.5668316831683168,
+              "false_positive_rate": null,
+              "f1": 0.6044905008635578,
+              "confusion_matrix": {
+                "tp": 175,
+                "fn": 229,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 404,
+              "positives": 404,
+              "precision": 1.0,
+              "recall": 0.2747524752475248,
+              "false_negative_rate": 0.7252475247524752,
+              "false_positive_rate": null,
+              "f1": 0.43106796116504853,
+              "confusion_matrix": {
+                "tp": 111,
+                "fn": 293,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "already_changing": {
+          "samples": 1334,
+          "sources": 22,
+          "positives": 1334,
+          "models": {
+            "point": {
+              "samples": 1334,
+              "positives": 1334,
+              "precision": 1.0,
+              "recall": 0.5224887556221889,
+              "false_negative_rate": 0.4775112443778111,
+              "false_positive_rate": null,
+              "f1": 0.6863613983259478,
+              "confusion_matrix": {
+                "tp": 697,
+                "fn": 637,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 1334,
+              "positives": 1334,
+              "precision": 1.0,
+              "recall": 0.5059970014992504,
+              "false_negative_rate": 0.49400299850074963,
+              "false_positive_rate": null,
+              "f1": 0.6719761075161772,
+              "confusion_matrix": {
+                "tp": 675,
+                "fn": 659,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "first_breach_lead_minutes": {
+        "5": {
+          "samples": 651,
+          "sources": 22,
+          "positives": 651,
+          "models": {
+            "point": {
+              "samples": 651,
+              "positives": 651,
+              "precision": 1.0,
+              "recall": 0.7311827956989247,
+              "false_negative_rate": 0.26881720430107525,
+              "false_positive_rate": null,
+              "f1": 0.84472049689441,
+              "confusion_matrix": {
+                "tp": 476,
+                "fn": 175,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 651,
+              "positives": 651,
+              "precision": 1.0,
+              "recall": 0.695852534562212,
+              "false_negative_rate": 0.30414746543778803,
+              "false_positive_rate": null,
+              "f1": 0.8206521739130435,
+              "confusion_matrix": {
+                "tp": 453,
+                "fn": 198,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "10": {
+          "samples": 575,
+          "sources": 22,
+          "positives": 575,
+          "models": {
+            "point": {
+              "samples": 575,
+              "positives": 575,
+              "precision": 1.0,
+              "recall": 0.49043478260869566,
+              "false_negative_rate": 0.5095652173913043,
+              "false_positive_rate": null,
+              "f1": 0.6581096849474912,
+              "confusion_matrix": {
+                "tp": 282,
+                "fn": 293,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 575,
+              "positives": 575,
+              "precision": 1.0,
+              "recall": 0.43130434782608695,
+              "false_negative_rate": 0.568695652173913,
+              "false_positive_rate": null,
+              "f1": 0.6026731470230863,
+              "confusion_matrix": {
+                "tp": 248,
+                "fn": 327,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "15": {
+          "samples": 512,
+          "sources": 21,
+          "positives": 512,
+          "models": {
+            "point": {
+              "samples": 512,
+              "positives": 512,
+              "precision": 1.0,
+              "recall": 0.22265625,
+              "false_negative_rate": 0.77734375,
+              "false_positive_rate": null,
+              "f1": 0.36421725239616615,
+              "confusion_matrix": {
+                "tp": 114,
+                "fn": 398,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 512,
+              "positives": 512,
+              "precision": 1.0,
+              "recall": 0.166015625,
+              "false_negative_rate": 0.833984375,
+              "false_positive_rate": null,
+              "f1": 0.2847571189279732,
+              "confusion_matrix": {
+                "tp": 85,
+                "fn": 427,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recovery": {
+        "back_in_range_at_15m": {
+          "samples": 103,
+          "sources": 12,
+          "positives": 103,
+          "models": {
+            "point": {
+              "samples": 103,
+              "positives": 103,
+              "precision": 1.0,
+              "recall": 0.34951456310679613,
+              "false_negative_rate": 0.6504854368932039,
+              "false_positive_rate": null,
+              "f1": 0.5179856115107914,
+              "confusion_matrix": {
+                "tp": 36,
+                "fn": 67,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 103,
+              "positives": 103,
+              "precision": 1.0,
+              "recall": 0.42718446601941745,
+              "false_negative_rate": 0.5728155339805825,
+              "false_positive_rate": null,
+              "f1": 0.5986394557823129,
+              "confusion_matrix": {
+                "tp": 44,
+                "fn": 59,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "outside_at_15m": {
+          "samples": 1635,
+          "sources": 22,
+          "positives": 1635,
+          "models": {
+            "point": {
+              "samples": 1635,
+              "positives": 1635,
+              "precision": 1.0,
+              "recall": 0.5113149847094801,
+              "false_negative_rate": 0.4886850152905199,
+              "false_positive_rate": null,
+              "f1": 0.6766491299069203,
+              "confusion_matrix": {
+                "tp": 836,
+                "fn": 799,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 1635,
+              "positives": 1635,
+              "precision": 1.0,
+              "recall": 0.45382262996941897,
+              "false_negative_rate": 0.5461773700305811,
+              "false_positive_rate": null,
+              "f1": 0.6243163651661758,
+              "confusion_matrix": {
+                "tp": 742,
+                "fn": 893,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "room_minus22_minus18": {
+      "severity": {
+        "0..0.2 C": {
+          "samples": 130,
+          "sources": 8,
+          "positives": 130,
+          "models": {
+            "point": {
+              "samples": 130,
+              "positives": 130,
+              "precision": 1.0,
+              "recall": 0.35384615384615387,
+              "false_negative_rate": 0.6461538461538462,
+              "false_positive_rate": null,
+              "f1": 0.5227272727272727,
+              "confusion_matrix": {
+                "tp": 46,
+                "fn": 84,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 130,
+              "positives": 130,
+              "precision": 1.0,
+              "recall": 0.23846153846153847,
+              "false_negative_rate": 0.7615384615384615,
+              "false_positive_rate": null,
+              "f1": 0.38509316770186336,
+              "confusion_matrix": {
+                "tp": 31,
+                "fn": 99,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.2..0.5 C": {
+          "samples": 184,
+          "sources": 9,
+          "positives": 184,
+          "models": {
+            "point": {
+              "samples": 184,
+              "positives": 184,
+              "precision": 1.0,
+              "recall": 0.5597826086956522,
+              "false_negative_rate": 0.44021739130434784,
+              "false_positive_rate": null,
+              "f1": 0.7177700348432056,
+              "confusion_matrix": {
+                "tp": 103,
+                "fn": 81,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 184,
+              "positives": 184,
+              "precision": 1.0,
+              "recall": 0.3532608695652174,
+              "false_negative_rate": 0.6467391304347826,
+              "false_positive_rate": null,
+              "f1": 0.5220883534136547,
+              "confusion_matrix": {
+                "tp": 65,
+                "fn": 119,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.5..1 C": {
+          "samples": 308,
+          "sources": 8,
+          "positives": 308,
+          "models": {
+            "point": {
+              "samples": 308,
+              "positives": 308,
+              "precision": 1.0,
+              "recall": 0.7305194805194806,
+              "false_negative_rate": 0.2694805194805195,
+              "false_positive_rate": null,
+              "f1": 0.8442776735459663,
+              "confusion_matrix": {
+                "tp": 225,
+                "fn": 83,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 308,
+              "positives": 308,
+              "precision": 1.0,
+              "recall": 0.6363636363636364,
+              "false_negative_rate": 0.36363636363636365,
+              "false_positive_rate": null,
+              "f1": 0.7777777777777778,
+              "confusion_matrix": {
+                "tp": 196,
+                "fn": 112,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "1..2 C": {
+          "samples": 242,
+          "sources": 9,
+          "positives": 242,
+          "models": {
+            "point": {
+              "samples": 242,
+              "positives": 242,
+              "precision": 1.0,
+              "recall": 0.6942148760330579,
+              "false_negative_rate": 0.30578512396694213,
+              "false_positive_rate": null,
+              "f1": 0.8195121951219512,
+              "confusion_matrix": {
+                "tp": 168,
+                "fn": 74,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 242,
+              "positives": 242,
+              "precision": 1.0,
+              "recall": 0.5785123966942148,
+              "false_negative_rate": 0.4214876033057851,
+              "false_positive_rate": null,
+              "f1": 0.7329842931937173,
+              "confusion_matrix": {
+                "tp": 140,
+                "fn": 102,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        ">2 C": {
+          "samples": 135,
+          "sources": 8,
+          "positives": 135,
+          "models": {
+            "point": {
+              "samples": 135,
+              "positives": 135,
+              "precision": 1.0,
+              "recall": 0.7925925925925926,
+              "false_negative_rate": 0.2074074074074074,
+              "false_positive_rate": null,
+              "f1": 0.8842975206611571,
+              "confusion_matrix": {
+                "tp": 107,
+                "fn": 28,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 135,
+              "positives": 135,
+              "precision": 1.0,
+              "recall": 0.8074074074074075,
+              "false_negative_rate": 0.1925925925925926,
+              "false_positive_rate": null,
+              "f1": 0.8934426229508197,
+              "confusion_matrix": {
+                "tp": 109,
+                "fn": 26,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "direction": {
+        "above_only": {
+          "samples": 758,
+          "sources": 9,
+          "positives": 758,
+          "models": {
+            "point": {
+              "samples": 758,
+              "positives": 758,
+              "precision": 1.0,
+              "recall": 0.6200527704485488,
+              "false_negative_rate": 0.37994722955145116,
+              "false_positive_rate": null,
+              "f1": 0.7654723127035831,
+              "confusion_matrix": {
+                "tp": 470,
+                "fn": 288,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 758,
+              "positives": 758,
+              "precision": 1.0,
+              "recall": 0.5422163588390502,
+              "false_negative_rate": 0.4577836411609499,
+              "false_positive_rate": null,
+              "f1": 0.7031650983746792,
+              "confusion_matrix": {
+                "tp": 411,
+                "fn": 347,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "below_only": {
+          "samples": 241,
+          "sources": 3,
+          "positives": 241,
+          "models": {
+            "point": {
+              "samples": 241,
+              "positives": 241,
+              "precision": 1.0,
+              "recall": 0.7427385892116183,
+              "false_negative_rate": 0.2572614107883817,
+              "false_positive_rate": null,
+              "f1": 0.8523809523809524,
+              "confusion_matrix": {
+                "tp": 179,
+                "fn": 62,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 241,
+              "positives": 241,
+              "precision": 1.0,
+              "recall": 0.5394190871369294,
+              "false_negative_rate": 0.4605809128630705,
+              "false_positive_rate": null,
+              "f1": 0.7008086253369272,
+              "confusion_matrix": {
+                "tp": 130,
+                "fn": 111,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "both": {
+          "samples": 0,
+          "sources": 0,
+          "positives": 0,
+          "models": {
+            "point": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "future_outside_count": {
+        "1": {
+          "samples": 306,
+          "sources": 9,
+          "positives": 306,
+          "models": {
+            "point": {
+              "samples": 306,
+              "positives": 306,
+              "precision": 1.0,
+              "recall": 0.3790849673202614,
+              "false_negative_rate": 0.6209150326797386,
+              "false_positive_rate": null,
+              "f1": 0.5497630331753555,
+              "confusion_matrix": {
+                "tp": 116,
+                "fn": 190,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 306,
+              "positives": 306,
+              "precision": 1.0,
+              "recall": 0.19934640522875818,
+              "false_negative_rate": 0.8006535947712419,
+              "false_positive_rate": null,
+              "f1": 0.33242506811989103,
+              "confusion_matrix": {
+                "tp": 61,
+                "fn": 245,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "2": {
+          "samples": 331,
+          "sources": 9,
+          "positives": 331,
+          "models": {
+            "point": {
+              "samples": 331,
+              "positives": 331,
+              "precision": 1.0,
+              "recall": 0.6344410876132931,
+              "false_negative_rate": 0.36555891238670696,
+              "false_positive_rate": null,
+              "f1": 0.7763401109057301,
+              "confusion_matrix": {
+                "tp": 210,
+                "fn": 121,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 331,
+              "positives": 331,
+              "precision": 1.0,
+              "recall": 0.4561933534743202,
+              "false_negative_rate": 0.5438066465256798,
+              "false_positive_rate": null,
+              "f1": 0.6265560165975104,
+              "confusion_matrix": {
+                "tp": 151,
+                "fn": 180,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "3": {
+          "samples": 362,
+          "sources": 9,
+          "positives": 362,
+          "models": {
+            "point": {
+              "samples": 362,
+              "positives": 362,
+              "precision": 1.0,
+              "recall": 0.8922651933701657,
+              "false_negative_rate": 0.10773480662983426,
+              "false_positive_rate": null,
+              "f1": 0.9430656934306569,
+              "confusion_matrix": {
+                "tp": 323,
+                "fn": 39,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 362,
+              "positives": 362,
+              "precision": 1.0,
+              "recall": 0.9088397790055248,
+              "false_negative_rate": 0.09116022099447514,
+              "false_positive_rate": null,
+              "f1": 0.9522431259044862,
+              "confusion_matrix": {
+                "tp": 329,
+                "fn": 33,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "window_pattern": {
+        "100": {
+          "samples": 11,
+          "sources": 5,
+          "positives": 11,
+          "models": {
+            "point": {
+              "samples": 11,
+              "positives": 11,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 11,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 11,
+              "positives": 11,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 11,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "010": {
+          "samples": 11,
+          "sources": 5,
+          "positives": 11,
+          "models": {
+            "point": {
+              "samples": 11,
+              "positives": 11,
+              "precision": 1.0,
+              "recall": 0.7272727272727273,
+              "false_negative_rate": 0.2727272727272727,
+              "false_positive_rate": null,
+              "f1": 0.8421052631578947,
+              "confusion_matrix": {
+                "tp": 8,
+                "fn": 3,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 11,
+              "positives": 11,
+              "precision": 1.0,
+              "recall": 0.7272727272727273,
+              "false_negative_rate": 0.2727272727272727,
+              "false_positive_rate": null,
+              "f1": 0.8421052631578947,
+              "confusion_matrix": {
+                "tp": 8,
+                "fn": 3,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "110": {
+          "samples": 12,
+          "sources": 6,
+          "positives": 12,
+          "models": {
+            "point": {
+              "samples": 12,
+              "positives": 12,
+              "precision": 1.0,
+              "recall": 0.75,
+              "false_negative_rate": 0.25,
+              "false_positive_rate": null,
+              "f1": 0.8571428571428571,
+              "confusion_matrix": {
+                "tp": 9,
+                "fn": 3,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 12,
+              "positives": 12,
+              "precision": 1.0,
+              "recall": 0.75,
+              "false_negative_rate": 0.25,
+              "false_positive_rate": null,
+              "f1": 0.8571428571428571,
+              "confusion_matrix": {
+                "tp": 9,
+                "fn": 3,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "001": {
+          "samples": 284,
+          "sources": 9,
+          "positives": 284,
+          "models": {
+            "point": {
+              "samples": 284,
+              "positives": 284,
+              "precision": 1.0,
+              "recall": 0.3415492957746479,
+              "false_negative_rate": 0.6584507042253521,
+              "false_positive_rate": null,
+              "f1": 0.5091863517060368,
+              "confusion_matrix": {
+                "tp": 97,
+                "fn": 187,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 284,
+              "positives": 284,
+              "precision": 1.0,
+              "recall": 0.14788732394366197,
+              "false_negative_rate": 0.852112676056338,
+              "false_positive_rate": null,
+              "f1": 0.25766871165644173,
+              "confusion_matrix": {
+                "tp": 42,
+                "fn": 242,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "011": {
+          "samples": 319,
+          "sources": 9,
+          "positives": 319,
+          "models": {
+            "point": {
+              "samples": 319,
+              "positives": 319,
+              "precision": 1.0,
+              "recall": 0.6300940438871473,
+              "false_negative_rate": 0.36990595611285265,
+              "false_positive_rate": null,
+              "f1": 0.7730769230769231,
+              "confusion_matrix": {
+                "tp": 201,
+                "fn": 118,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 319,
+              "positives": 319,
+              "precision": 1.0,
+              "recall": 0.445141065830721,
+              "false_negative_rate": 0.554858934169279,
+              "false_positive_rate": null,
+              "f1": 0.6160520607375272,
+              "confusion_matrix": {
+                "tp": 142,
+                "fn": 177,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "101": {
+          "samples": 0,
+          "sources": 0,
+          "positives": 0,
+          "models": {
+            "point": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "111": {
+          "samples": 362,
+          "sources": 9,
+          "positives": 362,
+          "models": {
+            "point": {
+              "samples": 362,
+              "positives": 362,
+              "precision": 1.0,
+              "recall": 0.8922651933701657,
+              "false_negative_rate": 0.10773480662983426,
+              "false_positive_rate": null,
+              "f1": 0.9430656934306569,
+              "confusion_matrix": {
+                "tp": 323,
+                "fn": 39,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 362,
+              "positives": 362,
+              "precision": 1.0,
+              "recall": 0.9088397790055248,
+              "false_negative_rate": 0.09116022099447514,
+              "false_positive_rate": null,
+              "f1": 0.9522431259044862,
+              "confusion_matrix": {
+                "tp": 329,
+                "fn": 33,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recent_history": {
+        "stable_recently": {
+          "samples": 62,
+          "sources": 7,
+          "positives": 62,
+          "models": {
+            "point": {
+              "samples": 62,
+              "positives": 62,
+              "precision": 1.0,
+              "recall": 0.2903225806451613,
+              "false_negative_rate": 0.7096774193548387,
+              "false_positive_rate": null,
+              "f1": 0.45,
+              "confusion_matrix": {
+                "tp": 18,
+                "fn": 44,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 62,
+              "positives": 62,
+              "precision": 1.0,
+              "recall": 0.22580645161290322,
+              "false_negative_rate": 0.7741935483870968,
+              "false_positive_rate": null,
+              "f1": 0.3684210526315789,
+              "confusion_matrix": {
+                "tp": 14,
+                "fn": 48,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "already_changing": {
+          "samples": 937,
+          "sources": 9,
+          "positives": 937,
+          "models": {
+            "point": {
+              "samples": 937,
+              "positives": 937,
+              "precision": 1.0,
+              "recall": 0.6734258271077909,
+              "false_negative_rate": 0.3265741728922092,
+              "false_positive_rate": null,
+              "f1": 0.8048469387755102,
+              "confusion_matrix": {
+                "tp": 631,
+                "fn": 306,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 937,
+              "positives": 937,
+              "precision": 1.0,
+              "recall": 0.5624332977588047,
+              "false_negative_rate": 0.4375667022411953,
+              "false_positive_rate": null,
+              "f1": 0.7199453551912568,
+              "confusion_matrix": {
+                "tp": 527,
+                "fn": 410,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "first_breach_lead_minutes": {
+        "5": {
+          "samples": 385,
+          "sources": 9,
+          "positives": 385,
+          "models": {
+            "point": {
+              "samples": 385,
+              "positives": 385,
+              "precision": 1.0,
+              "recall": 0.8909090909090909,
+              "false_negative_rate": 0.10909090909090909,
+              "false_positive_rate": null,
+              "f1": 0.9423076923076923,
+              "confusion_matrix": {
+                "tp": 343,
+                "fn": 42,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 385,
+              "positives": 385,
+              "precision": 1.0,
+              "recall": 0.9064935064935065,
+              "false_negative_rate": 0.09350649350649351,
+              "false_positive_rate": null,
+              "f1": 0.9509536784741145,
+              "confusion_matrix": {
+                "tp": 349,
+                "fn": 36,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "10": {
+          "samples": 330,
+          "sources": 9,
+          "positives": 330,
+          "models": {
+            "point": {
+              "samples": 330,
+              "positives": 330,
+              "precision": 1.0,
+              "recall": 0.6333333333333333,
+              "false_negative_rate": 0.36666666666666664,
+              "false_positive_rate": null,
+              "f1": 0.7755102040816326,
+              "confusion_matrix": {
+                "tp": 209,
+                "fn": 121,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 330,
+              "positives": 330,
+              "precision": 1.0,
+              "recall": 0.45454545454545453,
+              "false_negative_rate": 0.5454545454545454,
+              "false_positive_rate": null,
+              "f1": 0.625,
+              "confusion_matrix": {
+                "tp": 150,
+                "fn": 180,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "15": {
+          "samples": 284,
+          "sources": 9,
+          "positives": 284,
+          "models": {
+            "point": {
+              "samples": 284,
+              "positives": 284,
+              "precision": 1.0,
+              "recall": 0.3415492957746479,
+              "false_negative_rate": 0.6584507042253521,
+              "false_positive_rate": null,
+              "f1": 0.5091863517060368,
+              "confusion_matrix": {
+                "tp": 97,
+                "fn": 187,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 284,
+              "positives": 284,
+              "precision": 1.0,
+              "recall": 0.14788732394366197,
+              "false_negative_rate": 0.852112676056338,
+              "false_positive_rate": null,
+              "f1": 0.25766871165644173,
+              "confusion_matrix": {
+                "tp": 42,
+                "fn": 242,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recovery": {
+        "back_in_range_at_15m": {
+          "samples": 34,
+          "sources": 7,
+          "positives": 34,
+          "models": {
+            "point": {
+              "samples": 34,
+              "positives": 34,
+              "precision": 1.0,
+              "recall": 0.8235294117647058,
+              "false_negative_rate": 0.17647058823529413,
+              "false_positive_rate": null,
+              "f1": 0.9032258064516129,
+              "confusion_matrix": {
+                "tp": 28,
+                "fn": 6,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 34,
+              "positives": 34,
+              "precision": 1.0,
+              "recall": 0.8235294117647058,
+              "false_negative_rate": 0.17647058823529413,
+              "false_positive_rate": null,
+              "f1": 0.9032258064516129,
+              "confusion_matrix": {
+                "tp": 28,
+                "fn": 6,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "outside_at_15m": {
+          "samples": 965,
+          "sources": 9,
+          "positives": 965,
+          "models": {
+            "point": {
+              "samples": 965,
+              "positives": 965,
+              "precision": 1.0,
+              "recall": 0.6435233160621762,
+              "false_negative_rate": 0.35647668393782384,
+              "false_positive_rate": null,
+              "f1": 0.7831021437578815,
+              "confusion_matrix": {
+                "tp": 621,
+                "fn": 344,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 965,
+              "positives": 965,
+              "precision": 1.0,
+              "recall": 0.5316062176165803,
+              "false_negative_rate": 0.46839378238341967,
+              "false_positive_rate": null,
+              "f1": 0.6941813261163735,
+              "confusion_matrix": {
+                "tp": 513,
+                "fn": 452,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "room_minus28_minus22": {
+      "severity": {
+        "0..0.2 C": {
+          "samples": 17,
+          "sources": 1,
+          "positives": 17,
+          "models": {
+            "point": {
+              "samples": 17,
+              "positives": 17,
+              "precision": 1.0,
+              "recall": 0.4117647058823529,
+              "false_negative_rate": 0.5882352941176471,
+              "false_positive_rate": null,
+              "f1": 0.5833333333333334,
+              "confusion_matrix": {
+                "tp": 7,
+                "fn": 10,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 17,
+              "positives": 17,
+              "precision": 1.0,
+              "recall": 0.058823529411764705,
+              "false_negative_rate": 0.9411764705882353,
+              "false_positive_rate": null,
+              "f1": 0.1111111111111111,
+              "confusion_matrix": {
+                "tp": 1,
+                "fn": 16,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.2..0.5 C": {
+          "samples": 32,
+          "sources": 2,
+          "positives": 32,
+          "models": {
+            "point": {
+              "samples": 32,
+              "positives": 32,
+              "precision": 1.0,
+              "recall": 0.28125,
+              "false_negative_rate": 0.71875,
+              "false_positive_rate": null,
+              "f1": 0.43902439024390244,
+              "confusion_matrix": {
+                "tp": 9,
+                "fn": 23,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 32,
+              "positives": 32,
+              "precision": 1.0,
+              "recall": 0.1875,
+              "false_negative_rate": 0.8125,
+              "false_positive_rate": null,
+              "f1": 0.3157894736842105,
+              "confusion_matrix": {
+                "tp": 6,
+                "fn": 26,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "0.5..1 C": {
+          "samples": 43,
+          "sources": 2,
+          "positives": 43,
+          "models": {
+            "point": {
+              "samples": 43,
+              "positives": 43,
+              "precision": 1.0,
+              "recall": 0.5813953488372093,
+              "false_negative_rate": 0.4186046511627907,
+              "false_positive_rate": null,
+              "f1": 0.7352941176470589,
+              "confusion_matrix": {
+                "tp": 25,
+                "fn": 18,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 43,
+              "positives": 43,
+              "precision": 1.0,
+              "recall": 0.27906976744186046,
+              "false_negative_rate": 0.7209302325581395,
+              "false_positive_rate": null,
+              "f1": 0.43636363636363634,
+              "confusion_matrix": {
+                "tp": 12,
+                "fn": 31,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "1..2 C": {
+          "samples": 78,
+          "sources": 3,
+          "positives": 78,
+          "models": {
+            "point": {
+              "samples": 78,
+              "positives": 78,
+              "precision": 1.0,
+              "recall": 0.6410256410256411,
+              "false_negative_rate": 0.358974358974359,
+              "false_positive_rate": null,
+              "f1": 0.78125,
+              "confusion_matrix": {
+                "tp": 50,
+                "fn": 28,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 78,
+              "positives": 78,
+              "precision": 1.0,
+              "recall": 0.3717948717948718,
+              "false_negative_rate": 0.6282051282051282,
+              "false_positive_rate": null,
+              "f1": 0.5420560747663551,
+              "confusion_matrix": {
+                "tp": 29,
+                "fn": 49,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        ">2 C": {
+          "samples": 83,
+          "sources": 3,
+          "positives": 83,
+          "models": {
+            "point": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.43373493975903615,
+              "false_negative_rate": 0.5662650602409639,
+              "false_positive_rate": null,
+              "f1": 0.6050420168067226,
+              "confusion_matrix": {
+                "tp": 36,
+                "fn": 47,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.3373493975903614,
+              "false_negative_rate": 0.6626506024096386,
+              "false_positive_rate": null,
+              "f1": 0.5045045045045045,
+              "confusion_matrix": {
+                "tp": 28,
+                "fn": 55,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "direction": {
+        "above_only": {
+          "samples": 253,
+          "sources": 3,
+          "positives": 253,
+          "models": {
+            "point": {
+              "samples": 253,
+              "positives": 253,
+              "precision": 1.0,
+              "recall": 0.5019762845849802,
+              "false_negative_rate": 0.4980237154150198,
+              "false_positive_rate": null,
+              "f1": 0.6684210526315789,
+              "confusion_matrix": {
+                "tp": 127,
+                "fn": 126,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 253,
+              "positives": 253,
+              "precision": 1.0,
+              "recall": 0.30039525691699603,
+              "false_negative_rate": 0.6996047430830039,
+              "false_positive_rate": null,
+              "f1": 0.46200607902735563,
+              "confusion_matrix": {
+                "tp": 76,
+                "fn": 177,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "below_only": {
+          "samples": 0,
+          "sources": 0,
+          "positives": 0,
+          "models": {
+            "point": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "both": {
+          "samples": 0,
+          "sources": 0,
+          "positives": 0,
+          "models": {
+            "point": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "future_outside_count": {
+        "1": {
+          "samples": 87,
+          "sources": 2,
+          "positives": 87,
+          "models": {
+            "point": {
+              "samples": 87,
+              "positives": 87,
+              "precision": 1.0,
+              "recall": 0.10344827586206896,
+              "false_negative_rate": 0.896551724137931,
+              "false_positive_rate": null,
+              "f1": 0.1875,
+              "confusion_matrix": {
+                "tp": 9,
+                "fn": 78,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 87,
+              "positives": 87,
+              "precision": 1.0,
+              "recall": 0.034482758620689655,
+              "false_negative_rate": 0.9655172413793104,
+              "false_positive_rate": null,
+              "f1": 0.06666666666666667,
+              "confusion_matrix": {
+                "tp": 3,
+                "fn": 84,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "2": {
+          "samples": 96,
+          "sources": 3,
+          "positives": 96,
+          "models": {
+            "point": {
+              "samples": 96,
+              "positives": 96,
+              "precision": 1.0,
+              "recall": 0.5625,
+              "false_negative_rate": 0.4375,
+              "false_positive_rate": null,
+              "f1": 0.72,
+              "confusion_matrix": {
+                "tp": 54,
+                "fn": 42,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 96,
+              "positives": 96,
+              "precision": 1.0,
+              "recall": 0.25,
+              "false_negative_rate": 0.75,
+              "false_positive_rate": null,
+              "f1": 0.4,
+              "confusion_matrix": {
+                "tp": 24,
+                "fn": 72,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "3": {
+          "samples": 70,
+          "sources": 3,
+          "positives": 70,
+          "models": {
+            "point": {
+              "samples": 70,
+              "positives": 70,
+              "precision": 1.0,
+              "recall": 0.9142857142857143,
+              "false_negative_rate": 0.08571428571428572,
+              "false_positive_rate": null,
+              "f1": 0.9552238805970149,
+              "confusion_matrix": {
+                "tp": 64,
+                "fn": 6,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 70,
+              "positives": 70,
+              "precision": 1.0,
+              "recall": 0.7,
+              "false_negative_rate": 0.3,
+              "false_positive_rate": null,
+              "f1": 0.8235294117647058,
+              "confusion_matrix": {
+                "tp": 49,
+                "fn": 21,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "window_pattern": {
+        "100": {
+          "samples": 2,
+          "sources": 1,
+          "positives": 2,
+          "models": {
+            "point": {
+              "samples": 2,
+              "positives": 2,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 2,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 2,
+              "positives": 2,
+              "precision": 1.0,
+              "recall": 0.5,
+              "false_negative_rate": 0.5,
+              "false_positive_rate": null,
+              "f1": 0.6666666666666666,
+              "confusion_matrix": {
+                "tp": 1,
+                "fn": 1,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "010": {
+          "samples": 2,
+          "sources": 1,
+          "positives": 2,
+          "models": {
+            "point": {
+              "samples": 2,
+              "positives": 2,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 2,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 2,
+              "positives": 2,
+              "precision": 1.0,
+              "recall": 0.5,
+              "false_negative_rate": 0.5,
+              "false_positive_rate": null,
+              "f1": 0.6666666666666666,
+              "confusion_matrix": {
+                "tp": 1,
+                "fn": 1,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "110": {
+          "samples": 13,
+          "sources": 1,
+          "positives": 13,
+          "models": {
+            "point": {
+              "samples": 13,
+              "positives": 13,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 13,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 13,
+              "positives": 13,
+              "precision": 1.0,
+              "recall": 0.7692307692307693,
+              "false_negative_rate": 0.23076923076923078,
+              "false_positive_rate": null,
+              "f1": 0.8695652173913043,
+              "confusion_matrix": {
+                "tp": 10,
+                "fn": 3,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "001": {
+          "samples": 83,
+          "sources": 2,
+          "positives": 83,
+          "models": {
+            "point": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.060240963855421686,
+              "false_negative_rate": 0.9397590361445783,
+              "false_positive_rate": null,
+              "f1": 0.11363636363636363,
+              "confusion_matrix": {
+                "tp": 5,
+                "fn": 78,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.012048192771084338,
+              "false_negative_rate": 0.9879518072289156,
+              "false_positive_rate": null,
+              "f1": 0.023809523809523808,
+              "confusion_matrix": {
+                "tp": 1,
+                "fn": 82,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "011": {
+          "samples": 83,
+          "sources": 3,
+          "positives": 83,
+          "models": {
+            "point": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.4939759036144578,
+              "false_negative_rate": 0.5060240963855421,
+              "false_positive_rate": null,
+              "f1": 0.6612903225806451,
+              "confusion_matrix": {
+                "tp": 41,
+                "fn": 42,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.1686746987951807,
+              "false_negative_rate": 0.8313253012048193,
+              "false_positive_rate": null,
+              "f1": 0.28865979381443296,
+              "confusion_matrix": {
+                "tp": 14,
+                "fn": 69,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "101": {
+          "samples": 0,
+          "sources": 0,
+          "positives": 0,
+          "models": {
+            "point": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 0,
+              "positives": 0,
+              "precision": null,
+              "recall": null,
+              "false_negative_rate": null,
+              "false_positive_rate": null,
+              "f1": null,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "111": {
+          "samples": 70,
+          "sources": 3,
+          "positives": 70,
+          "models": {
+            "point": {
+              "samples": 70,
+              "positives": 70,
+              "precision": 1.0,
+              "recall": 0.9142857142857143,
+              "false_negative_rate": 0.08571428571428572,
+              "false_positive_rate": null,
+              "f1": 0.9552238805970149,
+              "confusion_matrix": {
+                "tp": 64,
+                "fn": 6,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 70,
+              "positives": 70,
+              "precision": 1.0,
+              "recall": 0.7,
+              "false_negative_rate": 0.3,
+              "false_positive_rate": null,
+              "f1": 0.8235294117647058,
+              "confusion_matrix": {
+                "tp": 49,
+                "fn": 21,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recent_history": {
+        "stable_recently": {
+          "samples": 47,
+          "sources": 2,
+          "positives": 47,
+          "models": {
+            "point": {
+              "samples": 47,
+              "positives": 47,
+              "precision": null,
+              "recall": 0.0,
+              "false_negative_rate": 1.0,
+              "false_positive_rate": null,
+              "f1": 0.0,
+              "confusion_matrix": {
+                "tp": 0,
+                "fn": 47,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 47,
+              "positives": 47,
+              "precision": 1.0,
+              "recall": 0.02127659574468085,
+              "false_negative_rate": 0.9787234042553191,
+              "false_positive_rate": null,
+              "f1": 0.041666666666666664,
+              "confusion_matrix": {
+                "tp": 1,
+                "fn": 46,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "already_changing": {
+          "samples": 206,
+          "sources": 3,
+          "positives": 206,
+          "models": {
+            "point": {
+              "samples": 206,
+              "positives": 206,
+              "precision": 1.0,
+              "recall": 0.616504854368932,
+              "false_negative_rate": 0.38349514563106796,
+              "false_positive_rate": null,
+              "f1": 0.7627627627627628,
+              "confusion_matrix": {
+                "tp": 127,
+                "fn": 79,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 206,
+              "positives": 206,
+              "precision": 1.0,
+              "recall": 0.3640776699029126,
+              "false_negative_rate": 0.6359223300970874,
+              "false_positive_rate": null,
+              "f1": 0.5338078291814946,
+              "confusion_matrix": {
+                "tp": 75,
+                "fn": 131,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "first_breach_lead_minutes": {
+        "5": {
+          "samples": 85,
+          "sources": 3,
+          "positives": 85,
+          "models": {
+            "point": {
+              "samples": 85,
+              "positives": 85,
+              "precision": 1.0,
+              "recall": 0.9294117647058824,
+              "false_negative_rate": 0.07058823529411765,
+              "false_positive_rate": null,
+              "f1": 0.9634146341463414,
+              "confusion_matrix": {
+                "tp": 79,
+                "fn": 6,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 85,
+              "positives": 85,
+              "precision": 1.0,
+              "recall": 0.7058823529411765,
+              "false_negative_rate": 0.29411764705882354,
+              "false_positive_rate": null,
+              "f1": 0.8275862068965517,
+              "confusion_matrix": {
+                "tp": 60,
+                "fn": 25,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "10": {
+          "samples": 85,
+          "sources": 3,
+          "positives": 85,
+          "models": {
+            "point": {
+              "samples": 85,
+              "positives": 85,
+              "precision": 1.0,
+              "recall": 0.5058823529411764,
+              "false_negative_rate": 0.49411764705882355,
+              "false_positive_rate": null,
+              "f1": 0.671875,
+              "confusion_matrix": {
+                "tp": 43,
+                "fn": 42,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 85,
+              "positives": 85,
+              "precision": 1.0,
+              "recall": 0.17647058823529413,
+              "false_negative_rate": 0.8235294117647058,
+              "false_positive_rate": null,
+              "f1": 0.3,
+              "confusion_matrix": {
+                "tp": 15,
+                "fn": 70,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "15": {
+          "samples": 83,
+          "sources": 2,
+          "positives": 83,
+          "models": {
+            "point": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.060240963855421686,
+              "false_negative_rate": 0.9397590361445783,
+              "false_positive_rate": null,
+              "f1": 0.11363636363636363,
+              "confusion_matrix": {
+                "tp": 5,
+                "fn": 78,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 83,
+              "positives": 83,
+              "precision": 1.0,
+              "recall": 0.012048192771084338,
+              "false_negative_rate": 0.9879518072289156,
+              "false_positive_rate": null,
+              "f1": 0.023809523809523808,
+              "confusion_matrix": {
+                "tp": 1,
+                "fn": 82,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      },
+      "recovery": {
+        "back_in_range_at_15m": {
+          "samples": 17,
+          "sources": 1,
+          "positives": 17,
+          "models": {
+            "point": {
+              "samples": 17,
+              "positives": 17,
+              "precision": 1.0,
+              "recall": 1.0,
+              "false_negative_rate": 0.0,
+              "false_positive_rate": null,
+              "f1": 1.0,
+              "confusion_matrix": {
+                "tp": 17,
+                "fn": 0,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 17,
+              "positives": 17,
+              "precision": 1.0,
+              "recall": 0.7058823529411765,
+              "false_negative_rate": 0.29411764705882354,
+              "false_positive_rate": null,
+              "f1": 0.8275862068965517,
+              "confusion_matrix": {
+                "tp": 12,
+                "fn": 5,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        },
+        "outside_at_15m": {
+          "samples": 236,
+          "sources": 3,
+          "positives": 236,
+          "models": {
+            "point": {
+              "samples": 236,
+              "positives": 236,
+              "precision": 1.0,
+              "recall": 0.4661016949152542,
+              "false_negative_rate": 0.5338983050847458,
+              "false_positive_rate": null,
+              "f1": 0.6358381502890174,
+              "confusion_matrix": {
+                "tp": 110,
+                "fn": 126,
+                "fp": 0,
+                "tn": 0
+              }
+            },
+            "classifier": {
+              "samples": 236,
+              "positives": 236,
+              "precision": 1.0,
+              "recall": 0.2711864406779661,
+              "false_negative_rate": 0.7288135593220338,
+              "false_positive_rate": null,
+              "f1": 0.4266666666666667,
+              "confusion_matrix": {
+                "tp": 64,
+                "fn": 172,
+                "fp": 0,
+                "tn": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "false_alarms_by_boundary_distance": {
+    "0..0.2 C": {
+      "samples": 3851,
+      "sources": 22,
+      "positives": 0,
+      "models": {
+        "point": {
+          "samples": 3851,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.13632822643469228,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 525,
+            "tn": 3326
+          }
+        },
+        "classifier": {
+          "samples": 3851,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.1080238898987276,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 416,
+            "tn": 3435
+          }
+        }
+      }
+    },
+    "0.2..0.5 C": {
+      "samples": 5344,
+      "sources": 23,
+      "positives": 0,
+      "models": {
+        "point": {
+          "samples": 5344,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.04603293413173653,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 246,
+            "tn": 5098
+          }
+        },
+        "classifier": {
+          "samples": 5344,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.03312125748502994,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 177,
+            "tn": 5167
+          }
+        }
+      }
+    },
+    "0.5..1 C": {
+      "samples": 9349,
+      "sources": 22,
+      "positives": 0,
+      "models": {
+        "point": {
+          "samples": 9349,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.024387635041180876,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 228,
+            "tn": 9121
+          }
+        },
+        "classifier": {
+          "samples": 9349,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.021927478874745963,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 205,
+            "tn": 9144
+          }
+        }
+      }
+    },
+    ">1 C": {
+      "samples": 20773,
+      "sources": 22,
+      "positives": 0,
+      "models": {
+        "point": {
+          "samples": 20773,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.003225340586338035,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 67,
+            "tn": 20706
+          }
+        },
+        "classifier": {
+          "samples": 20773,
+          "positives": 0,
+          "precision": 0.0,
+          "recall": null,
+          "false_negative_rate": null,
+          "false_positive_rate": 0.004958359408848024,
+          "f1": 0.0,
+          "confusion_matrix": {
+            "tp": 0,
+            "fn": 0,
+            "fp": 103,
+            "tn": 20670
+          }
+        }
+      }
+    }
+  },
+  "training_coverage": {
+    "physical_training_windows": 284984,
+    "classifier_room_examples_including_overlap": 165896,
+    "unique_physical_windows_used_by_classifier": 132862,
+    "point_training_sources": 98,
+    "classifier_sources_with_eligible_examples": 96
+  },
+  "wrong_direction_point_warnings_on_positive_samples": 16,
+  "roc_diagnostics": {
+    "room_0_4": {
+      "baseline_test_fpr": 0.03410908715620001,
+      "models": {
+        "point": {
+          "ap": 0.6464034289821126,
+          "test_curve_recall_at_fpr_4pct": 0.7119518486672399,
+          "test_curve_recall_at_baseline_fpr": 0.6865864144453998
+        },
+        "classifier": {
+          "ap": 0.7363044301358659,
+          "test_curve_recall_at_fpr_4pct": 0.7188306104901118,
+          "test_curve_recall_at_baseline_fpr": 0.6852966466036113
+        }
+      },
+      "classifier_score_distribution": {
+        "development_oof": {
+          "samples": 63379,
+          "sources": 80,
+          "positive_rate": 0.12130200855172849,
+          "negative_p95": 0.3470782659194612,
+          "negative_p99": 0.7295758421631419,
+          "positive_median": 0.4406650981426665,
+          "brier_score": 0.06514939935459269,
+          "measured_fpr": 0.025839004507011903,
+          "measured_recall": 0.44484911550468265
+        },
+        "source_holdout": {
+          "samples": 21705,
+          "sources": 22,
+          "positive_rate": 0.10716424786915457,
+          "negative_p95": 0.32197773745015973,
+          "negative_p99": 0.833377298862038,
+          "positive_median": 0.6499797098657576,
+          "brier_score": 0.048656210646724006,
+          "measured_fpr": 0.031477372413437225,
+          "measured_recall": 0.6569217540842648
+        }
+      }
+    },
+    "room_2_6": {
+      "baseline_test_fpr": 0.015351006671783669,
+      "models": {
+        "point": {
+          "ap": 0.6710623624816732,
+          "test_curve_recall_at_fpr_4pct": 0.6386651323360184,
+          "test_curve_recall_at_baseline_fpr": 0.5017261219792866
+        },
+        "classifier": {
+          "ap": 0.6895994879291315,
+          "test_curve_recall_at_fpr_4pct": 0.6018411967779056,
+          "test_curve_recall_at_baseline_fpr": 0.4620253164556962
+        }
+      },
+      "classifier_score_distribution": {
+        "development_oof": {
+          "samples": 70202,
+          "sources": 86,
+          "positive_rate": 0.10385743995897553,
+          "negative_p95": 0.30597877818658803,
+          "negative_p99": 0.6336657558811426,
+          "positive_median": 0.41233659923354016,
+          "brier_score": 0.057455699035218216,
+          "measured_fpr": 0.017055840790958655,
+          "measured_recall": 0.399945137841174
+        },
+        "source_holdout": {
+          "samples": 18675,
+          "sources": 23,
+          "positive_rate": 0.09306559571619813,
+          "negative_p95": 0.34739517167709283,
+          "negative_p99": 0.5992987826380493,
+          "positive_median": 0.4945634484978317,
+          "brier_score": 0.04835195284517516,
+          "measured_fpr": 0.014583456338194486,
+          "measured_recall": 0.4522439585730725
+        }
+      }
+    },
+    "room_minus22_minus18": {
+      "baseline_test_fpr": 0.10460577673692428,
+      "models": {
+        "point": {
+          "ap": 0.8129521488241422,
+          "test_curve_recall_at_fpr_4pct": 0.47047047047047047,
+          "test_curve_recall_at_baseline_fpr": 0.6496496496496497
+        },
+        "classifier": {
+          "ap": 0.8480378821416089,
+          "test_curve_recall_at_fpr_4pct": 0.5745745745745746,
+          "test_curve_recall_at_baseline_fpr": 0.6796796796796797
+        }
+      },
+      "classifier_score_distribution": {
+        "development_oof": {
+          "samples": 24638,
+          "sources": 54,
+          "positive_rate": 0.2800551992856563,
+          "negative_p95": 0.7124810402238103,
+          "negative_p99": 0.8968010892235769,
+          "positive_median": 0.6153312529202781,
+          "brier_score": 0.13609915909577525,
+          "measured_fpr": 0.06906077348066299,
+          "measured_recall": 0.4772463768115942
+        },
+        "source_holdout": {
+          "samples": 2280,
+          "sources": 9,
+          "positive_rate": 0.4381578947368421,
+          "negative_p95": 0.5438842704872183,
+          "negative_p99": 0.7929300658464065,
+          "positive_median": 0.6759195439614782,
+          "brier_score": 0.15413577607009468,
+          "measured_fpr": 0.02966432474629196,
+          "measured_recall": 0.5415415415415415
+        }
+      }
+    },
+    "room_minus28_minus22": {
+      "baseline_test_fpr": 0.006395348837209302,
+      "models": {
+        "point": {
+          "ap": 0.6825960854754028,
+          "test_curve_recall_at_fpr_4pct": 0.5928853754940712,
+          "test_curve_recall_at_baseline_fpr": 0.525691699604743
+        },
+        "classifier": {
+          "ap": 0.7052820673018237,
+          "test_curve_recall_at_fpr_4pct": 0.616600790513834,
+          "test_curve_recall_at_baseline_fpr": 0.41106719367588934
+        }
+      },
+      "classifier_score_distribution": {
+        "development_oof": {
+          "samples": 7677,
+          "sources": 26,
+          "positive_rate": 0.16647127784290738,
+          "negative_p95": 0.5551374675775487,
+          "negative_p99": 0.8903314653180168,
+          "positive_median": 0.5674668685507505,
+          "brier_score": 0.0983094369698821,
+          "measured_fpr": 0.03250507891858103,
+          "measured_recall": 0.40688575899843504
+        },
+        "source_holdout": {
+          "samples": 1973,
+          "sources": 3,
+          "positive_rate": 0.12823112012164217,
+          "negative_p95": 0.14780431257710397,
+          "negative_p99": 0.45251117508396244,
+          "positive_median": 0.42745932135962883,
+          "brier_score": 0.0639213612922605,
+          "measured_fpr": 0.0034883720930232558,
+          "measured_recall": 0.30039525691699603
+        }
+      }
+    }
+  },
+  "top_sources_additional_misses": [
+    {
+      "room": "room_minus22_minus18",
+      "source": "102_2DT",
+      "samples": 513,
+      "positives": 296,
+      "point_recall": 0.7668918918918919,
+      "classifier_recall": 0.6013513513513513,
+      "point_fpr": 0.16129032258064516,
+      "classifier_fpr": 0.07834101382488479,
+      "point_only_detected": 61,
+      "classifier_only_detected": 12,
+      "additional_misses": 49
+    },
+    {
+      "room": "room_0_4",
+      "source": "114_2DT",
+      "samples": 823,
+      "positives": 422,
+      "point_recall": 0.7819905213270142,
+      "classifier_recall": 0.6682464454976303,
+      "point_fpr": 0.02743142144638404,
+      "classifier_fpr": 0.00997506234413965,
+      "point_only_detected": 51,
+      "classifier_only_detected": 3,
+      "additional_misses": 48
+    },
+    {
+      "room": "room_minus28_minus22",
+      "source": "030_2DT",
+      "samples": 854,
+      "positives": 206,
+      "point_recall": 0.5533980582524272,
+      "classifier_recall": 0.32524271844660196,
+      "point_fpr": 0.013888888888888888,
+      "classifier_fpr": 0.006172839506172839,
+      "point_only_detected": 49,
+      "classifier_only_detected": 2,
+      "additional_misses": 47
+    },
+    {
+      "room": "room_minus22_minus18",
+      "source": "030_2DT",
+      "samples": 371,
+      "positives": 238,
+      "point_recall": 0.6932773109243697,
+      "classifier_recall": 0.5378151260504201,
+      "point_fpr": 0.12781954887218044,
+      "classifier_fpr": 0.05263157894736842,
+      "point_only_detected": 48,
+      "classifier_only_detected": 11,
+      "additional_misses": 37
+    },
+    {
+      "room": "room_2_6",
+      "source": "105_2DT",
+      "samples": 865,
+      "positives": 170,
+      "point_recall": 0.38235294117647056,
+      "classifier_recall": 0.2529411764705882,
+      "point_fpr": 0.03597122302158273,
+      "classifier_fpr": 0.02877697841726619,
+      "point_only_detected": 25,
+      "classifier_only_detected": 3,
+      "additional_misses": 22
+    },
+    {
+      "room": "room_2_6",
+      "source": "014_2DT",
+      "samples": 116,
+      "positives": 108,
+      "point_recall": 0.7870370370370371,
+      "classifier_recall": 0.6018518518518519,
+      "point_fpr": 0.25,
+      "classifier_fpr": 0.125,
+      "point_only_detected": 21,
+      "classifier_only_detected": 1,
+      "additional_misses": 20
+    },
+    {
+      "room": "room_2_6",
+      "source": "034_1D",
+      "samples": 1413,
+      "positives": 66,
+      "point_recall": 0.3484848484848485,
+      "classifier_recall": 0.09090909090909091,
+      "point_fpr": 0.003711952487008166,
+      "classifier_fpr": 0.0066815144766146995,
+      "point_only_detected": 19,
+      "classifier_only_detected": 2,
+      "additional_misses": 17
+    },
+    {
+      "room": "room_0_4",
+      "source": "028_1D",
+      "samples": 1037,
+      "positives": 103,
+      "point_recall": 0.22330097087378642,
+      "classifier_recall": 0.06796116504854369,
+      "point_fpr": 0.035331905781584586,
+      "classifier_fpr": 0.013918629550321198,
+      "point_only_detected": 17,
+      "classifier_only_detected": 1,
+      "additional_misses": 16
+    },
+    {
+      "room": "room_0_4",
+      "source": "071_1D",
+      "samples": 1297,
+      "positives": 63,
+      "point_recall": 0.3492063492063492,
+      "classifier_recall": 0.09523809523809523,
+      "point_fpr": 0.03322528363047002,
+      "classifier_fpr": 0.01053484602917342,
+      "point_only_detected": 16,
+      "classifier_only_detected": 0,
+      "additional_misses": 16
+    },
+    {
+      "room": "room_minus22_minus18",
+      "source": "016_2DT",
+      "samples": 159,
+      "positives": 59,
+      "point_recall": 0.8813559322033898,
+      "classifier_recall": 0.6610169491525424,
+      "point_fpr": 0.0,
+      "classifier_fpr": 0.0,
+      "point_only_detected": 13,
+      "classifier_only_detected": 0,
+      "additional_misses": 13
+    },
+    {
+      "room": "room_0_4",
+      "source": "086_1D",
+      "samples": 1731,
+      "positives": 283,
+      "point_recall": 0.9646643109540636,
+      "classifier_recall": 0.9187279151943463,
+      "point_fpr": 0.004143646408839779,
+      "classifier_fpr": 0.0006906077348066298,
+      "point_only_detected": 14,
+      "classifier_only_detected": 1,
+      "additional_misses": 13
+    },
+    {
+      "room": "room_2_6",
+      "source": "075_1D",
+      "samples": 541,
+      "positives": 47,
+      "point_recall": 0.2553191489361702,
+      "classifier_recall": 0.02127659574468085,
+      "point_fpr": 0.018218623481781375,
+      "classifier_fpr": 0.0,
+      "point_only_detected": 12,
+      "classifier_only_detected": 1,
+      "additional_misses": 11
+    }
+  ],
+  "events": {
+    "rooms": {
+      "room_0_4": {
+        "events": 853,
+        "sources": 21,
+        "right_censored_events": 12,
+        "models": {
+          "point": {
+            "detected": 766,
+            "recall": 0.8980070339976554,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 800,
+            "recall_at_least_10m_before_among_eligible": 0.79,
+            "events_with_15m_opportunity": 691,
+            "recall_at_least_15m_before_among_eligible": 0.44283646888567296
+          },
+          "classifier": {
+            "detected": 767,
+            "recall": 0.8991793669402111,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 800,
+            "recall_at_least_10m_before_among_eligible": 0.73375,
+            "events_with_15m_opportunity": 691,
+            "recall_at_least_15m_before_among_eligible": 0.3719247467438495
+          }
+        },
+        "paired": {
+          "both_detected": 727,
+          "point_only": 39,
+          "classifier_only": 40,
+          "neither": 47,
+          "classifier_later_on_shared_events": 131,
+          "same_lead_on_shared_events": 541,
+          "classifier_earlier_on_shared_events": 55
+        },
+        "point_correct_direction_events_detected": 755
+      },
+      "room_2_6": {
+        "events": 652,
+        "sources": 22,
+        "right_censored_events": 16,
+        "models": {
+          "point": {
+            "detected": 516,
+            "recall": 0.7914110429447853,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 579,
+            "recall_at_least_10m_before_among_eligible": 0.5595854922279793,
+            "events_with_15m_opportunity": 516,
+            "recall_at_least_15m_before_among_eligible": 0.22286821705426357
+          },
+          "classifier": {
+            "detected": 476,
+            "recall": 0.7300613496932515,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 579,
+            "recall_at_least_10m_before_among_eligible": 0.4542314335060449,
+            "events_with_15m_opportunity": 516,
+            "recall_at_least_15m_before_among_eligible": 0.16472868217054262
+          }
+        },
+        "paired": {
+          "both_detected": 454,
+          "point_only": 62,
+          "classifier_only": 22,
+          "neither": 114,
+          "classifier_later_on_shared_events": 87,
+          "same_lead_on_shared_events": 325,
+          "classifier_earlier_on_shared_events": 42
+        },
+        "point_correct_direction_events_detected": 516
+      },
+      "room_minus22_minus18": {
+        "events": 386,
+        "sources": 9,
+        "right_censored_events": 7,
+        "models": {
+          "point": {
+            "detected": 351,
+            "recall": 0.9093264248704663,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 330,
+            "recall_at_least_10m_before_among_eligible": 0.6606060606060606,
+            "events_with_15m_opportunity": 284,
+            "recall_at_least_15m_before_among_eligible": 0.3415492957746479
+          },
+          "classifier": {
+            "detected": 351,
+            "recall": 0.9093264248704663,
+            "median_observed_lead_minutes_when_detected": 5.0,
+            "events_with_10m_opportunity": 330,
+            "recall_at_least_10m_before_among_eligible": 0.503030303030303,
+            "events_with_15m_opportunity": 284,
+            "recall_at_least_15m_before_among_eligible": 0.14788732394366197
+          }
+        },
+        "paired": {
+          "both_detected": 339,
+          "point_only": 12,
+          "classifier_only": 12,
+          "neither": 23,
+          "classifier_later_on_shared_events": 106,
+          "same_lead_on_shared_events": 224,
+          "classifier_earlier_on_shared_events": 9
+        },
+        "point_correct_direction_events_detected": 351
+      },
+      "room_minus28_minus22": {
+        "events": 85,
+        "sources": 3,
+        "right_censored_events": 2,
+        "models": {
+          "point": {
+            "detected": 79,
+            "recall": 0.9294117647058824,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 85,
+            "recall_at_least_10m_before_among_eligible": 0.5058823529411764,
+            "events_with_15m_opportunity": 83,
+            "recall_at_least_15m_before_among_eligible": 0.060240963855421686
+          },
+          "classifier": {
+            "detected": 61,
+            "recall": 0.7176470588235294,
+            "median_observed_lead_minutes_when_detected": 5.0,
+            "events_with_10m_opportunity": 85,
+            "recall_at_least_10m_before_among_eligible": 0.18823529411764706,
+            "events_with_15m_opportunity": 83,
+            "recall_at_least_15m_before_among_eligible": 0.012048192771084338
+          }
+        },
+        "paired": {
+          "both_detected": 60,
+          "point_only": 19,
+          "classifier_only": 1,
+          "neither": 5,
+          "classifier_later_on_shared_events": 21,
+          "same_lead_on_shared_events": 37,
+          "classifier_earlier_on_shared_events": 2
+        },
+        "point_correct_direction_events_detected": 79
+      }
+    },
+    "by_run_length": {
+      "one_observed_reading": {
+        "events": 92,
+        "sources": 19,
+        "right_censored_events": 0,
+        "models": {
+          "point": {
+            "detected": 58,
+            "recall": 0.6304347826086957,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 82,
+            "recall_at_least_10m_before_among_eligible": 0.45121951219512196,
+            "events_with_15m_opportunity": 77,
+            "recall_at_least_15m_before_among_eligible": 0.24675324675324675
+          },
+          "classifier": {
+            "detected": 59,
+            "recall": 0.6413043478260869,
+            "median_observed_lead_minutes_when_detected": 5.0,
+            "events_with_10m_opportunity": 82,
+            "recall_at_least_10m_before_among_eligible": 0.32926829268292684,
+            "events_with_15m_opportunity": 77,
+            "recall_at_least_15m_before_among_eligible": 0.07792207792207792
+          }
+        },
+        "paired": {
+          "both_detected": 44,
+          "point_only": 14,
+          "classifier_only": 15,
+          "neither": 19,
+          "classifier_later_on_shared_events": 11,
+          "same_lead_on_shared_events": 31,
+          "classifier_earlier_on_shared_events": 2
+        },
+        "point_correct_direction_events_detected": 50
+      },
+      "two_observed_readings": {
+        "events": 92,
+        "sources": 19,
+        "right_censored_events": 2,
+        "models": {
+          "point": {
+            "detected": 65,
+            "recall": 0.7065217391304348,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 90,
+            "recall_at_least_10m_before_among_eligible": 0.5666666666666667,
+            "events_with_15m_opportunity": 88,
+            "recall_at_least_15m_before_among_eligible": 0.3068181818181818
+          },
+          "classifier": {
+            "detected": 61,
+            "recall": 0.6630434782608695,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 90,
+            "recall_at_least_10m_before_among_eligible": 0.36666666666666664,
+            "events_with_15m_opportunity": 88,
+            "recall_at_least_15m_before_among_eligible": 0.10227272727272728
+          }
+        },
+        "paired": {
+          "both_detected": 48,
+          "point_only": 17,
+          "classifier_only": 13,
+          "neither": 14,
+          "classifier_later_on_shared_events": 25,
+          "same_lead_on_shared_events": 20,
+          "classifier_earlier_on_shared_events": 3
+        },
+        "point_correct_direction_events_detected": 65
+      },
+      "three_or_more_observed_readings": {
+        "events": 1792,
+        "sources": 23,
+        "right_censored_events": 35,
+        "models": {
+          "point": {
+            "detected": 1589,
+            "recall": 0.88671875,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 1622,
+            "recall_at_least_10m_before_among_eligible": 0.6960542540073983,
+            "events_with_15m_opportunity": 1409,
+            "recall_at_least_15m_before_among_eligible": 0.3385379701916253
+          },
+          "classifier": {
+            "detected": 1535,
+            "recall": 0.8565848214285714,
+            "median_observed_lead_minutes_when_detected": 10.0,
+            "events_with_10m_opportunity": 1622,
+            "recall_at_least_10m_before_among_eligible": 0.5992601726263872,
+            "events_with_15m_opportunity": 1409,
+            "recall_at_least_15m_before_among_eligible": 0.262597586941093
+          }
+        },
+        "paired": {
+          "both_detected": 1488,
+          "point_only": 101,
+          "classifier_only": 47,
+          "neither": 156,
+          "classifier_later_on_shared_events": 309,
+          "same_lead_on_shared_events": 1076,
+          "classifier_earlier_on_shared_events": 103
+        },
+        "point_correct_direction_events_detected": 1586
+      }
+    }
+  },
+  "simple_controls": {
+    "persistence": {
+      "endpoint_mae": 1.0910481430536452,
+      "macro_recall": 0.0,
+      "macro_fpr": 0.0
+    },
+    "linear_last_5m": {
+      "endpoint_mae": 1.124525447042641,
+      "macro_recall": 0.5240436058107107,
+      "macro_fpr": 0.070632513222976
+    },
+    "linear_last_15m": {
+      "endpoint_mae": 1.3745859697386522,
+      "macro_recall": 0.3411890560552453,
+      "macro_fpr": 0.09243673103278133
+    },
+    "hgb_regressor": {
+      "endpoint_mae": 0.558177880804397,
+      "macro_recall": 0.584984617664829,
+      "macro_fpr": 0.04011530485052931
+    }
+  },
+  "later_tuning_aggregation_check": {
+    "point_default": {
+      "macro_recall": 0.5690277226822305,
+      "macro_fpr": 0.0341249540736245,
+      "pooled_false_positives": 1006,
+      "pooled_fpr": 0.025586896253529008,
+      "note": "Forecast samples can overlap between presets; these are not production notifications."
+    },
+    "classifier_oof_threshold": {
+      "macro_recall": 0.5935879426997751,
+      "macro_fpr": 0.03205058376079604,
+      "pooled_false_positives": 1868,
+      "pooled_fpr": 0.047511254673550884,
+      "note": "Forecast samples can overlap between presets; these are not production notifications."
+    }
+  }
+}

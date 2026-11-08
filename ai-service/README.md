@@ -1,9 +1,6 @@
 # AI service — Dự báo nhiệt độ phòng lạnh
 
-FastAPI dùng một model HistGradientBoosting chung cho dữ liệu Bangkok T_MS
-(nhiệt độ ngăn mát) và T_FC (ngăn đông hoặc vùng lạnh nhất). Backend gửi lịch sử
-của một cảm biến nhiệt độ; model không cần độ ẩm, nhiệt độ ngoài kho hay giờ
-trong ngày. Luồng telemetry vẫn có thể thu thập độ ẩm phục vụ chức năng khác.
+FastAPI dùng hai HistGradientBoostingRegressor chung cho các phòng, dự báo nhiệt độ tại mốc +5 và +10 phút. T_MS/T_FC là nhãn nguồn dữ liệu Bangkok; không dùng để chọn model theo loại phòng. Backend gửi lịch sử nhiệt độ của một cảm biến và ngưỡng cấu hình của phòng.
 
 ## Đầu vào và đầu ra
 
@@ -85,85 +82,79 @@ thử dự báo tối đa một lần/phút, ở chế độ nền. Sau khi kh�
 dài, cần chờ đủ một giờ lịch sử. Ngưỡng phòng và nhiệt độ lịch sử phải nằm trong
 **−28 đến 19,6°C**; đầu ra không bị ép vào dải này.
 
-Cấu trúc trả về giữ nguyên: `predicted_temp_15m`, `will_exceed_threshold`,
-`violation_type`, `risk_level`, `recommendation` và `metadata`.
-Khuyến nghị là câu dựng từ template; model chỉ dự đoán nhiệt độ.
-`GET /health` trả 200 khi model tương thích đã nạp, nếu không trả 503.
-`/docs` mô tả đầy đủ request.
+Cấu trúc trả về của bản 5–10 phút:
 
-## Model và kết quả đánh giá
+```json
+{
+  "forecast_schema": "temperature-warning-5-10-v1",
+  "as_of": "2026-11-01T10:00:00Z",
+  "forecasts": [
+    {"horizon_minutes": 5, "predicted_temp": -17.7, "will_exceed_threshold": false, "violation_type": "NONE"},
+    {"horizon_minutes": 10, "predicted_temp": -17.4, "will_exceed_threshold": false, "violation_type": "NONE"}
+  ],
+  "will_exceed_threshold": false,
+  "first_violation_minutes": null,
+  "violation_type": "NONE",
+  "risk_level": "NORMAL",
+  "recommendation": "Dự báo ở mốc +5 và +10 phút nằm trong ngưỡng cấu hình.",
+  "metadata": {"horizons_minutes": [5, 10], "history_samples": 13}
+}
+```
 
-- File mới: `temperature_model_history.pkl`; metadata đọc được tại
-  `temperature_model_history.json`. File HGB cũ được giữ lại.
-- scikit-learn 1.7.2, loss `absolute_error`, 100 vòng học, learning rate 0.1,
-  max depth 15, max leaf nodes 31. Thư viện được pin trong `requirements.txt`.
-- Model cuối học 357.684 mẫu của cả hai kênh từ toàn bộ 123 tủ.
-- Nhãn học: **nhiệt độ sau 15 phút − nhiệt độ hiện tại**. FastAPI cộng nhiệt độ
-  hiện tại vào kết quả trước khi so với ngưỡng phòng.
-- `temperature_features.py` tính 22 đặc trưng cho cả train và inference:
-  nhiệt độ hiện tại, các độ trễ và chênh lệch đến 60 phút, trung bình,
-  độ lệch chuẩn tổng thể (ddof=0) và biên độ gần đây.
-- Cửa sổ trượt tính cả mẫu hiện tại, loại mẫu ở đầu dưới: 3/6/12 mẫu cho
-  15/30/60 phút. Mẫu thứ 13 được dùng riêng cho độ trễ 60 phút.
-  Không dùng nhiệt độ tương lai làm đầu vào.
+Hai giá trị là nhiệt độ tại đúng t+5 và t+10. Dataset không quan sát được mọi
+dao động giữa các mốc. Bất kỳ dự báo nào vượt ngưỡng sẽ bật `will_exceed_threshold`.
+`first_violation_minutes` và `violation_type` tóm tắt mốc vi phạm đầu tiên;
+`forecasts` giữ cả hai hướng nếu hai mốc vi phạm khác nhau.
 
-Đánh giá 5 fold, chia theo tủ; hai ngăn của một tủ luôn cùng nhóm:
+Giá trị trả về giữ đủ độ chính xác để so ngưỡng như benchmark; giao diện tự
+định dạng số hiển thị. Cảnh báo AI có mức `WARNING` để nhân viên kiểm tra,
+không gửi lệnh tự động đến quạt/còi. Backend vẫn lưu `temperature_predicted`,
+có xác nhận tiếp nhận, thông báo và lịch sử theo phòng. Chỉ tự đóng cảnh báo
+AI khi cả hai dự báo đã nằm trong vùng hồi phục hysteresis. Cảnh báo từ số đo
+thực tế `temperature_out_of_range` tiếp tục hoạt động độc lập.
 
-| Ngăn | MAE (°C) | Sai lệch không quá 1°C |
-| --- | ---: | ---: |
-| T_MS | 0,299 | 94,64% |
-| T_FC | 0,921 | 72,60% |
-| T_FC khi nhiệt độ hiện tại −25..−15°C | 0,751 | 77,30% |
+`GET /health` trả 200 khi model đã nạp đúng schema; nếu thiếu hoặc dùng artifact
+15 phút cũ sẽ trả 503. Response health ghi `horizons_minutes: [5,10]`.
 
-Xem [báo cáo thí nghiệm](experiments/results/history-upgrade-2026-10-04/report.md).
-Đây là điểm validation ngoài fold dùng để chọn ứng viên, không phải độ chính xác
-đo trên kho thật hoặc trên lần fit cuối với toàn bộ dữ liệu.
-T_FC gồm nhiều điều kiện vận hành khác nhau; lịch sử nhiệt độ không dự đoán
-hoàn hảo những lần mở cửa trong tương lai.
+## Model và benchmark
+
+- Artifact mặc định: `temperature_model_warning_5_10.pkl`, metadata cùng tên `.json`.
+- Hai HistGradientBoostingRegressor học thay đổi nhiệt độ ở 5 và 10 phút.
+- Cấu hình đã benchmark: loss `absolute_error`, tối đa 500 vòng, learning rate
+  0.03, tối đa 63 lá; early stopping `auto`, scikit-learn 1.7.2.
+- Model phục vụ được fit lại trên 357.684 hàng từ toàn bộ 123 nguồn. Các chỉ số
+  bên dưới thuộc model kiểm thử đã fit trên đúng phần train, không chấm artifact
+  phục vụ trên dữ liệu mà nó đã học.
+- Artifact 15 phút cũ được giữ để đối chiếu nghiên cứu; API mới yêu cầu đúng
+  schema 5–10 phút và không dùng trường `predicted_temp_15m`.
+
+| Phép kiểm tra, mục tiêu 10 phút | Recall | FPR | Precision |
+|---|---:|---:|---:|
+| Nguồn giữ riêng | 66,83% | 2,63% | 78,61% |
+| Theo thời gian | 69,00% | 2,62% | 78,54% |
+
+Mục tiêu 10 phút là có vượt ngưỡng ở ít nhất một quan sát t+5 hoặc t+10, chỉ
+khi nhiệt độ hiện tại trong ngưỡng. Các điểm số tính theo thời điểm chồng lặp,
+trung bình đều giữa bốn preset. FPR khác tỷ lệ cảnh báo sai trong số cảnh báo
+đã phát. So với cấu hình cũ trên cùng mục tiêu 10 phút, FPR giảm ở cả hai phép
+kiểm tra, recall giảm ở nguồn giữ riêng và tăng ở phép kiểm tra thời gian.
+
+Dataset Bangkok công khai đã được nghiên cứu nhiều lần. Đây là kết quả thăm
+dò, không phải hiệu quả đã đo tại kho thật hoặc chứng nhận bảo quản thực phẩm.
+
+[Báo cáo 5–10 phút](experiments/results/room-warning-5-10m-2026-11-01/report.md)
+· [Chi tiết tích hợp](../docs/AI_SHORT_HORIZON.md)
+· [Benchmark HGB 15 phút trước đây](experiments/results/room-forecast-2026-10-17/report.md)
 
 ## Tái lập và kiểm tra
 
-Dữ liệu thô nằm ngoài repo: [Bangkok DOI 10.57745/TMWYBQ](https://doi.org/10.57745/TMWYBQ).
-Script ghi và kiểm tra SHA-256 của các file nguồn. Chạy từ thư mục gốc repo:
+Chạy từ gốc repo với Python 3.10 và các phiên bản trong `requirements-dev.txt`:
 
 ```powershell
-py -3.10 -m venv .venv-ai
-.venv-ai/Scripts/python -m pip install -r ai-service/requirements-dev.txt
-.venv-ai/Scripts/python -B -m unittest discover -s ai-service/tests -v
-.venv-ai/Scripts/python -u -B ai-service/train_history_model.py --raw-dir '../dataverse_files/Dataset of household cold-chain conditions/01_src' --reference-model ai-service/temperature_model_hgb.pkl --validation-report ai-service/experiments/results/history-upgrade-2026-10-04/metrics.json --output temperature_model_history_candidate.pkl --threads 4
-.venv-ai/Scripts/python -B ai-service/experiments/replay_history_integration.py --raw-dir '../dataverse_files/Dataset of household cold-chain conditions/01_src' --output ai-service/experiments/results/integration-replay.json
+python -B -m unittest discover -s ai-service/tests -p test_prediction.py -v
+python -u -B ai-service/train_short_horizon_model.py --worktree . --raw-dir '../dataverse_files/Dataset of household cold-chain conditions/01_src' --output ai-service/temperature_model_warning_5_10_reproduction.pkl
 ```
 
-Script train không ghi đè file đã có và đối chiếu đặc trưng inference với tất cả
-357.684 dòng đã đánh giá trước khi dùng metadata validation.
-Replay cần `server/node_modules` (ts-node), dùng hàm lấy mẫu TypeScript thật
-và FastAPI HTTP trên localhost, rồi dừng service tạm.
-[Kết quả replay đã lưu](experiments/results/integration-replay-2026-10-04.json)
-kiểm tra tính đúng của tích hợp, không phải đo thêm độ chính xác của model.
-
-## Chạy và khôi phục phiên bản cũ
-
-```powershell
-# Build backend và AI cùng nhau vì hợp đồng đầu vào nội bộ đã thay đổi.
-docker compose up -d --build app ai-service
-
-# Chạy Python trực tiếp từ ai-service/, sau khi cài requirements:
-$env:OMP_NUM_THREADS = '4'
-uvicorn ai_service:app --port 8000
-```
-
-Docker đóng gói hàm đặc trưng và model mới, giới hạn OpenMP ở bốn luồng.
-`MODEL_PATH` chọn được model khác có cùng hợp đồng đầu vào.
-Service từ chối artifact cũ dự đoán nhiệt độ tuyệt đối khi metadata không khớp.
-Khôi phục phiên bản cũ cần khôi phục backend, FastAPI và model cùng một revision
-Git; không chỉ thay riêng file pkl.
-
-Không cần migration DB hoặc cảm biến mới. Luồng nền, timeout/circuit breaker,
-cache Redis và hysteresis của cảnh báo tiếp tục hoạt động.
-
-## Demo không cần lịch sử thật
-
-Với bài tập, không cần tự thu thập một giờ dữ liệu. Script `scripts/demo_ai.js`
-dùng các đoạn Bangkok đã đóng gói để gọi API ngay, hoặc nạp lịch sử mẫu vào
-MongoDB rồi gửi nhiệt độ hiện tại qua MQTT cho biểu đồ và cảnh báo.
-Xem [hướng dẫn demo](../docs/AI_DEMO.md) để chạy từng tình huống.
+Script không ghi đè output đã có. Nó kiểm tra toàn bộ 22 đặc trưng khớp hàm
+serving, dùng đúng cấu hình đã benchmark, lưu nguồn dữ liệu và kiểm tra nạp lại
+checkpoint. Không cần MQTT, database hoặc ESP32 để kiểm thử API bằng TestClient.
