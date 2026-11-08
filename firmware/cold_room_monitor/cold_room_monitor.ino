@@ -33,6 +33,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include "offline_telemetry.h"
+#include "fan_thermostat.h"
 
 #if ESP_IDF_VERSION_MAJOR < 5
 #error "Can Arduino-ESP32 core 3.x tro len (Tools > Board > Boards Manager > esp32)"
@@ -125,7 +126,7 @@ const unsigned long DOOR_DEBOUNCE_MS = 200;
 // khong lam ngap broker.
 #define EVENT_MIN_GAP_MS   300
 
-// Lenh tu server ghi de logic tu dong (quat luon chay, coi theo su co) trong
+// Lenh tu server ghi de logic tu dong (quat theo nhiet do, coi theo su co) trong
 // khoang nay, sau do thiet bi tu quay lai che do tu dong.
 const unsigned long MANUAL_OVERRIDE_MS = 10UL * 60UL * 1000UL;   // 10 phut
 
@@ -145,6 +146,7 @@ DHT dht(DHT_PIN, DHT_TYPE);
 esp_mqtt_client_handle_t mqttClient = nullptr;
 Preferences  prefs;
 OfflineTelemetryQueue telemetryQueue;
+FanThermostat fanThermostat;
 
 enum MqttInboxTopic : uint8_t { INBOX_COMMANDS, INBOX_CONFIG, INBOX_TELEMETRY_ACK };
 struct MqttInboxItem {
@@ -893,11 +895,17 @@ bool doorOpenTooLong(bool doorClosed) {
 void handleFanAndAlarmLogic(float temp, bool doorClosed, float dcVolt) {
   updateTempAlarm(temp);
   bool doorAlarm = doorOpenTooLong(doorClosed);
-  // Tu dong: quat lam lanh luon chay, khong phu thuoc cua. Chi lenh tu
-  // server (bat/tat tren giao dien) moi doi trang thai quat.
+  // Tu dong theo nguong phong: > tempMax bat, < tempMin tat; trong dai
+  // (ke ca bang nguong) giu nhu cau lam lanh truoc do. Khong phu thuoc WiFi
+  // hay cua. Chua co cau hinh phong thi dung dai du phong 39..40 C.
+  // Van cap nhat nhu cau trong luc ghi de de lenh auto/het han tra ve dung
+  // che do nhiet do. Cam bien loi thi giu nhu cau cu (luc moi khoi dong: tat).
+  float fanTempMin = roomConfig.hasConfig ? roomConfig.tempMin
+                                        : DEFAULT_TEMP_MAX - DEFAULT_HYSTERESIS;
+  bool cooling = fanThermostat.update(temp, fanTempMin, roomConfig.tempMax);
   static bool relayInit = false;
   bool fanReady = fanAllowedAt != 0 && millis() >= fanAllowedAt;
-  bool fanOn = overrideActive(fanOverride) ? fanOverride.on : fanReady;
+  bool fanOn = overrideActive(fanOverride) ? fanOverride.on : (fanReady && cooling);
   if (!relayInit || fanOn != lastRelayCommand) {
     if (fanOn) fanOnSince = millis();   // vua bat (ke ca luc khoi dong)
     else       fanOffSince = millis();
@@ -1030,7 +1038,7 @@ void setup() {
   Serial.println("Bat dau giam sat va gui du lieu...\n");
   doorClosed = doorRawLast = isDoorClosed();
   fanAllowedAt = millis() + FAN_START_DELAY_MS;
-  Serial.printf("Quat se bat sau %lu giay (tranh sut ap luc khoi dong)\n", FAN_START_DELAY_MS / 1000UL);
+  Serial.printf("Quat tu dong theo nhiet do, cho phep bat sau %lu giay (tranh sut ap luc khoi dong)\n", FAN_START_DELAY_MS / 1000UL);
 }
 
 void loop() {
