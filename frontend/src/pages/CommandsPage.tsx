@@ -110,8 +110,8 @@ function CommandFilterDialog({
 
 export function CommandsPage() {
   const { user } = useAuth()
-  // Manager only watches the history (docs/RBAC.md); Staff sends on their shift.
-  const canCreate = hasRole(user?.role, ['admin', 'technician', 'staff'])
+  // Every role may send (Staff only on their shift — docs/RBAC.md).
+  const canCreate = hasRole(user?.role, ['admin', 'manager', 'technician', 'staff'])
   const isAdmin = hasRole(user?.role, ['admin'])
   const list = useListParams(FILTER_KEYS)
   const scope = useCurrentWarehouse()

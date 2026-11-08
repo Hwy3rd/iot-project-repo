@@ -43,7 +43,7 @@ Mỗi tài khoản chỉ có **một** role, áp dụng như nhau ở mọi nơi
 - Thao tác cơ bản (tạo/sửa/xem) trên các loại data cấp warehouse: cấu hình ngưỡng nhiệt độ cold-room, batches (nhập/xuất/điều chỉnh lô hàng), duyệt/từ chối yêu cầu chấm công của Staff thuộc warehouse của mình.
 - Xem log chi tiết cho kho: lịch sử trạng thái thiết bị, telemetry chi tiết (theo giờ và tức thời), lịch sử alerts và commands trong phạm vi warehouse quản lý.
 - Xem (không tạo/sửa) danh sách devices, warehouses, product-types.
-- Xem và resolve alerts trong phạm vi; theo dõi lệnh điều khiển thiết bị do Technician/Staff gửi mà không trực tiếp gửi lệnh.
+- Xem và resolve alerts trong phạm vi; theo dõi và trực tiếp gửi lệnh điều khiển thiết bị (bật/tắt/tự động các kênh quạt, còi, đèn báo) trong phạm vi, không cần ca trực.
 - Xem (không ghi) audit log của các warehouse mình được phân công — chỉ các bản ghi có `warehouse_id` thuộc các warehouse này; log không gắn warehouse vẫn chỉ Admin xem được.
 
 **Tương tác với vai trò khác:** duyệt chấm công vào ca cho Staff; giám sát log chi tiết do Technician ghi nhận trên thiết bị; báo cáo lên Admin khi cần thao tác vượt phạm vi (thêm warehouse mới, decommission thiết bị, tạo tài khoản).
@@ -132,6 +132,6 @@ Ký hiệu: `✓` = toàn quyền · `Phạm vi` = trong warehouse được gán
 | **Cảnh báo (alerts) — xem** | Toàn quyền | Phạm vi (chi tiết) | Phạm vi (chi tiết) | Cơ bản (Phạm vi + Ca trực) |
 | **Cảnh báo — acknowledge** | Toàn quyền | Phạm vi | Phạm vi | Phạm vi + Ca trực |
 | **Cảnh báo — resolve** | Toàn quyền | Phạm vi | Phạm vi | – |
-| **Điều khiển thiết bị (commands)** | Toàn quyền, mọi lệnh | Chỉ xem lịch sử (Phạm vi) | Phạm vi (điều khiển chủ động, toàn bộ tập lệnh) | Phạm vi + Ca trực (bật/tắt các kênh điều khiển; hiện chưa giới hạn tập lệnh riêng cho Staff) |
+| **Điều khiển thiết bị (commands)** | Toàn quyền, mọi lệnh | Phạm vi (gửi lệnh bật/tắt/tự động và xem lịch sử) | Phạm vi (điều khiển chủ động, toàn bộ tập lệnh) | Phạm vi + Ca trực (bật/tắt các kênh điều khiển; hiện chưa giới hạn tập lệnh riêng cho Staff) |
 | **Audit log** (chỉ xem — log do hệ thống tự ghi, không ai ghi/sửa/xoá qua API) | Chỉ xem (toàn hệ thống) | Chỉ xem (Phạm vi — warehouse mình là Manager) | – | – |
 | **Thông báo (notifications)** | Tự thân | Tự thân | Tự thân | Tự thân |

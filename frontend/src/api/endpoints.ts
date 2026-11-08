@@ -409,6 +409,8 @@ export const notificationsApi = {
       unreadOnly: flag(q.unreadOnly),
     }),
   markRead: (id: string) => api.post<AppNotification>(`/notifications/${id}/read`),
+  /** Marks every notification the caller can see as read. */
+  markAllRead: () => api.post<{ updated: number }>('/notifications/read-all'),
   /** null when the server has no VAPID keypair configured. */
   vapidPublicKey: () =>
     api.get<{ publicKey: string | null }>('/notifications/vapid-public-key'),

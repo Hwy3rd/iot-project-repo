@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ROLES_KEY } from '../../libs/constants/metadata.constant';
+import { UserRole } from '../../libs/constants/user.constant';
 import { CommandsController } from './commands.controller';
 import { CommandsService } from './commands.service';
 
@@ -31,5 +33,22 @@ describe('CommandsController', () => {
     await controller.findOne('1');
 
     expect(commandsService.findOne).toHaveBeenCalledWith('1');
+  });
+
+  it('lets every role send a command (Staff gated by shift in the scope guard)', () => {
+    const create = Object.getOwnPropertyDescriptor(
+      CommandsController.prototype,
+      'create',
+    )?.value as object;
+    const roles = Reflect.getMetadata(ROLES_KEY, create) as UserRole[];
+
+    expect(roles).toEqual(
+      expect.arrayContaining([
+        UserRole.ADMIN,
+        UserRole.MANAGER,
+        UserRole.TECHNICIAN,
+        UserRole.STAFF,
+      ]),
+    );
   });
 });
