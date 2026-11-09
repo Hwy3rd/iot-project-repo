@@ -111,7 +111,7 @@ Mỗi 5 giây, và ngay khi cửa/quạt/còi đổi trạng thái, ESP32 gửi 
 | `doorOpen` | boolean | `true` = cửa đang mở (cảnh báo) |
 | `sensorFault` | boolean | `true` = DHT11 không đọc được dữ liệu |
 | `fanOn` | boolean | Quạt **thật sự có điện** (điện áp đo được ≥ `MIN_FAN_RUN_VOLTAGE` = 1 V), không phải trạng thái lệnh |
-| `fanRelayOn` | boolean | Relay quạt đang được bật. Chế độ tự động: luôn bật; chỉ lệnh bật/tắt từ giao diện mới đổi. Lệch với `fanOn` = quạt đang khởi động/dừng hoặc có lỗi |
+| `fanRelayOn` | boolean | Relay quạt đang được bật. Chế độ tự động: mặc định bật, chỉ tắt khi nhiệt độ < `tempMin` của phòng. Lệnh thủ công có thể ghi đè tạm thời. Lệch với `fanOn` = quạt đang khởi động/dừng hoặc có lỗi |
 | `fanVoltage` | number | Điện áp nguồn quạt (V) đo ở GPIO 34 |
 | `fanPowerFault` | boolean | `true` = có lỗi nguồn quạt (xem `fanFault`) |
 | `fanFault` | string hoặc `null` | `no_power` (relay bật mà không có điện), `low_voltage` (dưới 80% mức chuẩn), `high_voltage` (cao hơn mức chuẩn ≥ 0.5 V), `stuck_on` (relay tắt quá 10 giây mà vẫn có điện) |
@@ -171,11 +171,11 @@ Quạt tự động và còi tại chỗ dùng ngưỡng của phòng mà thiế
 - Payload rỗng nghĩa là thiết bị không còn gắn phòng nào: thiết bị xoá ngưỡng đã lưu và quay về ngưỡng dự phòng.
 - Chưa từng nhận ngưỡng thì dùng ngưỡng dự phòng: nhiệt độ ≥ `DEFAULT_TEMP_MAX` (40°C), cửa mở quá `DEFAULT_DOOR_OPEN_MAX_S` (15 giây).
 
-**Quạt tự động theo nhiệt độ.** Nhiệt độ > `tempMax` thì bật quạt; nhiệt độ < `tempMin` thì tắt quạt. Trong khoảng hai ngưỡng, kể cả bằng ngưỡng, giữ trạng thái tự động trước đó để tránh đóng/ngắt liên tục. Khi mới khởi động, trạng thái tự động là tắt cho đến khi nhiệt độ vượt ngưỡng trên; vẫn giữ thời gian chờ khởi động 3 giây. Nếu cảm biến lỗi, giữ trạng thái tự động trước đó. Không có cấu hình phòng thì quạt dùng dải dự phòng `DEFAULT_TEMP_MAX - DEFAULT_HYSTERESIS` đến `DEFAULT_TEMP_MAX` (39–40°C). `hysteresis` của phòng tiếp tục dùng cho còi; quạt dùng trực tiếp dải `tempMin`–`tempMax`.
+**Quạt tự động theo nhiệt độ.** Quạt mặc định chạy, chỉ tắt để tiết kiệm điện khi nhiệt độ < `tempMin` của phòng. Khi nhiệt độ trở lại ≥ `tempMin`, quạt chạy lại ngay, kể cả đúng bằng ngưỡng dưới; không cần chờ vượt `tempMax`. Khi khởi động vẫn chờ 3 giây để tránh sụt áp. Nếu không có số đo hợp lệ hoặc chưa có cấu hình phòng, quạt mặc định chạy. `tempMax` và `hysteresis` của phòng tiếp tục dùng cho cảnh báo nhiệt độ, không quyết định bật/tắt quạt.
 
 Logic chạy tại ESP32 cả khi mất Wi-Fi, dùng ngưỡng đã lưu trong NVS. Cấu hình mới nhận từ backend được dùng ở vòng xử lý tiếp theo. Lệnh `on`/`off` vẫn ghi đè quạt trong 10 phút; bộ điều khiển nhiệt độ tiếp tục cập nhật trong thời gian đó, và lấy lại quyền điều khiển khi hết hạn hoặc nhận `auto`.
 
-Kiểm tra logic quạt trên máy tính (cần `g++`): chạy `./scripts/test-firmware-fan.ps1` từ thư mục gốc repo. Bộ kiểm tra bao gồm chu kỳ làm lạnh, đúng bằng ngưỡng, lỗi cảm biến, đổi cấu hình, nhiệt độ âm và dải dự phòng.
+Kiểm tra logic quạt trên máy tính (cần `g++`): chạy `./scripts/test-firmware-fan.ps1` từ thư mục gốc repo. Bộ kiểm tra bao gồm mặc định chạy, tắt dưới ngưỡng và chạy lại tại ngưỡng dưới, khởi động, lỗi cảm biến, đổi cấu hình và nhiệt độ âm.
 
 **Chống chạy trùng.** Nếu chưa nhận được ack, server sẽ gửi lại lệnh (tối đa 5 lần, cách nhau 10 giây, trong vòng 60 giây). Thiết bị nhớ 8 lệnh gần nhất (`RECENT_COMMANDS`). Lệnh đã chạy rồi thì thiết bị chỉ gửi lại ack cũ, không chạy lại.
 

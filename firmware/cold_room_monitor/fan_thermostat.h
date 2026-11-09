@@ -1,20 +1,12 @@
 #pragma once
 #include <math.h>
 
-// Local cooling demand, independent of WiFi and temporary manual overrides.
-// The room's lower/upper limits form the switching band; alarm hysteresis
-// remains separate. Start OFF until a valid reading exceeds the upper limit.
+// Run by default; stop only when a valid reading is below the room's lower
+// limit. The upper limit and alarm hysteresis do not control the fan.
 class FanThermostat {
  public:
-  bool update(float temperature, float tempMin, float tempMax) {
-    // Missing readings must not invent a new cooling state.
-    if (!isfinite(temperature) || !isfinite(tempMin) || !isfinite(tempMax) ||
-        tempMin >= tempMax) return cooling;
-    if (temperature > tempMax) cooling = true;
-    else if (temperature < tempMin) cooling = false;
-    return cooling;
+  bool update(float temperature, float tempMin) const {
+    // Without a valid reading/limit, there is no evidence the room is too cold.
+    return !isfinite(temperature) || !isfinite(tempMin) || temperature >= tempMin;
   }
-
- private:
-  bool cooling = false;
 };

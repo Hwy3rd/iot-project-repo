@@ -895,14 +895,11 @@ bool doorOpenTooLong(bool doorClosed) {
 void handleFanAndAlarmLogic(float temp, bool doorClosed, float dcVolt) {
   updateTempAlarm(temp);
   bool doorAlarm = doorOpenTooLong(doorClosed);
-  // Tu dong theo nguong phong: > tempMax bat, < tempMin tat; trong dai
-  // (ke ca bang nguong) giu nhu cau lam lanh truoc do. Khong phu thuoc WiFi
-  // hay cua. Chua co cau hinh phong thi dung dai du phong 39..40 C.
-  // Van cap nhat nhu cau trong luc ghi de de lenh auto/het han tra ve dung
-  // che do nhiet do. Cam bien loi thi giu nhu cau cu (luc moi khoi dong: tat).
-  float fanTempMin = roomConfig.hasConfig ? roomConfig.tempMin
-                                        : DEFAULT_TEMP_MAX - DEFAULT_HYSTERESIS;
-  bool cooling = fanThermostat.update(temp, fanTempMin, roomConfig.tempMax);
+  // Quat mac dinh chay; chi tat khi nhiet do hop le < tempMin cua phong.
+  // Bang/nhinh hon tempMin thi chay lai ngay, khong cho vuot tempMax.
+  // Chua co cau hinh hoac cam bien loi thi chay. Khong phu thuoc WiFi/cua.
+  // Lenh auto/het han ghi de ap dung ngay nhiet do va nguong hien tai.
+  bool cooling = !roomConfig.hasConfig || fanThermostat.update(temp, roomConfig.tempMin);
   static bool relayInit = false;
   bool fanReady = fanAllowedAt != 0 && millis() >= fanAllowedAt;
   bool fanOn = overrideActive(fanOverride) ? fanOverride.on : (fanReady && cooling);
