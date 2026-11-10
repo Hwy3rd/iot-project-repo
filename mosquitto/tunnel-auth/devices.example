@@ -1,5 +1,9 @@
-# Optional extra devices. Copy to devices.txt in this directory (gitignored).
-# Format: deviceId|username|password. Use LF line endings and a separate
-# username and password for each physical node. Do not repeat the primary
-# MQTT_TUNNEL_DEVICE_ID/MQTT_TUNNEL_DEVICE_USERNAME from the root .env.
+# Tunnel-mode device accounts — the only place they are configured. Copy to
+# devices.txt in this directory (gitignored), then restart Mosquitto.
+# Format: deviceId|username|password, one physical node per line, LF line
+# endings, a separate username and password for each node. deviceId must
+# equal its unique_id on the server and DEVICE_ID in firmware config.h.
+# Optional: boards with an account issued from the web UI need no line (a
+# web-issued account wins over a line with the same username).
+esp32-coldroom-01|esp32-coldroom-01|<DEVICE_01_PASSWORD>
 esp32-coldroom-02|esp32-coldroom-02|<DEVICE_02_PASSWORD>

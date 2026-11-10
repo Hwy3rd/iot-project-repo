@@ -196,9 +196,9 @@ Chi tiết xem [CLOUD_MQTT_SETUP.md](CLOUD_MQTT_SETUP.md) và [TUNNEL_MQTT_SETUP
 | Backend báo `Access denied` khi kết nối MySQL  | Có file `.env` ở root, hoặc volume được tạo với credential khác. Xem mục 3 và mục reset bên dưới         |
 | App báo `S3Error: Access Denied` khi khởi động | Volume MinIO sai owner, xem [INFRASTRUCTURE.md](INFRASTRUCTURE.md) mục 7                                 |
 | ESP32 không kết nối được MQTT (WSL2, `local`)  | Chạy `scripts/setup-windows-lan.ps1`, xem [README.md](../README.md#kết-nối-thiết-bị-esp32-qua-wifi-wsl2) |
-| ESP32 không kết nối được qua `wss://` (`tunnel`) | Kiểm tra `cloudflared` đang chạy, route `mqtt.<domain>` → `http://mosquitto:8083`, `MQTT_URI` có `:443/mqtt`, username/`DEVICE_ID` khớp `MQTT_TUNNEL_DEVICE_*` hoặc `devices.txt`. Xem [TUNNEL_MQTT_SETUP.md](TUNNEL_MQTT_SETUP.md) |
+| ESP32 không kết nối được qua `wss://` (`tunnel`) | Kiểm tra `cloudflared` đang chạy, route `mqtt.<domain>` → `http://mosquitto:8083`, `MQTT_URI` có `:443/mqtt`, username/`DEVICE_ID` khớp tài khoản cấp trên web hoặc một dòng `devices.txt`. Xem [TUNNEL_MQTT_SETUP.md](TUNNEL_MQTT_SETUP.md) |
 | Backend báo lỗi `MQTT_CA_FILE requires a TLS connection` | `MQTT_CA_FILE` chỉ đặt khi `MQTT_URL` là `mqtts://`/`wss://`; với broker local để trống |
-| Container báo `set MQTT_CLOUD_URL in .env` / `set MQTT_TUNNEL_DEVICE_ID in .env` | `MQTT_MODE` đang là `cloud`/`tunnel` nhưng `.env` thiếu nhóm biến tương ứng (xem `.env.example`) |
+| Container báo `set MQTT_CLOUD_URL in .env` | `MQTT_MODE` đang là `cloud` nhưng `.env` thiếu nhóm biến tương ứng (xem `.env.example`) |
 | Biểu đồ phòng không có dự báo AI | Kiểm tra `/health` AI trả HEALTHY; ngưỡng phòng nằm trong −28..19,6°C; cùng thiết bị và phòng có đủ 13 mốc cách 5 phút trải dài 60 phút (mỗi mốc cũ tối đa 60 giây); nhiệt độ hiện tại chưa vượt ngưỡng. Thử dự báo tối đa một lần/phút. Build backend và AI cùng nhau khi đổi hợp đồng đầu vào. Xem [ARCHITECTURE.md](ARCHITECTURE.md) mục 4b. |
 
 **Reset toàn bộ dữ liệu dev:**

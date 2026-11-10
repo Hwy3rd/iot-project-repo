@@ -1,7 +1,8 @@
 # Use after docker-compose.yml OR docker-compose.production.yml, without the
 # EMQX overlay. Reads the root .env: the backend keeps the local broker's
-# MQTT_USERNAME/MQTT_PASSWORD, the primary device account comes from
-# MQTT_TUNNEL_DEVICE_*. Requires Docker Compose >= 2.24.4.
+# MQTT_USERNAME/MQTT_PASSWORD; device accounts come from
+# mosquitto/tunnel-auth/devices.txt (or the web UI). Requires Docker Compose
+# >= 2.24.4.
 x-tunnel-mqtt: &tunnel-mqtt
   environment:
     MQTT_URL: mqtt://mosquitto:1883
@@ -26,11 +27,8 @@ services:
     environment:
       MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME in .env}
       MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD in .env}
-      # Overrides the shared local-mode device account (mosquitto/
-      # tunnel-entrypoint.sh gives this one only its own device's topics).
-      MQTT_DEVICE_USERNAME: ${MQTT_TUNNEL_DEVICE_USERNAME:?set MQTT_TUNNEL_DEVICE_USERNAME in .env}
-      MQTT_DEVICE_PASSWORD: ${MQTT_TUNNEL_DEVICE_PASSWORD:?set MQTT_TUNNEL_DEVICE_PASSWORD in .env}
-      MQTT_DEVICE_ID: ${MQTT_TUNNEL_DEVICE_ID:?set MQTT_TUNNEL_DEVICE_ID in .env}
+      # No shared device account here: each board has its own, either a line
+      # in mosquitto/tunnel-auth/devices.txt or one issued from the web UI.
     volumes:
       - ./mosquitto/mosquitto.websocket.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/tunnel-entrypoint.sh:/mosquitto-tunnel-entrypoint.sh:ro

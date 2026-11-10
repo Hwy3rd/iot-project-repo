@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared by init.sh/run.sh. Select local, cloud (EMQX), or tunnel (Mosquitto/WS).
 # Every mode reads the single root .env: each overlay maps its own
-# MQTT_CLOUD_* / MQTT_TUNNEL_* variables onto what the containers expect, so
+# MQTT_CLOUD_* variables (and the tunnel broker setup) onto what the containers expect, so
 # switching modes only changes MQTT_MODE, never the .env file.
 # MQTT_MODE comes from the shell, else from MQTT_MODE= in .env, else local.
 if [[ -z "${MQTT_MODE:-}" && -f "$ROOT_DIR/.env" ]]; then

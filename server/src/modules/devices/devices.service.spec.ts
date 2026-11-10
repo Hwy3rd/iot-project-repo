@@ -14,6 +14,7 @@ import {
 import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
 import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { DeviceConfigService } from '../device-config/device-config.service';
+import { DeviceMqttAccountService } from './device-mqtt-account.service';
 import { DevicesService } from './devices.service';
 import {
   CHANNEL_TYPE_ROLE,
@@ -52,10 +53,22 @@ describe('DevicesService', () => {
   let coldRoomsRepository: MockRepository<ColdRoom>;
   let manager: ReturnType<typeof createMockManager>;
   let deviceConfig: { publishForDevice: jest.Mock };
+  let mqttAccounts: {
+    enabled: boolean;
+    issue: jest.Mock;
+    disable: jest.Mock;
+    remove: jest.Mock;
+  };
 
   beforeEach(async () => {
     manager = createMockManager();
     deviceConfig = { publishForDevice: jest.fn() };
+    mqttAccounts = {
+      enabled: false,
+      issue: jest.fn(),
+      disable: jest.fn(),
+      remove: jest.fn(),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DevicesService,
@@ -76,6 +89,7 @@ describe('DevicesService', () => {
           useValue: createMockRepository<ColdRoom>(),
         },
         { provide: DeviceConfigService, useValue: deviceConfig },
+        { provide: DeviceMqttAccountService, useValue: mqttAccounts },
       ],
     }).compile();
 
@@ -121,6 +135,70 @@ describe('DevicesService', () => {
         id: 'd1',
         status: DeviceStatus.REGISTERED,
       });
+      expect(result).not.toHaveProperty('mqttCredentials');
+    });
+
+    it('returns a broker account once when the broker manages them', async () => {
+      mqttAccounts.enabled = true;
+      const credentials = {
+        username: 'esp32-1',
+        password: 'secret',
+        clientId: 'esp32-1',
+      };
+      mqttAccounts.issue.mockResolvedValue(credentials);
+      devicesRepository.create!.mockImplementation((v: Partial<Device>) => v);
+      devicesRepository.save!.mockImplementation((v: Partial<Device>) => ({
+        id: 'd1',
+        ...v,
+      }));
+
+      const result = await service.create({ uniqueId: 'esp32-1' });
+
+      expect(mqttAccounts.issue).toHaveBeenCalledWith('esp32-1');
+      expect(result).toMatchObject({ id: 'd1', mqttCredentials: credentials });
+    });
+
+    it('still registers the device when its broker account fails', async () => {
+      mqttAccounts.enabled = true;
+      mqttAccounts.issue.mockRejectedValue(new Error('broker down'));
+      devicesRepository.create!.mockImplementation((v: Partial<Device>) => v);
+      devicesRepository.save!.mockImplementation((v: Partial<Device>) => ({
+        id: 'd1',
+        ...v,
+      }));
+
+      const result = await service.create({ uniqueId: 'esp32-1' });
+
+      expect(result).toMatchObject({ id: 'd1', mqttCredentials: null });
+    });
+  });
+
+  describe('issueMqttCredentials', () => {
+    it('issues an account named after the unique_id', async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'd1',
+        uniqueId: 'esp32-1',
+        status: DeviceStatus.ACTIVE,
+      });
+      mqttAccounts.issue.mockResolvedValue({ username: 'esp32-1' });
+
+      await expect(service.issueMqttCredentials('d1')).resolves.toEqual({
+        username: 'esp32-1',
+      });
+      expect(mqttAccounts.issue).toHaveBeenCalledWith('esp32-1');
+    });
+
+    it('refuses a decommissioned device', async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'd1',
+        uniqueId: 'esp32-1',
+        status: DeviceStatus.DECOMMISSIONED,
+      });
+
+      await expect(service.issueMqttCredentials('d1')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mqttAccounts.issue).not.toHaveBeenCalled();
     });
   });
 
@@ -301,7 +379,11 @@ describe('DevicesService', () => {
     });
 
     it('sets status and decommissioned_at', async () => {
-      const device = { id: 'd1', status: DeviceStatus.ACTIVE };
+      const device = {
+        id: 'd1',
+        uniqueId: 'esp32-1',
+        status: DeviceStatus.ACTIVE,
+      };
       devicesRepository.findOne!.mockResolvedValue(device);
       devicesRepository.save!.mockImplementation((v: Device) => v);
 
@@ -318,6 +400,7 @@ describe('DevicesService', () => {
       expect(result.status).toBe(DeviceStatus.DECOMMISSIONED);
       expect(result.decommissionedAt).not.toBeNull();
       expect(deviceConfig.publishForDevice).toHaveBeenCalledWith('d1');
+      expect(mqttAccounts.disable).toHaveBeenCalledWith('esp32-1');
     });
   });
 
@@ -331,10 +414,15 @@ describe('DevicesService', () => {
     });
 
     it('soft-deletes the device', async () => {
+      devicesRepository.findOne!.mockResolvedValue({
+        id: 'd1',
+        uniqueId: 'esp32-1',
+      });
       devicesRepository.softDelete!.mockResolvedValue({ affected: 1 });
 
       await expect(service.remove('d1')).resolves.toBeUndefined();
       expect(deviceConfig.publishForDevice).toHaveBeenCalledWith('d1');
+      expect(mqttAccounts.remove).toHaveBeenCalledWith('esp32-1');
     });
   });
 

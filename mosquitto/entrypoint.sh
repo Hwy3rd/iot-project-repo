@@ -8,6 +8,8 @@
 #   - MQTT_USERNAME: the backend (libs/mqtt/mqtt.module.ts). Reads telemetry,
 #     command acks and $SYS (the compose healthcheck logs in as it); writes
 #     commands and each device's room config (retained).
+#     It may also manage the per-device accounts of the Dynamic Security
+#     plugin ($CONTROL/dynamic-security/v1, see mosquitto/dynsec.sh).
 #   - MQTT_DEVICE_USERNAME: shared by every device (ESP32 firmware). Publishes
 #     telemetry; reads commands and its room config, and writes acks, only on
 #     its own topics, so a leaked device credential can't read other devices'
@@ -42,6 +44,8 @@ topic write devices/+/commands
 topic write devices/+/config
 topic write devices/+/telemetry-ack
 topic read \$SYS/#
+topic write \$CONTROL/dynamic-security/v1
+topic read \$CONTROL/dynamic-security/v1/response
 
 user $MQTT_DEVICE_USERNAME
 topic write devices/+/telemetry
@@ -57,5 +61,11 @@ EOF
 chown -R mosquitto:mosquitto "$AUTH_DIR"
 chmod 700 "$AUTH_DIR"
 chmod 600 "$AUTH_DIR/passwd" "$AUTH_DIR/acl"
+
+# Web-issued device accounts (Dynamic Security): the store, plus its
+# read-only copy on the host kept up to date in the background.
+. /mosquitto-dynsec.sh
+dynsec_init
+dynsec_watch
 
 exec /docker-entrypoint.sh "$@"

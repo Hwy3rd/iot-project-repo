@@ -27,6 +27,7 @@ import { ClaimCodeResponseDto } from './dto/claim-code-response.dto';
 import { ClaimDeviceDto } from './dto/claim-device.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { DeviceResponseDto } from './dto/device-response.dto';
+import { MqttCredentialsDto } from './dto/mqtt-credentials.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
 import { QueryDeviceDto } from './dto/query-device.dto';
 import { DevicesService } from './devices.service';
@@ -80,6 +81,21 @@ export class DevicesController {
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateDeviceDto: UpdateDeviceDto) {
     return this.devicesService.update(id, updateDeviceDto);
+  }
+
+  // Shown once: the broker keeps only a hash. Same scope as editing the
+  // device — an unassigned one is Admin's (WarehouseScopeGuard).
+  @Roles(...DEVICE_TECHNICAL_ROLES)
+  @WarehouseScope(WarehouseScopeSource.DEVICE_PARAM)
+  @Serialize(MqttCredentialsDto)
+  @Audit({
+    action: 'device.mqtt_credentials_issue',
+    targetType: 'device',
+    entity: Device,
+  })
+  @Post(':id/mqtt-credentials')
+  issueMqttCredentials(@Param('id') id: string) {
+    return this.devicesService.issueMqttCredentials(id);
   }
 
   // Device must already be assigned to a cold room (i.e. already claimed

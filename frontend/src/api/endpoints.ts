@@ -10,6 +10,7 @@ import type {
   BulkDeleteResult,
   ChannelType,
   ClaimCode,
+  MqttCredentials,
   DeviceStatusChange,
   TelemetryHourly,
   TelemetryRaw,
@@ -210,6 +211,11 @@ export const devicesApi = {
     api.post<Device>(`/devices/${id}/claim`, body),
   /** Admin / Technician. One-way. */
   decommission: (id: string) => api.post<Device>(`/devices/${id}/decommission`),
+  /**
+   * Admin / Technician (same scope as editing). New broker password for the
+   * device; the old one stops working. Shown once — the broker keeps a hash.
+   */
+  mqttCredentials: (id: string) => api.post<MqttCredentials>(`/devices/${id}/mqtt-credentials`),
   /** Not paginated — a device has a handful of channels. Staff only while on shift. */
   channels: (deviceId: string) => api.get<DeviceChannel[]>(`/devices/${deviceId}/channels`),
   /** Admin / Technician. The role (sensor/actuator) follows from the type. */

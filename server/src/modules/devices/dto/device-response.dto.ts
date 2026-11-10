@@ -1,4 +1,5 @@
-import { Expose } from 'class-transformer';
+import { Expose, Type } from 'class-transformer';
+import { MqttCredentialsDto } from './mqtt-credentials.dto';
 import { DeviceStatus } from '../../../libs/constants/device.constant';
 
 export class DeviceResponseDto {
@@ -34,4 +35,10 @@ export class DeviceResponseDto {
 
   @Expose()
   updatedAt!: Date;
+
+  // Only on create, when the broker manages device accounts: null = the
+  // account could not be made (re-issue it later). Never stored.
+  @Expose()
+  @Type(() => MqttCredentialsDto)
+  mqttCredentials?: MqttCredentialsDto | null;
 }

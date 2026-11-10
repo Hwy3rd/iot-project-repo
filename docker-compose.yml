@@ -224,7 +224,11 @@ services:
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/entrypoint.sh:/mosquitto-entrypoint.sh:ro
+      - ./mosquitto/dynsec.sh:/mosquitto-dynsec.sh:ro
       - mosquitto_data:/mosquitto/data
+      # Read-only copy of the web-issued device accounts, no password hashes
+      # (mosquitto/dynsec.sh). The real store stays in mosquitto_data.
+      - ./mosquitto/tunnel-auth/dynsec-view:/mosquitto/dynsec-view
     healthcheck:
       test:
         [

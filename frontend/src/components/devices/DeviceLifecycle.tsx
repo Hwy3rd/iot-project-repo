@@ -19,8 +19,9 @@ import { formatDateTime } from '@/lib/format'
 import { mutationErrorText } from '@/lib/forms'
 import { useColdRoomLookup, useWarehouseLookup } from '@/lib/lookups'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { CircleAlert, Copy, KeyRound, Loader2, MapPinned, PowerOff } from 'lucide-react'
+import { CircleAlert, Copy, KeyRound, Loader2, MapPinned, PowerOff, Plug } from 'lucide-react'
 import { useState } from 'react'
+import { IssueMqttCredentialsDialog } from './MqttCredentials'
 import { toast } from 'sonner'
 
 // The device lifecycle (docs/RBAC.md "Vòng đời kỹ thuật thiết bị"), Admin or
@@ -49,7 +50,7 @@ export function DeviceLifecycleActions({
   /** Receives the updated device (to refresh the open dialog). */
   onChanged: (device: Device) => void
 }) {
-  const [dialog, setDialog] = useState<'code' | 'claim' | 'decommission' | null>(null)
+  const [dialog, setDialog] = useState<'code' | 'claim' | 'mqtt' | 'decommission' | null>(null)
   const close = () => setDialog(null)
   const canCode = device.status === 'registered' || device.status === 'provisioned'
   const canClaim = device.status === 'provisioned'
@@ -67,6 +68,12 @@ export function DeviceLifecycleActions({
         <Button type="button" variant="outline" onClick={() => setDialog('claim')}>
           <MapPinned aria-hidden="true" />
           Gán vào phòng
+        </Button>
+      )}
+      {canDecommission && (
+        <Button type="button" variant="outline" onClick={() => setDialog('mqtt')}>
+          <Plug aria-hidden="true" />
+          Mật khẩu MQTT
         </Button>
       )}
       {canDecommission && (
@@ -93,6 +100,7 @@ export function DeviceLifecycleActions({
           onChanged(d)
         }}
       />
+      <IssueMqttCredentialsDialog device={device} open={dialog === 'mqtt'} onClose={close} />
       <DecommissionDialog
         device={device}
         open={dialog === 'decommission'}

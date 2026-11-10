@@ -6,6 +6,7 @@
 .env.cloud-mqtt
 .env.tunnel-mqtt
 mosquitto/tunnel-auth/devices.txt
+mosquitto/tunnel-auth/dynsec-view/
 __pycache__/
 *.pyc
 

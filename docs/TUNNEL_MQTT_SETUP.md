@@ -23,25 +23,29 @@ Cloudflare cung cấp WSS cho thiết bị bên ngoài và chuyển tiếp qua T
 
 ## 1. Chuẩn bị cấu hình trên máy chủ
 
-Mọi cấu hình MQTT nằm chung trong `.env` gốc (cùng file với MySQL, MongoDB, Redis,
-MinIO, JWT và Tunnel), không có file env riêng cho từng chế độ. Không thay các
-secret của hệ thống đang chạy bằng giá trị mẫu. Thêm vào `.env` tài khoản của node
-chính (xem mục MQTT trong `.env.example`):
+Cấu hình broker/backend nằm trong `.env` gốc (cùng file với MySQL, MongoDB, Redis,
+MinIO, JWT và Tunnel). Backend dùng lại `MQTT_USERNAME`/`MQTT_PASSWORD` (cùng tài
+khoản với chế độ local). **Tài khoản thiết bị không nằm trong `.env`**: overlay
+tunnel bỏ tài khoản dùng chung `MQTT_DEVICE_*`, mỗi board có tài khoản riêng theo
+một trong hai cách:
 
-```dotenv
-MQTT_TUNNEL_DEVICE_ID=esp32-coldroom-01
-MQTT_TUNNEL_DEVICE_USERNAME=esp32-coldroom-01
-MQTT_TUNNEL_DEVICE_PASSWORD=<mat_khau_node_tren_Mosquitto>
-```
+- **Cấp trên web** (khuyên dùng, cần `MQTT_DEVICE_ACCOUNTS=dynsec`): đăng ký thiết
+  bị hoặc nút **Mật khẩu MQTT** trong chi tiết thiết bị. Username = `DEVICE_ID` =
+  `unique_id`, mật khẩu chỉ hiển thị một lần, có hiệu lực ngay không cần restart.
+- **Khai báo tĩnh** trong `mosquitto/tunnel-auth/devices.txt` (mục *Khai báo tài
+  khoản trong devices.txt* bên dưới).
 
-`MQTT_TUNNEL_DEVICE_ID` phải trùng `unique_id` của thiết bị trên server và
-`DEVICE_ID` trong `config.h`. Backend dùng lại `MQTT_USERNAME`/`MQTT_PASSWORD` đã có
-trong `.env` (cùng tài khoản với chế độ local). Overlay tunnel thay tài khoản thiết
-bị dùng chung `MQTT_DEVICE_*` bằng tài khoản riêng này; quay lại chế độ local thì
-`MQTT_DEVICE_*` lại có hiệu lực, không cần sửa `.env`.
+Tài khoản cấp trên web được broker lưu trong volume `mosquitto_data`
+(`/mosquitto/data/dynamic-security.json`, chỉ có hash mật khẩu). Một bản **chỉ
+đọc**, đã bỏ hash, được [mosquitto/dynsec.sh](../mosquitto/dynsec.sh) xuất ra
+`mosquitto/tunnel-auth/dynsec-view/accounts.json` (gitignore) và cập nhật trong
+vòng khoảng 2 giây sau mỗi thay đổi; sửa file này không có tác dụng.
 
-Đây là tài khoản do Mosquitto tự tạo khi khởi động, không phải kiểm tra đăng nhập
-với EMQX. Username/device ID chỉ dùng chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.
+Quay lại chế độ local thì `MQTT_DEVICE_*` dùng chung lại có hiệu lực, không cần sửa
+`.env`; tài khoản cấp trên web dùng được ở cả hai chế độ.
+
+Tài khoản trong `devices.txt` do Mosquitto tự tạo khi khởi động, không phải kiểm tra
+đăng nhập với EMQX. Username/device ID chỉ dùng chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.
 Mật khẩu phải được thay khỏi placeholder và không chứa xuống dòng. Với ký tự `$`
 trong file dotenv, dùng dấu nháy đơn theo quy tắc nội suy của Docker Compose.
 
@@ -49,20 +53,23 @@ App/worker trong overlay luôn dùng MQTT nội bộ và `MQTT_CA_FILE` rỗng. 
 đồng thời overlay cloud và overlay tunnel. Thiết bị kết nối tới
 `wss://mqtt.<domain>/mqtt`; hostname này phải được tạo thủ công trên Tunnel (mục 3).
 
-### Thêm nhiều node
+### Khai báo tài khoản trong devices.txt
 
-Node chính lấy từ `MQTT_TUNNEL_DEVICE_*` trong `.env`. Có thể tạo thêm file riêng
-`mosquitto/tunnel-auth/devices.txt` theo `devices.example`, mỗi dòng:
+Mọi tài khoản thiết bị tĩnh nằm trong một file `mosquitto/tunnel-auth/devices.txt`
+(tạo theo `devices.example`), mỗi node một dòng:
 
 ```text
-esp32-cold-room-02|esp32-cold-room-02|<mat_khau_02>
-esp32-cold-room-03|esp32-cold-room-03|<mat_khau_03>
+esp32-coldroom-01|esp32-coldroom-01|<mat_khau_01>
+esp32-coldroom-02|esp32-coldroom-02|<mat_khau_02>
 ```
 
 File này chứa mật khẩu, được Git bỏ qua. Dùng UTF-8 không BOM và xuống dòng LF.
 Mỗi tài khoản chỉ được publish telemetry/ack và subscribe commands/config/telemetry-ack của ID
 đã gán. Quyền không dựa vào clientId tự khai: đổi clientId thành ID node khác
 không mở rộng quyền. Không dùng lại username backend hoặc ID/username node khác.
+File có thể không tồn tại hoặc rỗng nếu mọi board dùng tài khoản cấp trên web. Một
+tài khoản cấp trên web trùng username với một dòng ở đây sẽ thay dòng đó (mật khẩu
+trong file hết hiệu lực).
 
 Thêm mới thiết bị vẫn cần đăng ký `uniqueId` và claim đúng phòng/kho trong ứng dụng.
 Provisioning MQTT không tự tạo bản ghi trong database.
@@ -75,8 +82,8 @@ Không chạy lại `init.sh` để đổi broker vì script đó có bước se
 
 Cập nhật mã mới nhất (`git pull`) trên máy chủ trước khi chạy các lệnh bên dưới. Việc checkout mã mới rồi chỉ `docker restart` container
 cũ không đổi file config/entrypoint đang mount: cần dùng `up` để tạo lại broker
-với overlay tunnel. Các biến `MQTT_TUNNEL_DEVICE_*` trong `.env` chứa thông tin
-riêng của máy chủ và không được cung cấp sẵn qua Git.
+với overlay tunnel. `devices.txt` chứa thông tin riêng của máy chủ và không được
+cung cấp sẵn qua Git.
 
 Với môi trường dùng `docker-compose.production.yml`, trong Bash:
 
@@ -157,9 +164,9 @@ Trong `config.h`:
 
 ```cpp
 #define MQTT_URI          "wss://mqtt.<domain>:443/mqtt"
-#define MQTT_USERNAME     "esp32-coldroom-01"   // MQTT_TUNNEL_DEVICE_USERNAME hoặc một dòng devices.txt
+#define MQTT_USERNAME     "esp32-coldroom-01"   // cấp trên web hoặc một dòng devices.txt
 #define MQTT_PASSWORD     "<mat_khau_node>"
-#define DEVICE_ID         "esp32-coldroom-01"   // = MQTT_TUNNEL_DEVICE_ID = unique_id trên server
+#define DEVICE_ID         "esp32-coldroom-01"   // = deviceId trong devices.txt = unique_id trên server
 ```
 
 Firmware xác minh chứng chỉ Cloudflare bằng bộ CA có sẵn trong core, giữ keepalive

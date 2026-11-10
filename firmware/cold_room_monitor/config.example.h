@@ -16,11 +16,13 @@
 // #define MQTT_URI       "mqtts://n0c006e0.ala.asia-southeast1.emqxsl.com:8883"
 
 // Tai khoan THIET BI cua broker (broker tu choi ket noi an danh):
-//   local  - tai khoan dung chung MQTT_DEVICE_USERNAME / MQTT_DEVICE_PASSWORD
+//   local/tunnel, cach khuyen dung - tai khoan RIENG cua board, cap tren web
+//            (Dang ky thiet bi / nut "Mat khau MQTT"): username = DEVICE_ID,
+//            mat khau chi hien 1 lan, giao dien co san 3 dong de dan vao day
+//   local  - hoac tai khoan dung chung MQTT_DEVICE_USERNAME / MQTT_DEVICE_PASSWORD
 //            trong .env goc (dev mac dinh: device / password)
-//   tunnel - tai khoan rieng cua board: MQTT_TUNNEL_DEVICE_USERNAME /
-//            MQTT_TUNNEL_DEVICE_PASSWORD trong .env goc (board them:
-//            mosquitto/tunnel-auth/devices.txt)
+//   tunnel - hoac tai khoan rieng khai bao trong
+//            mosquitto/tunnel-auth/devices.txt (deviceId|username|password)
 //   cloud  - tai khoan rieng cua board tren EMQX
 // KHONG dung tai khoan backend MQTT_USERNAME.
 #define MQTT_USERNAME     "device"
@@ -31,7 +33,7 @@
 // #define MQTT_CA_CERT "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
 
 // ID thiet bi: DUY NHAT cho moi ESP32, phai KHOP `unique_id` cua thiet bi tren
-// server (che do tunnel: khop ca MQTT_TUNNEL_DEVICE_ID). Chi gom chu, so, '_',
+// server (che do tunnel: khop ca deviceId trong devices.txt). Chi gom chu, so, '_',
 // '-', '.' (dung lam segment topic MQTT).
 // Topic tu ghep: devices/<DEVICE_ID>/telemetry, /telemetry-ack, /commands, /ack, /config
 #define DEVICE_ID         "esp32-coldroom-01"
