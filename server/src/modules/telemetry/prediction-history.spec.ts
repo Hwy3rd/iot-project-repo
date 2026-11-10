@@ -1,4 +1,7 @@
-import { samplePredictionHistory } from './prediction-history';
+import {
+  inspectPredictionHistory,
+  samplePredictionHistory,
+} from './prediction-history';
 
 const asOf = new Date('2026-10-04T10:00:00Z');
 const denseRows = () =>
@@ -50,5 +53,39 @@ describe('samplePredictionHistory', () => {
     const invalid = denseRows().map((row) => ({ ...row, temperature: NaN }));
     expect(samplePredictionHistory(invalid, asOf, -18)).toBeNull();
     expect(samplePredictionHistory([], asOf, -18)).toBeNull();
+  });
+});
+
+describe('prediction history progress', () => {
+  it('does not count dense five-second readings as thirteen five-minute checkpoints', () => {
+    const progress = inspectPredictionHistory(
+      denseRows().slice(0, 13),
+      asOf,
+      -18,
+    );
+    expect(progress.history).toBeNull();
+    expect(progress.collectedSamples).toBe(1);
+    expect(progress.requiredSamples).toBe(13);
+  });
+
+  it('counts the twelve available checkpoints despite a missing point in the middle', () => {
+    const rows = Array.from({ length: 13 }, (_, lag) => ({
+      ts: new Date(asOf.getTime() - lag * 300_000),
+      temperature: -18,
+    })).filter((_, lag) => lag !== 6);
+    expect(inspectPredictionHistory(rows, asOf, -18)).toMatchObject({
+      history: null,
+      collectedSamples: 12,
+      requiredSamples: 13,
+    });
+  });
+
+  it('excludes a checkpoint outside model coverage without inventing a replacement', () => {
+    const rows = Array.from({ length: 13 }, (_, lag) => ({
+      ts: new Date(asOf.getTime() - lag * 300_000),
+      temperature: lag === 4 ? 30 : -18,
+    }));
+    expect(inspectPredictionHistory(rows, asOf, -18).collectedSamples).toBe(12);
+    expect(samplePredictionHistory(rows, asOf, -18)).toBeNull();
   });
 });

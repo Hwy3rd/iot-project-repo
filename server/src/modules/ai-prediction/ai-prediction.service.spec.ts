@@ -203,6 +203,29 @@ describe('AiPredictionService', () => {
     }
   });
 
+  describe('availability diagnostics', () => {
+    it('reports a failed request and clears it after a successful inference', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('offline'));
+      await service.predict(request(3));
+      expect(service.getUnavailableReason()).toBe('service_unavailable');
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => mockResponse,
+      });
+      await service.predict(request(3));
+      expect(service.getUnavailableReason()).toBeNull();
+    });
+
+    it('reports a failed cache read and clears it once the cache responds again', async () => {
+      redis.hgetall.mockRejectedValueOnce(new Error('cache connection failed'));
+      await expect(service.getLatest('r1')).resolves.toBeNull();
+      expect(service.getUnavailableReason()).toBe('unavailable');
+      redis.hgetall.mockResolvedValueOnce({});
+      await service.getLatest('r1');
+      expect(service.getUnavailableReason()).toBeNull();
+    });
+  });
+
   describe('getLatest', () => {
     const now = 10_000_000;
     const stored = (riskLevel: string, at: number, predictedTemp = 3) => {

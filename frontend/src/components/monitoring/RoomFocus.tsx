@@ -34,7 +34,7 @@ import {
   formatTemp,
   formatVoltage,
 } from '@/lib/format'
-import { AI_RISK_LEVEL_LABEL, AI_VIOLATION_LABEL } from '@/lib/labels'
+import { AI_VIOLATION_LABEL } from '@/lib/labels'
 import {
   TEMP_STATE,
   fanState,
@@ -49,11 +49,11 @@ import {
   ChevronDown,
   CircleCheck,
   Siren,
-  Sparkles,
   TriangleAlert,
 } from 'lucide-react'
 import { type ComponentProps, type ReactNode } from 'react'
 import { TemperatureChart } from './TemperatureChart'
+import { AiForecastCard } from './AiForecastCard'
 
 const RANGES: { value: TelemetryRange; label: string; refreshMs: number }[] = [
   // Refresh about twice per bucket: new points appear without hammering
@@ -247,13 +247,19 @@ export function RoomFocus({
   const series = useQuery({
     queryKey: ['cold-rooms', room.id, 'telemetry', range],
     queryFn: () => coldRoomsApi.telemetry(room.id, range),
-    refetchInterval: refreshMs,
+    // Forecasts refresh every minute and expire after five, even on a 24h chart.
+    refetchInterval: Math.min(refreshMs, 30_000),
     placeholderData: keepPreviousData,
   })
+  const storedPrediction = series.data?.prediction
   const prediction =
-    series.data?.prediction?.forecasts?.length === 2
-      ? series.data.prediction
+    storedPrediction?.forecasts?.length === 2
+      && Date.parse(storedPrediction.predictedAt) + 5 * 60_000 > now
+      ? storedPrediction
       : null
+  const predictionStatus = !prediction && storedPrediction
+    ? { code: 'prediction_expired' as const, checkedAt: new Date(now).toISOString() }
+    : series.data?.predictionStatus
 
   const reported = status?.latest ?? null
   const state = tempState(reported, now)
@@ -407,7 +413,7 @@ export function RoomFocus({
       <div
         className={cn(
           'grid gap-4 xl:items-start',
-          prediction && 'xl:grid-cols-2',
+          'xl:grid-cols-2',
         )}
       >
         {issues.length > 0 ? (
@@ -446,69 +452,12 @@ export function RoomFocus({
           </p>
         )}
 
-        {prediction && (
-          <section
-            aria-label="Dự báo AI"
-            className={cn(
-              'flex flex-col gap-2 rounded-xl border p-3.5 transition-colors',
-              prediction.willExceedThreshold
-                ? 'border-warning/50 bg-warning/10 dark:border-warning/40 dark:bg-warning/15'
-                : 'border-purple-500/20 bg-purple-50/50 dark:border-purple-500/30 dark:bg-purple-950/20',
-            )}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Sparkles
-                  className="h-4 w-4 text-purple-600 dark:text-purple-400"
-                  aria-hidden="true"
-                />
-                <span className="text-sm font-semibold">
-                  Dự báo AI (+5 và +10 phút)
-                </span>
-              </div>
-              {prediction.willExceedThreshold ? (
-                <ToneBadge tone="warning">
-                  {AI_VIOLATION_LABEL[prediction.violationType]}
-                </ToneBadge>
-              ) : (
-                <ToneBadge tone="success">Nhiệt độ ổn định</ToneBadge>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {prediction.forecasts.map((point) => (
-                <div key={point.horizonMinutes} className="flex flex-col gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    Sau {point.horizonMinutes} phút
-                  </span>
-                  <span
-                    className={cn(
-                      'text-2xl font-bold tabular-nums',
-                      point.willExceedThreshold && 'text-warning',
-                    )}
-                  >
-                    {formatTemp(point.predictedTemp)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {point.willExceedThreshold
-                      ? AI_VIOLATION_LABEL[point.violationType]
-                      : 'Trong ngưỡng'}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Cảnh báo sớm · {AI_RISK_LEVEL_LABEL[prediction.riskLevel]}
-            </p>
-            {prediction.recommendation && (
-              <p className="border-t border-border/50 pt-2 text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">
-                  Khuyến nghị:
-                </span>{' '}
-                {prediction.recommendation}
-              </p>
-            )}
-          </section>
-        )}
+        <AiForecastCard
+          prediction={prediction}
+          status={predictionStatus}
+          loading={series.isPending}
+          error={series.isError}
+        />
       </div>
 
       <section
@@ -545,7 +494,7 @@ export function RoomFocus({
         ) : series.isError ? (
           <ErrorState error={series.error} onRetry={() => series.refetch()} />
         ) : (
-          <TemperatureChart series={series.data} />
+          <TemperatureChart series={{ ...series.data, prediction }} />
         )}
       </section>
 

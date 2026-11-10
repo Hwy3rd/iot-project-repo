@@ -12,13 +12,17 @@ interface Reading {
   temperature: number | null;
 }
 
-// Returns actual source timestamps, oldest first, without interpolation or
-// future values. Missing/stale checkpoints leave the forecast unavailable.
-export function samplePredictionHistory(
+// Counts the same checkpoints used by inference, including gaps in the middle.
+// Elapsed time or the total row count alone does not establish readiness.
+export function inspectPredictionHistory(
   rows: Reading[],
   asOf: Date,
   currentTemperature: number,
-): TemperatureHistoryReading[] | null {
+): {
+  history: TemperatureHistoryReading[] | null;
+  collectedSamples: number;
+  requiredSamples: number;
+} {
   const valid = rows
     .filter(
       (row) =>
@@ -42,14 +46,14 @@ export function samplePredictionHistory(
       !row ||
       checkpoint - row.ts.getTime() > AI_PREDICTION_SAMPLE_MAX_AGE_MS
     ) {
-      return null;
+      continue;
     }
     if (
       lag === 0 &&
       (row.ts.getTime() !== asOf.getTime() ||
         Math.abs((row.temperature as number) - currentTemperature) > 1e-9)
     ) {
-      return null;
+      continue;
     }
     selected.push({
       ts: row.ts.toISOString(),
@@ -57,5 +61,21 @@ export function samplePredictionHistory(
     });
     cursor++;
   }
-  return selected.reverse();
+  return {
+    history:
+      selected.length === AI_PREDICTION_HISTORY_SAMPLES
+        ? selected.reverse()
+        : null,
+    collectedSamples: selected.length,
+    requiredSamples: AI_PREDICTION_HISTORY_SAMPLES,
+  };
+}
+
+// Actual source timestamps, oldest first; no interpolation or future values.
+export function samplePredictionHistory(
+  rows: Reading[],
+  asOf: Date,
+  currentTemperature: number,
+): TemperatureHistoryReading[] | null {
+  return inspectPredictionHistory(rows, asOf, currentTemperature).history;
 }
