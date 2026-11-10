@@ -8,6 +8,8 @@ x-cloud-mqtt: &cloud-mqtt
     MQTT_USERNAME: ${MQTT_CLOUD_USERNAME:?set MQTT_CLOUD_USERNAME in .env}
     MQTT_PASSWORD: ${MQTT_CLOUD_PASSWORD:?set MQTT_CLOUD_PASSWORD in .env}
     MQTT_CA_FILE: /app/certs/mqtt/emqxsl-ca.crt
+    # EMQX has no Mosquitto Dynamic Security: device accounts stay manual.
+    MQTT_DEVICE_ACCOUNTS: ""
   volumes:
     - ./certs/mqtt:/app/certs/mqtt:ro
 

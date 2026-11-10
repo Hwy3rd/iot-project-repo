@@ -1,12 +1,13 @@
 import { devicesApi } from '@/api/endpoints'
-import type { Device } from '@/api/types'
+import type { Device, MqttCredentials } from '@/api/types'
 import { FormDialog } from '@/components/common/FormDialog'
 import { TextField } from '@/components/common/form-fields'
-import { mutationErrorText, nullableText, optionalText, requiredText, toInput } from '@/lib/forms'
+import { mutationErrorText, nullableText, optionalText, toInput } from '@/lib/forms'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
+import { MqttCredentialsResultDialog } from './MqttCredentials'
 
 interface FormValues {
   uniqueId: string
@@ -26,7 +27,28 @@ const toValues = (d: Device): FormValues => ({
  */
 export function CreateDeviceDialog() {
   const [open, setOpen] = useState(false)
-  return <DeviceFormDialog open={open} onOpenChange={setOpen} />
+  // The board's own MQTT login, when the server made one — shown once.
+  const [created, setCreated] = useState<{ uniqueId: string; credentials: MqttCredentials } | null>(null)
+  return (
+    <>
+      <DeviceFormDialog
+        open={open}
+        onOpenChange={setOpen}
+        onCreated={(d) => {
+          if (d.mqttCredentials) setCreated({ uniqueId: d.uniqueId, credentials: d.mqttCredentials })
+          else if (d.mqttCredentials === null)
+            toast.warning('Chưa tạo được tài khoản MQTT', {
+              description: 'Mở thiết bị và chọn “Mật khẩu MQTT” để cấp lại.',
+            })
+        }}
+      />
+      <MqttCredentialsResultDialog
+        uniqueId={created?.uniqueId ?? ''}
+        credentials={created?.credentials ?? null}
+        onClose={() => setCreated(null)}
+      />
+    </>
+  )
 }
 
 /**
@@ -50,11 +72,13 @@ function DeviceFormDialog({
   device,
   open,
   onOpenChange,
+  onCreated,
 }: {
   /** Set = edit this device; unset = create. */
   device?: Device
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCreated?: (device: Device) => void
 }) {
   const qc = useQueryClient()
   const initial = device ? toValues(device) : EMPTY
@@ -79,6 +103,7 @@ function DeviceFormDialog({
       toast.success(device ? 'Đã lưu thay đổi' : 'Đã đăng ký thiết bị', { description: d.uniqueId })
       onOpenChange(false)
       reset(device ? toValues(d) : EMPTY)
+      if (!device) onCreated?.(d)
     },
     onError: (err) =>
       setError('root.server', {
@@ -109,14 +134,20 @@ function DeviceFormDialog({
       <TextField
         id="dev-unique-id"
         label="Mã thiết bị"
-        placeholder="vd: ESP32-A1B2C3…"
+        placeholder="vd: esp32-coldroom-02…"
         spellCheck={false}
         className="font-mono"
-        description={device ? undefined : 'Mã duy nhất in trên phần cứng (thường là MAC hoặc chip ID).'}
+        description={device ? undefined : 'Phải khớp DEVICE_ID trong firmware (config.h), vd: esp32-coldroom-02.'}
         disabled={!!device}
         error={errors.uniqueId}
         {...register('uniqueId', {
-          validate: device ? undefined : requiredText('Nhập mã thiết bị.'),
+          validate: device
+            ? undefined
+            : (v) =>
+                !v.trim()
+                  ? 'Nhập mã thiết bị.'
+                  : /^[A-Za-z0-9_.-]{1,64}$/.test(v.trim()) ||
+                    'Chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang (tối đa 64 ký tự).',
         })}
       />
       <TextField

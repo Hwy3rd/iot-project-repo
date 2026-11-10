@@ -126,6 +126,18 @@ export interface Device {
   decommissionedAt: string | null
   createdAt: string
   updatedAt: string
+  /**
+   * Only in the create response, when the broker manages device accounts:
+   * the board's own MQTT login, shown once. null = it could not be made.
+   */
+  mqttCredentials?: MqttCredentials | null
+}
+
+/** What config.h needs: MQTT_USERNAME / MQTT_PASSWORD / DEVICE_ID. Shown once. */
+export interface MqttCredentials {
+  username: string
+  password: string
+  clientId: string
 }
 
 export interface Alert {

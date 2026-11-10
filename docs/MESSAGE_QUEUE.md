@@ -261,7 +261,7 @@ q.add('rollup', { hour: '2026-09-24T08:00:00Z' }).then(j => { console.log('enque
 
 ### Theo dõi MQTT
 
-Áp dụng cho chế độ `local` và `tunnel` (broker là container `mosquitto_broker`). Ở `tunnel`, biến `MQTT_DEVICE_*` trong container là tài khoản của node chính, nên `<uniqueId>` ở các lệnh giả lập thiết bị phải là `MQTT_TUNNEL_DEVICE_ID`, và topic telemetry cũng chỉ ghi được cho đúng ID đó. Ở `cloud`, dùng WebSocket client trên dashboard EMQX hoặc `scripts/check-cloud-mqtt.cjs`.
+Áp dụng cho chế độ `local` và `tunnel` (broker là container `mosquitto_broker`). Ở `tunnel` (và với tài khoản cấp trên web), không có tài khoản thiết bị dùng chung: trong các lệnh giả lập thiết bị, thay `"$MQTT_DEVICE_USERNAME"`/`"$MQTT_DEVICE_PASSWORD"` bằng username/mật khẩu của chính thiết bị đó (một dòng `devices.txt` hoặc mật khẩu cấp trên web), và topic chỉ ghi được cho đúng ID đó. Ở `cloud`, dùng WebSocket client trên dashboard EMQX hoặc `scripts/check-cloud-mqtt.cjs`.
 
 ```bash
 # Xem telemetry đang đến broker (tài khoản backend — chỉ nó được đọc)

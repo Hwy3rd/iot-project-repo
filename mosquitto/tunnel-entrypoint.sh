@@ -1,6 +1,9 @@
 #!/bin/sh
 # Provision exact per-account topics before starting the private TCP/WS broker.
-# Extra accounts: one deviceId|username|password per line in the private file.
+# Device accounts: one deviceId|username|password per line in the private
+# file tunnel-auth/devices.txt (the only place they are configured). It may
+# be missing or empty when every board uses an account issued from the web
+# UI (Dynamic Security, see mosquitto/dynsec.sh).
 set -eu
 
 fail() { printf '%s\n' "Tunnel MQTT: $1" >&2; exit 1; }
@@ -19,9 +22,6 @@ password() {
 
 identifier MQTT_USERNAME "${MQTT_USERNAME:-}"
 password MQTT_PASSWORD "${MQTT_PASSWORD:-}"
-identifier MQTT_DEVICE_USERNAME "${MQTT_DEVICE_USERNAME:-}"
-identifier MQTT_DEVICE_ID "${MQTT_DEVICE_ID:-}"
-password MQTT_DEVICE_PASSWORD "${MQTT_DEVICE_PASSWORD:-}"
 
 AUTH_DIR=/mosquitto/auth-tunnel
 mkdir -p "$AUTH_DIR"
@@ -39,6 +39,8 @@ topic write devices/+/commands
 topic write devices/+/config
 topic write devices/+/telemetry-ack
 topic read \$SYS/#
+topic write \$CONTROL/dynamic-security/v1
+topic read \$CONTROL/dynamic-security/v1/response
 EOF
 
 seen_users="|$MQTT_USERNAME|"
@@ -66,7 +68,6 @@ topic read devices/$device_id/telemetry-ack
 EOF
 }
 
-add_device "$MQTT_DEVICE_ID" "$MQTT_DEVICE_USERNAME" "$MQTT_DEVICE_PASSWORD"
 accounts=/mosquitto/tunnel-auth/devices.txt
 if [ -f "$accounts" ]; then
   # IFS is only '|'; spaces and further '|' characters stay in the password.
@@ -76,6 +77,7 @@ if [ -f "$accounts" ]; then
     add_device "$device_id" "$device_user" "$device_password"
   done < "$accounts"
 fi
+[ "$seen_ids" != '|' ] || printf '%s\n' "Tunnel MQTT: no accounts in tunnel-auth/devices.txt; only web-issued device accounts can connect" >&2
 
 mv -f "$work/passwd" "$AUTH_DIR/passwd"
 mv -f "$work/acl" "$AUTH_DIR/acl"
@@ -84,4 +86,10 @@ chmod 700 "$AUTH_DIR"
 chmod 600 "$AUTH_DIR/passwd" "$AUTH_DIR/acl"
 cleanup
 trap - EXIT
+# Web-issued device accounts (Dynamic Security): the store, plus its
+# read-only copy on the host kept up to date in the background.
+. /mosquitto-dynsec.sh
+dynsec_init
+dynsec_watch
+
 exec /docker-entrypoint.sh "$@"

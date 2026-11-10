@@ -175,14 +175,14 @@ async function blocked(sender, receiver, topic) {
     [
       "MQTT_USERNAME=" + backendUser,
       "MQTT_PASSWORD=" + backendPassword,
-      "MQTT_DEVICE_USERNAME=" + first.user,
-      "MQTT_DEVICE_PASSWORD=" + first.password,
-      "MQTT_DEVICE_ID=" + first.id,
     ].join("\n") + "\n",
   );
+  // Every tunnel device account lives in devices.txt (none in the env).
   fs.writeFileSync(
     path.join(temp, "devices.txt"),
-    second.id + "|" + second.user + "|" + second.password + "\n",
+    [first, second]
+      .map((d) => d.id + "|" + d.user + "|" + d.password + "\n")
+      .join(""),
   );
   console.log(
     "Starting isolated broker; no running application containers will be changed.",
@@ -208,6 +208,10 @@ async function blocked(sender, receiver, topic) {
     "type=bind,source=" +
       path.join(root, "mosquitto/tunnel-entrypoint.sh") +
       ",target=/mosquitto-tunnel-entrypoint.sh,readonly",
+    "--mount",
+    "type=bind,source=" +
+      path.join(root, "mosquitto/dynsec.sh") +
+      ",target=/mosquitto-dynsec.sh,readonly",
     "--mount",
     "type=bind,source=" + temp + ",target=/mosquitto/tunnel-auth,readonly",
     "--entrypoint",

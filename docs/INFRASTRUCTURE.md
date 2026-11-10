@@ -197,7 +197,7 @@ Hệ quả của cách (2): ký tự `$` trong giá trị bị hiểu là tham c
 | MQTT                | `MQTT_URL`, `MQTT_CA_FILE`, `MQTT_USERNAME/PASSWORD`, `MQTT_DEVICE_USERNAME/PASSWORD` | Chế độ `local`: broker sinh password file + ACL từ 4 biến tài khoản (`mosquitto/entrypoint.sh`); `MQTT_DEVICE_*` nạp vào firmware thiết bị. `MQTT_URL` nhận `mqtt`/`mqtts`/`ws`/`wss`; `MQTT_CA_FILE` chỉ dùng với `mqtts`/`wss` |
 | Chế độ MQTT         | `MQTT_MODE`                                                                        | `local` \| `cloud` \| `tunnel`, xem mục 1                                                 |
 | MQTT cloud (EMQX)   | `MQTT_CLOUD_URL/USERNAME/PASSWORD`, `MQTT_CLOUD_DEVICE_ID/USERNAME/PASSWORD`        | Overlay `cloud` đưa `MQTT_CLOUD_URL/USERNAME/PASSWORD` vào `app`/`worker` thay cho `MQTT_*`. Nhóm `DEVICE_*` chỉ dùng cho `scripts/check-cloud-mqtt.cjs` |
-| MQTT tunnel         | `MQTT_TUNNEL_DEVICE_ID/USERNAME/PASSWORD`                                           | Tài khoản của node chính, thay `MQTT_DEVICE_*` dùng chung. Node thêm khai báo trong `mosquitto/tunnel-auth/devices.txt` (gitignore) |
+| Tài khoản thiết bị  | `MQTT_DEVICE_ACCOUNTS`                                                              | `dynsec` = cấp tài khoản MQTT riêng cho từng thiết bị trên web (local/tunnel). Tunnel không có tài khoản thiết bị trong `.env`: tài khoản tĩnh nằm trong `mosquitto/tunnel-auth/devices.txt` (gitignore) |
 | MinIO               | `MINIO_ENDPOINT/PORT/USE_SSL/ACCESS_KEY/SECRET_KEY/BUCKET`, `MINIO_PUBLIC_URL`     | `ACCESS_KEY/SECRET_KEY` cũng là root credential của container minio                       |
 | Auth                | `JWT_SECRET`, `JWT_REFRESH_SECRET`, `*_EXPIRES_IN`, `COOKIE_NAME`, `REFRESH_COOKIE_NAME` | Hai secret phải khác nhau và khác bộ secret dev                                     |
 | Web Push            | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`                           | Sinh cặp khoá riêng cho production: `npx web-push generate-vapid-keys`                    |
@@ -336,14 +336,14 @@ ESP32 kết nối với client ID = `unique_id` (`DEVICE_ID` trong firmware), d�
 | `MQTT_MODE` | `MQTT_URI` trong firmware | Tài khoản thiết bị |
 | ----------- | ------------------------- | ------------------ |
 | `local`     | `mqtt://<IP LAN máy chủ>:1883` | `MQTT_DEVICE_USERNAME/PASSWORD` dùng chung |
-| `tunnel`    | `wss://mqtt.<domain>:443/mqtt` | `MQTT_TUNNEL_DEVICE_*` hoặc một dòng trong `tunnel-auth/devices.txt` |
+| `tunnel`    | `wss://mqtt.<domain>:443/mqtt` | Cấp trên web hoặc một dòng trong `tunnel-auth/devices.txt` |
 | `cloud`     | `mqtts://<host EMQX>:8883`     | Tài khoản riêng tạo trên EMQX |
 
 Với `mqtts://` và `wss://`, firmware kiểm tra chứng chỉ broker bằng bộ CA có sẵn trong core ESP32 (có thể ghim CA riêng qua `MQTT_CA_CERT`).
 
 Ở chế độ `local`, cổng 1883 là cổng duy nhất publish ra host ở production và **không** đi qua Cloudflare Tunnel. Cấu hình broker ([mosquitto/mosquitto.conf](../mosquitto/mosquitto.conf)): một listener `1883`, bật persistence, log ra stdout, **bắt buộc đăng nhập**, không có TLS (xem mục 10). File mật khẩu và ACL do [mosquitto/entrypoint.sh](../mosquitto/entrypoint.sh) sinh lại từ `.env` mỗi lần container khởi động (quyền từng tài khoản xem [SECURITY.md](SECURITY.md)). Entrypoint xoá file mật khẩu cũ trước khi tạo mới, vì `mosquitto_passwd -c` (Mosquitto 2.1) từ chối ghi đè file đã có: thiếu bước này thì `docker restart` làm broker khởi động lại liên tục.
 
-Ở chế độ `tunnel`, broker dùng [mosquitto/mosquitto.websocket.conf](../mosquitto/mosquitto.websocket.conf) với hai listener chỉ nằm trong mạng Docker: `1883` (MQTT, cho `app`/`worker`) và `8083` (WebSocket, cho `cloudflared`). [mosquitto/tunnel-entrypoint.sh](../mosquitto/tunnel-entrypoint.sh) sinh password file + ACL cho tài khoản backend và **từng thiết bị** (node chính từ `MQTT_TUNNEL_DEVICE_*`, các node khác từ `mosquitto/tunnel-auth/devices.txt`), mỗi thiết bị chỉ được dùng 4 topic của chính `deviceId` đó. Thiết bị kết nối được từ bất kỳ mạng nào có Internet.
+Ở chế độ `tunnel`, broker dùng [mosquitto/mosquitto.websocket.conf](../mosquitto/mosquitto.websocket.conf) với hai listener chỉ nằm trong mạng Docker: `1883` (MQTT, cho `app`/`worker`) và `8083` (WebSocket, cho `cloudflared`). [mosquitto/tunnel-entrypoint.sh](../mosquitto/tunnel-entrypoint.sh) sinh password file + ACL cho tài khoản backend và **từng thiết bị** (tất cả từ `mosquitto/tunnel-auth/devices.txt`, hoặc cấp trên web qua Dynamic Security), mỗi thiết bị chỉ được dùng 4 topic của chính `deviceId` đó. Thiết bị kết nối được từ bất kỳ mạng nào có Internet.
 
 ### Máy chủ là WSL2 trên Windows
 

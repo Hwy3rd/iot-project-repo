@@ -33,6 +33,7 @@ import { ColdRoom } from '../cold-rooms/entities/cold-room.entity';
 import { DeviceConfigService } from '../device-config/device-config.service';
 import { addMissingDefaultChannels } from '../device-channels/default-channels';
 import { DeviceStatusHistory } from '../device-status-history/entities/device-status-history.entity';
+import { DeviceMqttAccountService } from './device-mqtt-account.service';
 import { ClaimDeviceDto } from './dto/claim-device.dto';
 import { CreateDeviceDto } from './dto/create-device.dto';
 import { UpdateDeviceDto } from './dto/update-device.dto';
@@ -50,6 +51,7 @@ export class DevicesService {
     @InjectRepository(ColdRoom)
     private readonly coldRoomsRepository: Repository<ColdRoom>,
     private readonly deviceConfig: DeviceConfigService,
+    private readonly mqttAccounts: DeviceMqttAccountService,
   ) {}
 
   // Saves a lifecycle step and, when it changed the status, the matching
@@ -95,12 +97,32 @@ export class DevicesService {
     }
   }
 
-  create(createDeviceDto: CreateDeviceDto) {
+  // Also gives the device its own broker account when the broker manages
+  // them; the password is in the response only (shown once). The device is
+  // registered either way — a failed account can be re-issued later.
+  async create(createDeviceDto: CreateDeviceDto) {
     const device = this.devicesRepository.create({
       uniqueId: createDeviceDto.uniqueId,
       firmwareVersion: createDeviceDto.firmwareVersion ?? null,
     });
-    return this.saveDevice(device);
+    const saved = await this.saveDevice(device);
+    if (!this.mqttAccounts.enabled) return saved;
+    try {
+      const mqttCredentials = await this.mqttAccounts.issue(saved.uniqueId);
+      return Object.assign(saved, { mqttCredentials });
+    } catch {
+      return Object.assign(saved, { mqttCredentials: null });
+    }
+  }
+
+  // New broker password for the device (the old one stops working and the
+  // board is disconnected). A decommissioned device gets none.
+  async issueMqttCredentials(id: string) {
+    const device = await this.findOne(id);
+    if (device.status === DeviceStatus.DECOMMISSIONED) {
+      throw new ConflictException(`Device ${id} is decommissioned`);
+    }
+    return this.mqttAccounts.issue(device.uniqueId);
   }
 
   // access omitted = unfiltered (internal callers); see WarehouseAccess.
@@ -233,15 +255,18 @@ export class DevicesService {
     device.decommissionedAt = new Date();
     const saved = await this.transition(device, oldStatus, actorId);
     await this.deviceConfig.publishForDevice(id);
+    await this.mqttAccounts.disable(device.uniqueId);
     return saved;
   }
 
   async remove(id: string) {
+    const device = await this.findOne(id);
     const result = await this.devicesRepository.softDelete(id);
     if (!result.affected) {
       throw new NotFoundException(`Device ${id} not found`);
     }
     await this.deviceConfig.publishForDevice(id);
+    await this.mqttAccounts.remove(device.uniqueId);
   }
 
   bulkRemove(ids: string[]): Promise<BulkDeleteResult> {

@@ -17,15 +17,29 @@ import { Device } from '../devices/entities/device.entity';
 
 // The board publishes telemetry every ~5 s and every accepted live message
 // refreshes last_heartbeat_at (MqttIngestService.recordHeartbeat). Silence
-// for this long means the device is gone (power, Wi-Fi, broker).
-const DEFAULT_OFFLINE_AFTER_MS = 2 * 60_000;
-const SWEEP_INTERVAL_MS = 30_000;
+// for this long means the device is gone (power, Wi-Fi, broker): 15 s = three
+// missed reports. The floor (two reports) keeps one late message from
+// flapping the device offline.
+const DEFAULT_OFFLINE_AFTER_MS = 15_000;
+const MIN_OFFLINE_AFTER_MS = 10_000;
+// How often stale heartbeats are looked for: bounds how late past the
+// timeout a device is marked offline (here ≤ 1 s). One query per sweep,
+// returning only the devices that just went stale.
+const DEFAULT_SWEEP_INTERVAL_MS = 1_000;
+const MIN_SWEEP_INTERVAL_MS = 1_000;
 
 export function offlineAfterMs(raw = process.env.DEVICE_OFFLINE_AFTER_MS) {
   const value = Number(raw);
-  return Number.isFinite(value) && value >= 30_000
+  return Number.isFinite(value) && value >= MIN_OFFLINE_AFTER_MS
     ? value
     : DEFAULT_OFFLINE_AFTER_MS;
+}
+
+export function sweepIntervalMs(raw = process.env.DEVICE_HEARTBEAT_SWEEP_MS) {
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= MIN_SWEEP_INTERVAL_MS
+    ? value
+    : DEFAULT_SWEEP_INTERVAL_MS;
 }
 
 // The other half of recordHeartbeat(): that one brings an OFFLINE device
@@ -50,7 +64,7 @@ export class DeviceHeartbeatService
   ) {}
 
   onModuleInit() {
-    this.timer = setInterval(() => void this.sweep(), SWEEP_INTERVAL_MS);
+    this.timer = setInterval(() => void this.sweep(), sweepIntervalMs());
     this.timer.unref();
   }
 

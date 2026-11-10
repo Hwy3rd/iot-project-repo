@@ -12,6 +12,7 @@ import { Device } from '../devices/entities/device.entity';
 import {
   DeviceHeartbeatService,
   offlineAfterMs,
+  sweepIntervalMs,
 } from './device-heartbeat.service';
 
 describe('DeviceHeartbeatService', () => {
@@ -142,10 +143,19 @@ describe('DeviceHeartbeatService', () => {
     expect(alertsService.raise).toHaveBeenCalledTimes(2);
   });
 
-  it('reads the timeout from env with a sane floor', () => {
-    expect(offlineAfterMs(undefined)).toBe(120_000);
-    expect(offlineAfterMs('300000')).toBe(300_000);
-    expect(offlineAfterMs('1000')).toBe(120_000);
-    expect(offlineAfterMs('abc')).toBe(120_000);
+  it('goes offline after 15 s by default, configurable down to 10 s', () => {
+    expect(offlineAfterMs(undefined)).toBe(15_000);
+    expect(offlineAfterMs('120000')).toBe(120_000);
+    expect(offlineAfterMs('10000')).toBe(10_000);
+    expect(offlineAfterMs('5000')).toBe(15_000);
+    expect(offlineAfterMs('abc')).toBe(15_000);
+  });
+
+  it('sweeps every second by default', () => {
+    expect(sweepIntervalMs(undefined)).toBe(1_000);
+    expect(sweepIntervalMs('5000')).toBe(5_000);
+    expect(sweepIntervalMs('1000')).toBe(1_000);
+    expect(sweepIntervalMs('500')).toBe(1_000);
+    expect(sweepIntervalMs('abc')).toBe(1_000);
   });
 });
